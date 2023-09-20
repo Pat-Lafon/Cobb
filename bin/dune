@@ -1,0 +1,13 @@
+(executable
+ (public_name Cobb)
+ (name main)
+ (libraries
+  Cobb
+  utils
+  underapproximation_type.typecheck
+  underapproximation_type.driver))
+
+(env
+ (dev
+  (flags
+   (:standard -w -32-33-69-27-26))))
