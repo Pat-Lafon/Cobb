@@ -21,13 +21,15 @@
  (description "A longer description")
  (depends
      dune
-    (ocaml        (= "4.14.0"))
-    (core         (<= "v0.16.1"))
-    (core_unix    (<= "v0.16.0"))
-    (dolog        (<= "6.0.0"))
-    (ocolor       (<= "1.3.1"))
-    (qcheck       (<= "0.21.2"))
-    (z3           (<= "4.12.2-1")))
+    (ocaml            (= "4.14.0"))
+    (core             (<= "v0.16.1"))
+    (core_unix        (<= "v0.16.0"))
+    (dolog            (<= "6.0.0"))
+    (ocolor           (<= "1.3.1"))
+    (qcheck           (<= "0.21.2"))
+    (z3               (<= "4.12.2-1"))
+    (ocamlformat      (and :dev (<= "0.26.1")))
+    (ocaml-lsp-server (and :dev (<= "1.16.2"))))
  (tags
   (topics "to describe" your project)))
 
