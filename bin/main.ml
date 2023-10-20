@@ -9,8 +9,6 @@ open Assertion
 open Sugar
 open Languages.StrucNA
 
-let todo () = failwith "unimplemented"
-
 (*
 
 (* All of the basenames come as some string ID... not sure where from*)
@@ -57,9 +55,19 @@ let refine_file =
 let () = Env.load_meta meta_config_file
 let () = Config.load refine_file
 
+(*** Notations: ... todo *)
+(*** Libs: a list of library functions loaded in from builtin_randomness_coverage_typing because ...todo *)
+(*** refinements: a list of specifications from the provided `refine_file`
+    An option for ...todo
+    And a name type pair for the specifications*)
 let notations, libs, refinements =
   Inputstage.load_user_defined_under_refinments refine_file
 
+let () = print_endline (List.length notations |> string_of_int)
+let () = print_endline (List.length libs |> string_of_int)
+let _ = List.map (fun (x, _) -> print_endline x) libs
+let () = print_endline (List.length refinements |> string_of_int)
+let _ = List.map (fun (_, (n, _)) -> print_endline n) refinements
 let code = Inputstage.load_ssa libs source_file
 
 let nctx =
@@ -86,7 +94,7 @@ let results =
           let body : NL.term NL.typed = body in
 
           let body : NL.value NL.typed =
-            match body.x with NL.V x -> x | _ -> todo ()
+            match body.x with NL.V x -> x | _ -> failwith "unimplemented"
           in
 
           (* passing off to value_type_check *)
@@ -130,6 +138,16 @@ let results =
             Typectx.ot_add_to_right Typectx.empty (decreasing_arg.x, argty)
           in
           let ctx'' = Typectx.ut_force_add_to_right ctx' (f.x, UtNormal f.ty) in
+
+          let () = print_endline "What is in our contexts" in
+          let () = print_endline "nctx : " in
+          let _ = List.map (fun (x, _) -> print_endline x) nctx in
+          let () = print_endline "ctx'' : " in
+          let _ = List.map (fun (x, _) -> print_endline x) ctx'' in
+          let () = print_endline "libctx : " in
+          let _ = List.map (fun (x, _) -> print_endline x) libctx in
+          let () = print_newline () in
+
           let retty = UT.subst_id retty argname decreasing_arg.x in
           let lambody = NL.subst_id (fstarg.x, decreasing_arg.x) lambody in
 
