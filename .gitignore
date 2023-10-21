@@ -10,6 +10,8 @@
 
 # ocamlbuild working directory
 _build/
+# Ignore latex builds
+**/build
 
 # ocamlbuild targets
 *.byte
