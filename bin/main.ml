@@ -1,9 +1,16 @@
+(* underapproximation_type/typecheck *)
 open Typecheck
+(* underapproximation_type/typecheck/under/underctx.ml *)
 open Underctx
+(* underapproximation_type/language/languages.ml *)
 open Languages
+(* underapproximation_type/frontend/underty.ml *)
 open Underty.T
+(* normalty/src/ast.ml *)
 open Normalty.Ast.NT
+(* underapproximation_type/autoverificaiton/prop.ml *)
 open Autov.Prop
+(* underapproximation_type/driver/config.ml *)
 open Config
 open Assertion
 open Sugar
@@ -60,6 +67,7 @@ let () = Config.load refine_file
 (*** refinements: a list of specifications from the provided `refine_file`
     An option for ...todo
     And a name type pair for the specifications*)
+(* for Inputstage, see underapproximation_type/driver/inputstage.ml *)
 let notations, libs, refinements =
   Inputstage.load_user_defined_under_refinments refine_file
 
@@ -166,7 +174,7 @@ let results =
               { nctx; ctx = ctx''; libctx }
               lambody
           in
-          res)
+          res) (* List.mapi *)
     refinements
 
 (* let () = List.iter (fun x -> print_endline (string_of_bool x)) results *)
