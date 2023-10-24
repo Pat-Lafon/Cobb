@@ -93,19 +93,27 @@ module Blocks = struct
     let resulting_blocks : (base_type * block) list =
       (* Loop over each of the operations*)
       List.map
-        (fun (_, args, ret_type) ->
+        (fun (_, args, ret_type) : (base_type * block) list ->
           (* Loop from 0 to args.len - 1 to choose an index for the `new_blocks`*)
           List.map
             (fun i ->
               (* Loop over each of the arguments, getting a list of blocks for each one *)
-              let _ =
+              let l =
                 List.mapi
-                  (fun j ty ->
+                  (fun j ty : block list ->
                     if i == j then block_map_get new_blocks ty
                     else block_map_get old_blocks ty)
                   args
               in
-              failwith "unimplemented")
+              let l = n_cartesian_product l in
+
+              List.map
+                (fun (_ : block list) : (base_type * block) ->
+                  ( ret_type,
+                    failwith
+                      "todo, function to construct new block from args for \
+                       this op" ))
+                l)
             (range (List.length args))
           |> List.flatten)
         operations
