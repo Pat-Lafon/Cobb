@@ -120,7 +120,7 @@ let libseed_or_function (ctx : (id * ty) list) (name : id) (t : UT.t) =
       in
       let tapp = Termcheck.check ctx { ty = None; x = app } in
       Either.left (tapp.x, snd (Option.get tapp.ty))
-  | _ -> Either.right (name, nty)
+  | _ -> Either.right (name, (argtys, resty))
 
 let maybe_op_seed (op, t) =
   (* Todo substitute further if needed *)
@@ -129,7 +129,8 @@ let maybe_op_seed (op, t) =
   | Ty_unit -> None
   | Ty_list Ty_int ->
       Some (Either.left (Termlang.Const (Termcheck.V.IL []), concrete))
-  | Ty_arrow _ -> Some (Either.right (op, concrete))
+  | Ty_arrow _ as concrete ->
+      Some (Either.right (op, NT.destruct_arrow_tp concrete))
   | _ ->
       print_endline (Op.t_to_string op);
       failwith
