@@ -133,9 +133,6 @@ let maybe_op_seed (op : Op.t) (t : ty) =
 (* NOTE: the code below shows what operations are available according
    to where the type checker looks *)
 let ops = Abstraction.Prim_map.get_normal_m ()
-(* let tmp = Abstraction.Prim_map.S.iter (fun op x ->
-   print_endline (Op.t_to_string op); dbg_sexp (Ty.sexp_of_t (Ty.subst x ("a", Ty_int)))) ops *)
-(* let _ = exit 0 *)
 
 let prim_seeds =
   Abstraction.Prim_map.S.fold
@@ -162,8 +159,6 @@ let seeds =
 
 let _ =
   List.map (fun (term, ty) -> Termlang.sexp_of_term term |> dbg_sexp) seeds
-
-let _ = exit 0
 
 (* let _ = print_endline "seeds"
    let _ = List.map (fun (name, ty) -> print_endline name) lib_seeds *)
@@ -229,11 +224,6 @@ let mk_op (op_id : Op.op) (args : id NNtyped.typed list) :
         args;
         body = NL.value_to_term (NL.id_to_value resid);
       } )
-
-(* let tmp = Term2normalanormal.to_anormal {ty = Some (None, Ty_unit); x = (App ({ty = Some (None, Ty_constructor ("x", [])); x = Var "tt"}, []))} None
-   let _ = dbg_sexp (NNtyped.sexp_of_typed NL.sexp_of_term tmp)
-   let unit_ctor: id NNtyped.typed = {x = "tt"; ty = (None, Ty_unit)}
-   let _ = exit 0 *)
 
 (* Example below shows how to build a term and call inference on it *)
 let example_term () =
