@@ -19,6 +19,9 @@ let rec n_cartesian_product = function
       let rest = n_cartesian_product xs in
       List.concat (List.map (fun i -> List.map (fun rs -> i :: rs) rest) x)
 
+let%test "should fail" = 2 + 2 = 5
+let%test "range" = range 5 = [0;1;2;3;4]
+
 module Blocks = struct
   type base_type = Ntyped.t
   type block = NL.term NNtyped.typed
@@ -60,7 +63,7 @@ module Blocks = struct
 
   (** Initialize a block collection with the given seeds values
     * Seeds are initial blocks that are just variables, constants, or operations that take no arguments (or just unit) *)
-  let rec block_collection_init (inital_seeds : (base_type * block) list) :
+  let block_collection_init (inital_seeds : (base_type * block) list) :
       block_collection =
     let new_blocks : block_map = block_map_init inital_seeds in
     { new_blocks; old_blocks = [] }
@@ -79,7 +82,7 @@ module Blocks = struct
 
   (** Given a collection, we want to construct a new set of blocks using some set of operations
     * Operations should not be valid seeds (i.e. must be operations that take arguments)*)
-  let rec block_collection_increment (collection : block_collection)
+  let block_collection_increment (collection : block_collection)
       (operations : (unit * base_type list * base_type) list) : block_collection
       =
     (* We pull aside our current `new_blocks`, these are the largest blocks in the collection *)
