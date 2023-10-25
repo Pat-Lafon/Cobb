@@ -20,7 +20,7 @@ let rec n_cartesian_product = function
       List.concat (List.map (fun i -> List.map (fun rs -> i :: rs) rest) x)
 
 let%test "should fail" = 2 + 2 = 5
-let%test "range" = range 5 = [0;1;2;3;4]
+let%test "range" = range 5 = [ 0; 1; 2; 3; 4 ]
 
 module Blocks = struct
   type base_type = Ntyped.t
