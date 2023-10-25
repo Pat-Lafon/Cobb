@@ -1,0 +1,116 @@
+open Typecheck
+open Underctx
+open Languages
+open Underty.T
+open Normalty.Ast.NT
+open Autov.Prop
+open Config
+open Assertion
+open Sugar
+open Languages.StrucNA
+
+module Pieces = struct
+  let libseed_or_function (ctx : (id * ty) list) (name : id) (t : UT.t) =
+    let nty = UT.erase t in
+    let argtys, resty = NT.destruct_arrow_tp nty in
+    match argtys with
+    | [ Ty_unit ] ->
+        let f = Termlang.Var name in
+        let unit = Termlang.App ({ ty = None; x = Termlang.Var "tt" }, []) in
+        let app =
+          Termlang.App ({ ty = None; x = f }, [ { ty = None; x = unit } ])
+        in
+        let tapp = Termcheck.check ctx { ty = None; x = app } in
+        Either.left (tapp.x, snd (Option.get tapp.ty))
+    | _ -> Either.right (name, (argtys, resty))
+
+  let maybe_op_seed (op, t) =
+    (* Todo substitute further if needed *)
+    let concrete = Ty.subst t ("a", Ty_int) in
+    match concrete with
+    | Ty_unit -> None
+    | Ty_list Ty_int ->
+        Some (Either.left (Termlang.Const (Termcheck.V.IL []), concrete))
+    | Ty_arrow _ as concrete ->
+        Some (Either.right (op, NT.destruct_arrow_tp concrete))
+    | _ ->
+        print_endline (Op.t_to_string op);
+        failwith
+          (Printf.sprintf "Unknown operation `%s` of type `%s`"
+             (Op.t_to_string op)
+             (Core.Sexp.to_string (Ty.sexp_of_t concrete)))
+
+  (* NOTE: the code below shows what operations are available according
+     to where the type checker looks *)
+  let ops () = Abstraction.Prim_map.get_normal_m ()
+
+  let prim_gathering_helper () =
+    List.partition_map
+      (fun a -> a)
+      (List.filter_map maybe_op_seed
+         (Abstraction.Prim_map.S.fold
+            (fun op arg tail -> (op, arg) :: tail)
+            (ops ()) []))
+
+  let library_gathering_helper (libs : (id * UT.t) list) =
+    List.partition_map
+      (fun (name, uty) ->
+        libseed_or_function
+          (List.map (fun (n, t) -> (n, UT.erase t)) libs)
+          name uty)
+      libs
+
+  let builtin_seeds =
+    [
+      (Termlang.Const (Termcheck.V.B false), Ty_bool);
+      (Termlang.Const (Termcheck.V.B true), Ty_bool);
+      (Termlang.Const (Termcheck.V.I 0), Ty_int);
+      (Termlang.Const (Termcheck.V.I 1), Ty_int);
+    ]
+
+  let seeds_and_components (libs : (id * UT.t) list) =
+    (* I move this inside of a function becuase `Abstraction.Prim_map.get_normal_m` will call some global reference that hasn't been set yet *)
+    (* Main sets this ref, but this file gets built first *)
+    let prim_seeds, operations = prim_gathering_helper () in
+    let lib_seeds, funs = library_gathering_helper libs in
+    let seeds = prim_seeds @ lib_seeds @ builtin_seeds in
+    (* todo, How to abstract over operations and funs *)
+    (seeds, funs)
+
+  (* let _ =
+     List.map (fun (term, ty) -> Termlang.sexp_of_term term |> dbg_sexp) seeds *)
+
+  let mk_app (f_id : id NNtyped.typed) (args : id NNtyped.typed list) k :
+      id NNtyped.typed * NL.term =
+    let name = Rename.name () in
+    let resty = snd (NT.destruct_arrow_tp (snd f_id.ty)) in
+    let resid : id NNtyped.typed = { x = name; ty = (None, resty) } in
+    let args = List.map NL.id_to_value args in
+    (resid, NL.LetApp { ret = resid; f = f_id; args; body = k resid })
+
+  let mk_ctor (ctor : id NNtyped.typed) (args : id NNtyped.typed list) k :
+      id NNtyped.typed * NL.term =
+    let name = Rename.name () in
+    let resty = snd (NT.destruct_arrow_tp (snd ctor.ty)) in
+    let resid : id NNtyped.typed = { x = name; ty = (None, resty) } in
+    let args = List.map NL.id_to_value args in
+    (resid, NL.LetDtConstructor { ret = resid; f = ctor; args; body = k resid })
+
+  let mk_op (op_id : Op.op) (args : id NNtyped.typed list) :
+      id NNtyped.typed * NL.term =
+    let op_ty =
+      Abstraction.Prim.get_primitive_normal_ty (Op.op_to_string op_id)
+    in
+    let name = Rename.name () in
+    let resty = snd (NT.destruct_arrow_tp op_ty) in
+    let resid : id NNtyped.typed = { x = name; ty = (None, resty) } in
+    let args = List.map NL.id_to_value args in
+    ( resid,
+      NL.LetOp
+        {
+          ret = resid;
+          op = op_id;
+          args;
+          body = NL.value_to_term (NL.id_to_value resid);
+        } )
+end
