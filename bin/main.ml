@@ -108,7 +108,7 @@ let libctx =
     (fun ctx (x, ty) -> Nctx.add_to_right ctx (x, ty))
     Nctx.empty libs
 
-let maybe_lib_seed (ctx : (id * ty) list) (name : id) (t : UT.t) =
+let libseed_or_function (ctx : (id * ty) list) (name : id) (t : UT.t) =
   let nty = UT.erase t in
   let argtys, resty = NT.destruct_arrow_tp nty in
   match argtys with
@@ -119,34 +119,43 @@ let maybe_lib_seed (ctx : (id * ty) list) (name : id) (t : UT.t) =
         Termlang.App ({ ty = None; x = f }, [ { ty = None; x = unit } ])
       in
       let tapp = Termcheck.check ctx { ty = None; x = app } in
-      let res = Some (tapp.x, snd (Option.get tapp.ty)) in
-      res
-  | _ -> None
+      Either.left (tapp.x, snd (Option.get tapp.ty))
+  | _ -> Either.right (name, nty)
 
-let maybe_op_seed (op : Op.t) (t : ty) =
+let maybe_op_seed (op, t) =
   (* Todo substitute further if needed *)
   let concrete = Ty.subst t ("a", Ty_int) in
   match concrete with
-  | Ty_list Ty_int -> Some (Termlang.Const (Termcheck.V.IL []), concrete)
-  | _ -> None
+  | Ty_unit -> None
+  | Ty_list Ty_int ->
+      Some (Either.left (Termlang.Const (Termcheck.V.IL []), concrete))
+  | Ty_arrow _ -> Some (Either.right (op, concrete))
+  | _ ->
+      print_endline (Op.t_to_string op);
+      failwith
+        (Printf.sprintf "Unknown operation `%s` of type `%s`"
+           (Op.t_to_string op)
+           (Core.Sexp.to_string (Ty.sexp_of_t concrete)))
 
 (* NOTE: the code below shows what operations are available according
    to where the type checker looks *)
 let ops = Abstraction.Prim_map.get_normal_m ()
 
-let prim_seeds =
-  Abstraction.Prim_map.S.fold
-    (fun op arg tail -> arg :: tail)
-    (Abstraction.Prim_map.S.filter_map maybe_op_seed ops)
-    []
+let prim_seeds, operations =
+  List.partition_map
+    (fun a -> a)
+    (List.filter_map maybe_op_seed
+       (Abstraction.Prim_map.S.fold
+          (fun op arg tail -> (op, arg) :: tail)
+          ops []))
 
-let lib_seeds =
-  List.filter_map
+let lib_seeds, funs =
+  List.partition_map
     (fun (name, uty) ->
-      maybe_lib_seed (List.map (fun (n, t) -> (n, UT.erase t)) libs) name uty)
+      libseed_or_function
+        (List.map (fun (n, t) -> (n, UT.erase t)) libs)
+        name uty)
     libs
-
-let _ = List.map (fun (a, b) -> print_endline a) libs
 
 let seeds =
   prim_seeds @ lib_seeds
