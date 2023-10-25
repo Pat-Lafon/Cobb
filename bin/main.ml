@@ -80,6 +80,7 @@ let () = Config.load refine_file
 let notations, libs, refinements =
   Inputstage.load_user_defined_under_refinments refine_file
 
+let _ = assert (List.length notations == 0)
 let dbg_sexp sexp = print_endline (Core.Sexp.to_string_hum sexp)
 let dbg (ut : UT.t) = dbg_sexp (UT.sexp_of_t ut)
 let () = print_endline (List.length notations |> string_of_int)
@@ -94,15 +95,6 @@ let _ =
 
 let () = print_endline (List.length refinements |> string_of_int)
 let _ = List.map (fun (_, (n, _)) -> print_endline n) refinements
-
-(* NOTE: the code below shows what operations are available according
-   to where the type checker looks *)
-let ops = Abstraction.Prim_map.get_normal_m ()
-
-let tmp =
-  Abstraction.Prim_map.S.iter (fun op x -> dbg_sexp (Op.sexp_of_t op)) ops
-
-(* let _ = exit 0 *)
 let code = Inputstage.load_ssa libs source_file
 
 let nctx =
@@ -116,13 +108,68 @@ let libctx =
     (fun ctx (x, ty) -> Nctx.add_to_right ctx (x, ty))
     Nctx.empty libs
 
-let args_is_unit (t : UT.t) =
+let maybe_lib_seed (ctx : (id * ty) list) (name : id) (t : UT.t) =
   let nty = UT.erase t in
   let argtys, resty = NT.destruct_arrow_tp nty in
-  match argtys with [ Ty_unit ] -> true | _ -> false
+  match argtys with
+  | [ Ty_unit ] ->
+      let f = Termlang.Var name in
+      let unit = Termlang.App ({ ty = None; x = Termlang.Var "tt" }, []) in
+      let app =
+        Termlang.App ({ ty = None; x = f }, [ { ty = None; x = unit } ])
+      in
+      let tapp = Termcheck.check ctx { ty = None; x = app } in
+      let res = Some (tapp.x, snd (Option.get tapp.ty)) in
+      res
+  | _ -> None
 
-let seeds = List.filter (fun (name, uty) -> args_is_unit uty) libs
+let maybe_op_seed (op : Op.t) (t : ty) =
+  (* Todo substitute further if needed *)
+  let concrete = Ty.subst t ("a", Ty_int) in
+  match concrete with
+  | Ty_list Ty_int -> Some (Termlang.Const (Termcheck.V.IL []), concrete)
+  | _ -> None
+
+(* NOTE: the code below shows what operations are available according
+   to where the type checker looks *)
+let ops = Abstraction.Prim_map.get_normal_m ()
+(* let tmp = Abstraction.Prim_map.S.iter (fun op x ->
+   print_endline (Op.t_to_string op); dbg_sexp (Ty.sexp_of_t (Ty.subst x ("a", Ty_int)))) ops *)
+(* let _ = exit 0 *)
+
+let prim_seeds =
+  Abstraction.Prim_map.S.fold
+    (fun op arg tail -> arg :: tail)
+    (Abstraction.Prim_map.S.filter_map maybe_op_seed ops)
+    []
+
+let lib_seeds =
+  List.filter_map
+    (fun (name, uty) ->
+      maybe_lib_seed (List.map (fun (n, t) -> (n, UT.erase t)) libs) name uty)
+    libs
+
+let _ = List.map (fun (a, b) -> print_endline a) libs
+
+let seeds =
+  prim_seeds @ lib_seeds
+  @ [
+      (Termlang.Const (Termcheck.V.B false), Ty_bool);
+      (Termlang.Const (Termcheck.V.B true), Ty_bool);
+      (Termlang.Const (Termcheck.V.I 0), Ty_int);
+      (Termlang.Const (Termcheck.V.I 1), Ty_int);
+    ]
+
+let _ =
+  List.map (fun (term, ty) -> Termlang.sexp_of_term term |> dbg_sexp) seeds
+
+let _ = exit 0
+
+(* let _ = print_endline "seeds"
+   let _ = List.map (fun (name, ty) -> print_endline name) lib_seeds *)
+
 let map_fst f (l, r) = (f l, r)
+let map_snd f (l, r) = (l, f r)
 
 let freshen (ctx : Typectx.ctx) =
   let ht = Hashtbl.create (List.length ctx) in
