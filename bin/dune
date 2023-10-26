@@ -12,7 +12,7 @@
 
 (library
  (name blocks)
- (libraries underapproximation_type.typecheck underapproximation_type.driver)
+ (libraries underapproximation_type.typecheck underapproximation_type.driver pieces)
  (inline_tests)
  (preprocess
   (pps ppx_inline_test))

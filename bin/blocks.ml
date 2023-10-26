@@ -8,6 +8,7 @@ open Config
 open Assertion
 open Sugar
 open Languages.StrucNA
+open Pieces
 
 (** Produces a list from 0..n-1*)
 let range n = List.init n (fun x -> x)
@@ -128,7 +129,7 @@ module Blocks = struct
     let resulting_blocks : (block * base_type) list =
       (* Loop over each of the operations*)
       List.map
-        (fun (_, args, ret_type) : (block * base_type) list ->
+        (fun (id, args, ret_type) : (block * base_type) list ->
           (* Loop from 0 to args.len - 1 to choose an index for the `new_blocks`*)
           List.map
             (fun i ->
@@ -143,11 +144,21 @@ module Blocks = struct
               let l = n_cartesian_product l in
 
               List.map
-                (fun (_ : block list) : (block * base_type) ->
-                  ( failwith
-                      "todo, function to construct new block from args for \
-                       this op",
-                    ret_type ))
+                (fun (args : block list) : (block * base_type) ->
+                  let arg_names =
+                    List.map
+                      (fun (id, ({ x; ty } : NL.term NNtyped.typed)) :
+                           id NNtyped.typed -> { x = id; ty })
+                      args
+                  in
+                  let ({ x = block_id; ty } : id NNtyped.typed), term =
+                    Pieces.mk_app
+                      { x = id; ty = (None, ret_type) }
+                      arg_names
+                      (fun _ -> failwith "todo")
+                  in
+
+                  ((block_id, { x = term; ty }), ret_type))
                 l)
             (range (List.length args))
           |> List.flatten)
@@ -209,7 +220,11 @@ module Synthesis = struct
 
   let choose_program (programs : infered_block list) (target_type : UT.t)
       (uctx : uctx) : infered_block option =
-    List.find_opt (fun p -> failwith "unimplemented") programs
+    (* todo, do something better than just choosing the first one*)
+    List.find_opt
+      (fun (ty, p) ->
+        Undersub.subtyping_check_bool "" 0 uctx.ctx ty target_type)
+      programs
 
   let rec synthesis_helper (max_depth : int) (target_type : UT.t) (uctx : uctx)
       (collection : Blocks.block_collection)
