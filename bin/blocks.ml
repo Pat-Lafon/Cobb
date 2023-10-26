@@ -130,7 +130,7 @@ module Blocks = struct
     let resulting_blocks : (block * base_type) list =
       (* Loop over each of the operations*)
       List.map
-        (fun (id, (args, ret_type)) : (block * base_type) list ->
+        (fun (component, (args, ret_type)) : (block * base_type) list ->
           (* Loop from 0 to args.len - 1 to choose an index for the `new_blocks`*)
           List.map
             (fun i ->
@@ -153,10 +153,7 @@ module Blocks = struct
                       args
                   in
                   let ({ x = block_id; ty } : id NNtyped.typed), term =
-                    Pieces.mk_app
-                      { x = failwith "todo"; ty = (None, ret_type) }
-                      arg_names
-                      (fun _ -> failwith "todo")
+                    Pieces.apply component arg_names
                   in
 
                   ((block_id, { x = term; ty }), ret_type))
