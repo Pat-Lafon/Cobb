@@ -12,7 +12,9 @@ open Languages.StrucNA
 (** Produces a list from 0..n-1*)
 let range n = List.init n (fun x -> x)
 
-(** Takes a list and performs a *)
+(** Takes a list and performs a giant multi-cartesian product
+  * Used to compute a new list of function arguments from a list of possible arguments for each position
+*)
 let rec n_cartesian_product = function
   | [] -> [ [] ]
   | x :: xs ->
@@ -24,7 +26,7 @@ let%test "range" = range 5 = [ 0; 1; 2; 3; 4 ]
 
 module Blocks = struct
   type base_type = Ntyped.t
-  type block = NL.term NNtyped.typed
+  type block = id * NL.term NNtyped.typed
 
   (* bool -> var1, true
      int -> 0, 1, ...*)
@@ -56,17 +58,48 @@ module Blocks = struct
     | [] -> []
     | (ty', terms) :: rest -> if ty = ty' then terms else block_map_get rest ty
 
-  let block_map_init (inital_seeds : (base_type * block) list) : block_map =
-    let aux (b_map : block_map) (ty, term) = block_map_add b_map term ty in
+  let block_map_init (inital_seeds : (block * base_type) list) : block_map =
+    let aux (b_map : block_map) (term, ty) = block_map_add b_map term ty in
 
     List.fold_left aux [] inital_seeds
 
+  let base_type_to_string (ty : base_type) : id =
+    Ntyped.sexp_of_t ty |> Core.Sexp.to_string_hum
+
+  let u_type_to_string (ty : UT.t) : id =
+    match ty with
+    | UnderTy_base { basename; normalty; prop } ->
+        Printf.sprintf "[%s: %s | %s]" basename (NT.to_string normalty)
+          (P.to_string prop)
+    | _ -> UT.sexp_of_t ty |> Core.Sexp.to_string_hum
+
+  let block_print ((name, term) : block) : unit =
+    Printf.printf "%s: %s\n" name (NL.layout term)
+
+  let block_map_print (map : block_map) : unit =
+    let aux (ty, terms) =
+      Printf.printf "Type: %s\n" (base_type_to_string ty);
+      List.iter
+        (fun t ->
+          print_string "\t";
+          block_print t)
+        terms
+    in
+    List.iter aux map
+
   (** Initialize a block collection with the given seeds values
     * Seeds are initial blocks that are just variables, constants, or operations that take no arguments (or just unit) *)
-  let block_collection_init (inital_seeds : (base_type * block) list) :
+  let block_collection_init (inital_seeds : (block * base_type) list) :
       block_collection =
     let new_blocks : block_map = block_map_init inital_seeds in
     { new_blocks; old_blocks = [] }
+
+  let block_collection_print ({ new_blocks; old_blocks } : block_collection) :
+      unit =
+    Printf.printf "New Blocks:\n";
+    block_map_print new_blocks;
+    Printf.printf "Old Blocks:\n";
+    block_map_print old_blocks
 
   (** For the block inference
     * Returns a mapping of all blocks, new and old *)
@@ -83,8 +116,7 @@ module Blocks = struct
   (** Given a collection, we want to construct a new set of blocks using some set of operations
     * Operations should not be valid seeds (i.e. must be operations that take arguments)*)
   let block_collection_increment (collection : block_collection)
-      (operations : (unit * base_type list * base_type) list) : block_collection
-      =
+      (operations : (id * base_type list * base_type) list) : block_collection =
     (* We pull aside our current `new_blocks`, these are the largest blocks in the collection *)
     let new_blocks = collection.new_blocks in
     (* New and old blocks get merged together *)
@@ -93,10 +125,10 @@ module Blocks = struct
 
     (* For each operation in the list, we are going to iterate though it's argument types and pull out blocks that match said types *)
     (* Atleast one arguement use to create each new block must be from `new_blocks`, the rest are from `old_blocks`(which can also have blocks from `new_blocks`). This guarantees that all created blocks are of `new_blocks[i].size + 1` *)
-    let resulting_blocks : (base_type * block) list =
+    let resulting_blocks : (block * base_type) list =
       (* Loop over each of the operations*)
       List.map
-        (fun (_, args, ret_type) : (base_type * block) list ->
+        (fun (_, args, ret_type) : (block * base_type) list ->
           (* Loop from 0 to args.len - 1 to choose an index for the `new_blocks`*)
           List.map
             (fun i ->
@@ -111,11 +143,11 @@ module Blocks = struct
               let l = n_cartesian_product l in
 
               List.map
-                (fun (_ : block list) : (base_type * block) ->
-                  ( ret_type,
-                    failwith
+                (fun (_ : block list) : (block * base_type) ->
+                  ( failwith
                       "todo, function to construct new block from args for \
-                       this op" ))
+                       this op",
+                    ret_type ))
                 l)
             (range (List.length args))
           |> List.flatten)
@@ -138,24 +170,50 @@ let under_ty_to_base_ty (ty : UT.t) : Blocks.base_type =
 
 module Synthesis = struct
   type program = NL.term NNtyped.typed
+  type infered_block = UT.t * Blocks.block
+
+  let infered_block_to_string ((ty, (n, b)) : infered_block) : id =
+    Printf.sprintf "%s: %s: %s\n" n (Blocks.u_type_to_string ty) (NL.layout b)
   (* int| P -> prog *)
 
   (** Given a block list of the appropriate type, run inference on all of them to pair them with their appropriate underapproximate types *)
   let blocks_list_infer (b_list : Blocks.block list) (uctx : uctx) :
-      (UT.t * Blocks.block) list =
+      infered_block list =
     (* TODO: Can this panic? What happens if type inference fails and how do we handle it?*)
     b_list
-    |> List.map (fun b -> (Typecheck.Undercheck.term_type_infer uctx b, b))
+    |> List.map (fun (n, b) ->
+           (Typecheck.Undercheck.term_type_infer uctx b, (n, b)))
 
   (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
-  let under_blocks_join (u_b_list : (UT.t * Blocks.block) list) : program list =
+  let under_blocks_join (uctx : uctx) (u_b_list : infered_block list)
+      (target_ty : UT.t) : infered_block list =
     (* How do we want to combine blocks together? *)
-    (* Maybe we also need to pass in the target UT.t type of the signature*)
-    failwith "unimplemented"
+    let super_type_list, sub_type_list =
+      List.partition
+        (fun (ty, _) ->
+          Undersub.subtyping_check_bool "" 0 uctx.ctx ty target_ty)
+        u_b_list
+    in
+    print_endline "Super Types:";
+    List.iter
+      (fun x -> infered_block_to_string x |> print_endline)
+      super_type_list;
+    print_endline "Sub Types:";
+    List.iter
+      (fun x -> infered_block_to_string x |> print_endline)
+      sub_type_list;
+    print_endline "End";
+
+    (* TODO, actually do some joining of blocks*)
+    super_type_list
+
+  let choose_program (programs : infered_block list) (target_type : UT.t)
+      (uctx : uctx) : infered_block option =
+    List.find_opt (fun p -> failwith "unimplemented") programs
 
   let rec synthesis_helper (max_depth : int) (target_type : UT.t) (uctx : uctx)
       (collection : Blocks.block_collection)
-      (operations : (unit * Blocks.base_type list * Blocks.base_type) list) :
+      (operations : (id * Blocks.base_type list * Blocks.base_type) list) :
       program option =
     match max_depth with
     | 0 -> None
@@ -166,11 +224,16 @@ module Synthesis = struct
         let blocks = Blocks.block_map_get block_map base_type in
         (* Infer the types of all blocks*)
         let blocks_typed = blocks_list_infer blocks uctx in
+        print_endline "Inferred types for Blocks:";
+        List.iter
+          (fun x -> infered_block_to_string x |> print_endline)
+          blocks_typed;
+
         (* Join blocks together into programs*)
-        let programs = under_blocks_join blocks_typed in
+        let programs = under_blocks_join uctx blocks_typed target_type in
         (* Check if any of the programs satisfy the target type*)
-        match List.find_opt (fun p -> failwith "unimplemented") programs with
-        | Some p -> Some p
+        match choose_program programs target_type uctx with
+        | Some (_, (_, p)) -> Some p
         | None ->
             (* If not, increment the collection and try again*)
             synthesis_helper (depth - 1) target_type uctx
@@ -179,9 +242,10 @@ module Synthesis = struct
 
   (** Given some initial setup, run the synthesis algorithm *)
   let synthesis (uctx : uctx) (target_type : UT.t) (max_depth : int)
-      (inital_seeds : (Blocks.base_type * Blocks.block) list)
-      (operations : (unit * Blocks.base_type list * Blocks.base_type) list) :
+      (inital_seeds : (Blocks.block * Blocks.base_type) list)
+      (operations : (id * Blocks.base_type list * Blocks.base_type) list) :
       program option =
     let init_collection = Blocks.block_collection_init inital_seeds in
+    Blocks.block_collection_print init_collection;
     synthesis_helper max_depth target_type uctx init_collection operations
 end

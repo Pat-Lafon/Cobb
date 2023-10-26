@@ -22,7 +22,7 @@ module Pieces = struct
         in
         let tapp = Termcheck.check ctx { ty = None; x = app } in
         Either.left (tapp.x, snd (Option.get tapp.ty))
-    | _ -> Either.right (name, (argtys, resty))
+    | _ -> Either.right (name, argtys, resty)
 
   let maybe_op_seed (op, t) =
     (* Todo substitute further if needed *)
@@ -30,11 +30,14 @@ module Pieces = struct
     match concrete with
     | Ty_unit -> None
     | Ty_list Ty_int ->
-        Some (Either.left (Termlang.Const (Termcheck.V.IL []), concrete))
+        (* todo: Do we have non-empty seed lists? *)
+        print_string "Debug for Anxhelo: ";
+        print_endline (":" ^ Op.t_to_string op ^ ":");
+        assert (String.equal (Op.t_to_string op) "[]");
+        Some (Either.left (Termlang.Var "nil", concrete))
     | Ty_arrow _ as concrete ->
         Some (Either.right (op, NT.destruct_arrow_tp concrete))
     | _ ->
-        print_endline (Op.t_to_string op);
         failwith
           (Printf.sprintf "Unknown operation `%s` of type `%s`"
              (Op.t_to_string op)
