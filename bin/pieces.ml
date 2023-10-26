@@ -10,6 +10,11 @@ open Sugar
 open Languages.StrucNA
 
 module Pieces = struct
+  type component =
+    | Fun of id NNtyped.typed
+    | Op of Op.op
+    | Ctor of id NNtyped.typed
+
   let libseed_or_function (ctx : (id * ty) list) (name : id) (t : UT.t) =
     let nty = UT.erase t in
     let argtys, resty = NT.destruct_arrow_tp nty in
@@ -22,25 +27,26 @@ module Pieces = struct
         in
         let tapp = Termcheck.check ctx { ty = None; x = app } in
         Either.left (tapp.x, snd (Option.get tapp.ty))
-    | _ -> Either.right (name, argtys, resty)
+    | _ -> Either.right (Fun { x = name; ty = (None, nty) }, (argtys, resty))
 
-  let maybe_op_seed (op, t) =
+  let maybe_op_seed ((op, t) : Op.t * ty) =
     (* Todo substitute further if needed *)
     let concrete = Ty.subst t ("a", Ty_int) in
-    match concrete with
-    | Ty_unit -> None
-    | Ty_list Ty_int ->
-        (* todo: Do we have non-empty seed lists? *)
-        print_string "Debug for Anxhelo: ";
-        print_endline (":" ^ Op.t_to_string op ^ ":");
-        assert (String.equal (Op.t_to_string op) "[]");
-        Some (Either.left (Termlang.Var "nil", concrete))
-    | Ty_arrow _ as concrete ->
-        Some (Either.right (op, NT.destruct_arrow_tp concrete))
+    match (op, concrete) with
+    | _, Ty_unit -> None
+    | _, Ty_list Ty_int ->
+        Some (Either.left (Termlang.Const (Termcheck.V.IL []), concrete))
+    | PrimOp op, (Ty_arrow _ as concrete) ->
+        Some (Either.right (Op op, NT.destruct_arrow_tp concrete))
+    | DtConstructor name, (Ty_arrow _ as concrete) ->
+        Some
+          (Either.right
+             ( Ctor { x = name; ty = (None, concrete) },
+               NT.destruct_arrow_tp concrete ))
     | _ ->
         failwith
           (Printf.sprintf "Unknown operation `%s` of type `%s`"
-             (Op.t_to_string op)
+             (Core.Sexp.to_string_hum (Op.sexp_of_t op))
              (Core.Sexp.to_string (Ty.sexp_of_t concrete)))
 
   (* NOTE: the code below shows what operations are available according
@@ -78,7 +84,7 @@ module Pieces = struct
     let lib_seeds, funs = library_gathering_helper libs in
     let seeds = prim_seeds @ lib_seeds @ builtin_seeds in
     (* todo, How to abstract over operations and funs *)
-    (seeds, funs)
+    (seeds, operations @ funs)
 
   (* let _ =
      List.map (fun (term, ty) -> Termlang.sexp_of_term term |> dbg_sexp) seeds *)
@@ -116,4 +122,11 @@ module Pieces = struct
           args;
           body = NL.value_to_term (NL.id_to_value resid);
         } )
+
+  let apply (comp : component) (args : id NNtyped.typed list) =
+    match comp with
+    | Fun f -> mk_app f args (fun x -> NL.value_to_term (NL.id_to_value x))
+    | Op op -> mk_op op args
+    | Ctor ctor ->
+        mk_ctor ctor args (fun x -> NL.value_to_term (NL.id_to_value x))
 end
