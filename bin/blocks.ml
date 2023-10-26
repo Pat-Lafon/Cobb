@@ -117,7 +117,8 @@ module Blocks = struct
   (** Given a collection, we want to construct a new set of blocks using some set of operations
     * Operations should not be valid seeds (i.e. must be operations that take arguments)*)
   let block_collection_increment (collection : block_collection)
-      (operations : (id * base_type list * base_type) list) : block_collection =
+      (operations : (Pieces.component * (base_type list * base_type)) list) :
+      block_collection =
     (* We pull aside our current `new_blocks`, these are the largest blocks in the collection *)
     let new_blocks = collection.new_blocks in
     (* New and old blocks get merged together *)
@@ -129,7 +130,7 @@ module Blocks = struct
     let resulting_blocks : (block * base_type) list =
       (* Loop over each of the operations*)
       List.map
-        (fun (id, args, ret_type) : (block * base_type) list ->
+        (fun (id, (args, ret_type)) : (block * base_type) list ->
           (* Loop from 0 to args.len - 1 to choose an index for the `new_blocks`*)
           List.map
             (fun i ->
@@ -153,7 +154,7 @@ module Blocks = struct
                   in
                   let ({ x = block_id; ty } : id NNtyped.typed), term =
                     Pieces.mk_app
-                      { x = id; ty = (None, ret_type) }
+                      { x = failwith "todo"; ty = (None, ret_type) }
                       arg_names
                       (fun _ -> failwith "todo")
                   in
@@ -228,7 +229,8 @@ module Synthesis = struct
 
   let rec synthesis_helper (max_depth : int) (target_type : UT.t) (uctx : uctx)
       (collection : Blocks.block_collection)
-      (operations : (id * Blocks.base_type list * Blocks.base_type) list) :
+      (operations :
+        (Pieces.component * (Blocks.base_type list * Blocks.base_type)) list) :
       program option =
     match max_depth with
     | 0 -> None
@@ -258,7 +260,8 @@ module Synthesis = struct
   (** Given some initial setup, run the synthesis algorithm *)
   let synthesis (uctx : uctx) (target_type : UT.t) (max_depth : int)
       (inital_seeds : (Blocks.block * Blocks.base_type) list)
-      (operations : (id * Blocks.base_type list * Blocks.base_type) list) :
+      (operations :
+        (Pieces.component * (Blocks.base_type list * Blocks.base_type)) list) :
       program option =
     let init_collection = Blocks.block_collection_init inital_seeds in
     Blocks.block_collection_print init_collection;
