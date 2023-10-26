@@ -34,8 +34,8 @@ module Pieces = struct
     let concrete = Ty.subst t ("a", Ty_int) in
     match (op, concrete) with
     | _, Ty_unit -> None
-    | _, Ty_list Ty_int ->
-        Some (Either.left (Termlang.Const (Termcheck.V.IL []), concrete))
+    | DtConstructor "nil", Ty_list Ty_int ->
+        Some (Either.left (Termlang.Var "nil", concrete))
     | PrimOp op, (Ty_arrow _ as concrete) ->
         Some (Either.right (Op op, NT.destruct_arrow_tp concrete))
     | DtConstructor name, (Ty_arrow _ as concrete) ->
