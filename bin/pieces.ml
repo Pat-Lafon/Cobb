@@ -83,7 +83,6 @@ module Pieces = struct
     let prim_seeds, operations = prim_gathering_helper () in
     let lib_seeds, funs = library_gathering_helper libs in
     let seeds = prim_seeds @ lib_seeds @ builtin_seeds in
-    (* todo, How to abstract over operations and funs *)
     (seeds, operations @ funs)
 
   (* let _ =
