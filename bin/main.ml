@@ -136,8 +136,10 @@ let ctx_union_r (l : Typectx.ctx) (r : Typectx.ctx) =
 let ctx_subst (ctx : (id * UT.t) list) (ht : (id, id) Hashtbl.t) =
   List.map
     (fun (name, ty) ->
+      (* UT.var_space uty (* for each var if it appears in ht call UT.subst_id for that var *)) *)
+      let renamed_ty = failwith "TODO" in
       match Hashtbl.find_opt ht name with
-      | Some new_name -> (new_name, UT.subst_id ty name new_name)
+      | Some new_name -> (new_name, renamed_ty)
       | None -> (name, ty))
     ctx
 
