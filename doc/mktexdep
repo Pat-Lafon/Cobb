@@ -1,0 +1,81 @@
+#!/bin/bash
+
+inputs() {
+grep '^[ ]*\\input{.*}' $* | sed 's/^.*input{[ ]*\([^ }]*\)[ ]*}.*$/\1/'
+}
+
+bibs() {
+grep '^[ ]*\\bibliography{.*}' $* | sed 's/^.*bibliography{[ ]*\([^ }]*\)[ ]*}.*$/\1/'
+}
+
+pics() {
+grep '^[^%]*\\includegraphics\[' $* | sed 's/^.*includegraphics\[[^]]*\]{[ ]*\([^ }]*\)[ ]*}.*$/\1/'
+}
+
+#
+# Initially, the FILES list consists of the input files.
+#
+FILES=$1
+
+#
+# For each of the input files, find any included .tex files.
+# Append them to the FILES list.
+#
+for F in $(inputs ${FILES})
+do
+ if [[ -f $F ]]
+ then
+   FILES="${FILES} ${F}"
+ elif [[ -f ${F}.tex ]]
+ then
+   FILES="${FILES} ${F}.tex"
+ else
+   echo "Unable to find file $F" >&2
+   exit 1
+ fi
+done
+
+#
+# Check all the .tex files for bibliographies and pictures.
+#
+for T in ${FILES}
+do
+  [[ ${T} != *.tex ]] && continue
+
+  for F in $(bibs ${T})
+  do
+   if [[ $F == *.bib ]]
+   then
+     FILES="${FILES} ${F}"
+   else
+     FILES="${FILES} ${F}.bib"
+   fi
+  done
+
+  for F in $(pics ${T})
+  do
+   if [[ -f $F ]]
+   then
+     FILES="${FILES} ${F}"
+   elif [[ -f ${F}.eps ]]
+   then
+     FILES="${FILES} ${F}.eps"
+   else
+     echo "Unable to find file $F" >&2
+     exit 1
+   fi
+  done
+
+done
+
+# The output pdf file depends on all .tex .bib and picture files.
+echo ${1/.tex/.pdf}: ${FILES}
+
+# Make this dependency file depend only on the .tex files.
+echo -n .deps/${1/.tex/.d}:
+for F in ${FILES}
+do
+  [[ ${F} == *.tex ]] && echo -n " ${F}"
+done
+echo
+
