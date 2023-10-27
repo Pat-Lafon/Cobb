@@ -143,6 +143,8 @@ let ctx_subst (ctx : (id * UT.t) list) (ht : (id, id) Hashtbl.t) =
       | None -> (name, ty))
     ctx
 
+let () = assert (ctx_subst [("x", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = Lit (ACint 1) })] (Seq.return ("x", "y") |> Hashtbl.of_seq) = [("y", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = Lit (ACint 1) })])
+
 let seeds, components = Pieces.seeds_and_components libs
 
 (* todo Add argument variables to seeds *)
