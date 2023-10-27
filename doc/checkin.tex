@@ -241,6 +241,11 @@
 \section*{What we plan to do}
 
 \begin{enumerate}
+    \item \textbf{Block join exploration}
+    Currently we pairwise combine blocks with control-flow
+    without prioritization.
+    It would be ideal if we can ensure that the combined
+    blocks increase coverage to reduce exploration.
     \item \textbf{Improve extractions} Currently our strategy returns any program that satisfies
     the signature provided.
     Given the exploration strategy, this produces the smallest
@@ -287,6 +292,10 @@
 % add(x, y)
 
 \begin{enumerate}
+\item \textbf{Block join exploration}
+    We can perform pairwise subtype checks to avoid
+    combining blocks that do not increase coverage.
+
 \item \textbf{Improve extractions}
     We can infer the \emph{over}-approximate
     specifications of the potential candidates and rule
@@ -296,13 +305,23 @@
     meet the under-approximate type.
 
 \item \textbf{Specializing generators}
+    To fix the control-flow issue we can easily add candidates
+    other than non-determinstic choice to discriminate
+    over when building conditionals.
+    For whether to interpret uses of the same non-deterministic
+    subexpressions as by name or by value,
+    we can either choose to add the possibility
+    of naming sub-expressions (let-bindings) and add
+    such names as possible subterms or post-process
+    the candidates to reduce non-determinism while maintaining
+    coverage.
 \end{enumerate}
 
 %%
 %% The next two lines define the bibliography style to be used, and
 %% the bibliography file.
 \bibliographystyle{ACM-Reference-Format}
-\bibliography{cobb}
+% \bibliography{cobb}
 
 
 \end{document}
