@@ -46,6 +46,8 @@
 %%%% Generic manuscript mode, required for submission
 %%%% and peer review
 \documentclass[review, sigplan]{acmart}
+\usepackage{listings}
+\usepackage{amsmath}
 %% Fonts used in the template cannot be substituted; margin
 %% adjustments are not allowed.
 %%
@@ -110,6 +112,7 @@
 %% the next command will enable that style.
 %%\citestyle{acmauthoryear}
 
+\lstset{mathescape, basicstyle=\ttfamily}
 %%
 %% end of the preamble, start of the body of the document source.
 \begin{document}
@@ -190,9 +193,10 @@
     \item Understand and implement component discovery
           \begin{itemize}
               \item Understand various intermediate representations
-              \item Figure out how global configuration is setup: library versus primative  operations, base and coverage type sigantures, other global mutable state
+              \item Figure out how global configuration is setup: library versus primitive operations, base and coverage type
+              signatures, other global mutable state
           \end{itemize}
-    \item Step through underapproximate type inference and checking, found out that A-normal form is used, multiple contexts and symbol lookup.
+    \item Step through under-approximate type inference and checking, found out that A-normal form is used, multiple contexts and symbol lookup.
     \item Designed an incremental and fused type inference/ synthesis engine by raising subexpression into the typing context to avoid redundant work
           \begin{itemize}
               \item In bottom-up synthesis, a program is typically extended by constructing a new root node to combine child AST's. In nested A-normal form, extending a program requires substituting the innermost body with the new root expression.
@@ -202,26 +206,97 @@
     \item We abstract over the implementations of the various operation and value kinds into two synthesis abstractions: seeds and components.
           \begin{itemize}
               \item Seed terms provide the starting point of our enumeration as our leaf nodes and are made up of our argumentless constructors like \texttt{Nil}, thunked operations like generators, constant values( like \texttt{0}, \texttt{1}, \texttt{true}, \texttt{false}), and variables as introduced as arguments by the function signature.
-              \item Components are our abstraction over the ways to construct new terms using primitive operations like \texttt{==}, built-in library functions like \texttt{Cons}, user-provided functions like \texttt{int\_range\_inc}, and the recursive call. Note that the recursive call gains an addition constraint that the first argument be smaller than the first argument in the context. Each component has a generalized apply operation to construct a new term.
+              \item Components are our abstraction over the ways to construct new terms using primitive operations like \texttt{==}, built-in library functions like \texttt{Cons}, user-provided functions like \texttt{int\_range\_inc}, and the recursive call. Note that the recursive call gains an additional constraint requiring the first argument to be smaller than the first argument in the context. Each component has a generalized apply operation to construct a new term.
           \end{itemize}
     \item Thus we introduced our notion of blocks, program expressions without control flow.
           \begin{itemize}
-              \item Leveraging the above abstractions and typing contexts, our enumeration constructs blocks which contain a binding name, an associated typing context, and a simple term which may reference variables in said typing context.
-              \item Each of these blocks are stored in a mapping from a base type to list of blocks which represent the enumerated blocks of said type. We initialize this map with our seeds at the beginning of synthesis.
-              \item At each step, we separate the blocks into two kinds, those of the largest depth which is equivalent to the number of times we have iterated so far and all of the smaller terms. The blocks of the largest depth are relevant as each new term we construct must reference at least one of these blocks. This guarantees incremental growth of our blocks and avoids constructing redundant terms.
-              \item After each step, we currently only do a naive extraction of the final program. If a block is a valid subtype of our target, then we extract out the term of that block and return. If there is no obvious candidate, we perform a cross produce of all blocks using non-deterministic choice which we construct as an if expression using bool\_gen as the condition. If that also fails to produce a statisfying term then we recurse to construct blocks fo the next depth.
+              \item Leveraging the above abstractions and typing contexts,
+                    our enumeration constructs blocks which contain a binding name,
+                    an associated typing context, and a simple term which may
+                    reference variables in said typing context.
+              \item Each of these blocks are stored in a mapping from a base type
+                    to list of blocks which represent the enumerated blocks of
+                    said type.
+                    We initialize this map with our seeds at the beginning of synthesis.
+              \item At each step, we separate the blocks into two kinds, those
+                    of the largest depth which is equivalent to the number of times
+                    we have iterated so far and all of the smaller terms.
+                    The blocks of the largest depth are relevant as each new term we
+                    construct must reference at least one of these blocks.
+                    This guarantees incremental growth of our blocks and avoids constructing redundant terms.
+              \item After each step, we currently only do a naive extraction of the
+                    final program.
+                    If a block is a valid subtype of our target, then we extract out
+                    the term of that block and return.
+                    If there is no obvious candidate, we perform a cross product of
+                    all blocks using non-deterministic choice which we construct as
+                    an if expression using \texttt{bool\_gen} as the condition.
+                    If that also fails to produce a satisfying term then we
+                    recurse to construct blocks fo the next depth.
           \end{itemize}
 
 \end{itemize}
 
+
 \section*{What we plan to do}
 
-\section*{How will we accomplish that pla }
+\begin{enumerate}
+    \item \textbf{Improve extractions} Currently our strategy returns any program that satisfies
+    the signature provided.
+    Given the exploration strategy, this produces the smallest
+    program that satisfies the specification.
+    However, especially in the context of under-approximate
+    types, it might be beneficial to explore further to
+    synthesize a program that is safer (generates less spurious
+    test cases that don't meet the over-approximate version of
+    the specification).
+    \item \textbf{Specializing generators}
+    A key issue of the current synthesis approach is that
+    the addition of control-flow is only through
+    non-determinstic choice \\ \lstinline{if bool_gen() then $\square$ else $\square$}.
+    Instead, it could be more beneficial to add control-flow
+    that depends on arguments or other subterms such as
+    \texttt{if is\_nil(arg1)}.
+    Moreover, to reduce the search space, use of subterms
+    are not shared. Consider the image below
 
-\section{Timeline}
-First check-in: have a straight-forward and inefficient solution that just tries all possible combinations of program blocks to find a union that covers the whole input space.
-Final deliverable: Improve the performance and quality of the synthesizer and produce “better” test input generators.
+    \begin{figure}[h!]
+    \includegraphics[width=.2\textwidth]{img.png}
+    \end{figure}
 
+    there are two possible program interpretations
+    \begin{enumerate}
+        \item \texttt{let x = int\_gen(); add(x, x)}
+        \item \texttt{add(int\_gen(), int\_gen())}
+    \end{enumerate}
+    we currently opt for the latter one (b) which is
+    complete but possibly unsafe.
+    For example, if the under-approximate specification was
+    ${\textcolor{blue}[}\nu : \textsf{int} \mid \textsf{even}(\nu){\textcolor{blue}]}$,
+    program (a) would also satisfy the over-approximate type
+    ${\textcolor{red}\{}\nu : \textsf{int} \mid \textsf{even}(\nu){\textcolor{red}\}}$
+    while (b) wouldn't.
+    % a non-deterministic expression might be subsuming a
+    % deterministic expression.
+\end{enumerate}
+
+\section*{How will we accomplish that plan}
+
+% let x = int_gen()
+% let y = int_gen()
+% add(x, y)
+
+\begin{enumerate}
+\item \textbf{Improve extractions}
+    We can infer the \emph{over}-approximate
+    specifications of the potential candidates and rule
+    out candidates that are supertypes of other candidates.
+    Additionally we can run the candidates and select the
+    ones that statistically produce results that
+    meet the under-approximate type.
+
+\item \textbf{Specializing generators}
+\end{enumerate}
 
 %%
 %% The next two lines define the bibliography style to be used, and
