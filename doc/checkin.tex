@@ -190,25 +190,25 @@
     \item Setup project structure
           \begin{itemize}
               \item Gather all libraries needed
-              \item Set up a runnable project that can use said libraries
+              \item Set up a runnable project using the said libraries
           \end{itemize}
-    \item Familiarize ourselves with the Poirot code base
-    \item Understand and implement component discovery
+    \item Familiarized ourselves with the Poirot code base
+    \item Understood and implemented component discovery
           \begin{itemize}
-              \item Understand various intermediate representations
-              \item Figure out how global configuration is setup: library versus primitive operations, base and coverage type
+              \item Understood various intermediate representations
+              \item Figured out how global configuration is setup: library versus primitive operations, base and coverage type
               signatures, other global mutable state
           \end{itemize}
-    \item Step through under-approximate type inference and checking, found out that A-normal form is used, multiple contexts and symbol lookup.
-    \item Designed an incremental and fused type inference/ synthesis engine by raising subexpression into the typing context to avoid redundant work
+    \item Stepped through under-approximate type inference and checking, found out that A-normal form is used, which requires multiple contexts and symbol lookup to build larger components.
+    \item Designed an incremental and fused type inference/synthesis engine by raising subexpression into the typing context to avoid redundant lookups.
           \begin{itemize}
               \item In bottom-up synthesis, a program is typically extended by constructing a new root node to combine child AST's. In nested A-normal form, extending a program requires substituting the innermost body with the new root expression.
               \item Additionally, type inference would need to traverse the same sub-expressions every time that expression is leveraged in a new larger expression.
               \item Our solution is to represent sub-expressions by their variable bindings in the typing context with a side mapping to reconstruct terms. Synthesis of a new term is then the merging of typing contexts and the construction of an application of the component on the argument names.
           \end{itemize}
-    \item We abstract over the implementations of the various operation and value kinds into two synthesis abstractions: seeds and components.
+    \item We abstract over the implementations of the various operations and value kinds into two synthesis abstractions: seeds and components.
           \begin{itemize}
-              \item Seed terms provide the starting point of our enumeration as our leaf nodes and are made up of our argumentless constructors like \texttt{Nil}, thunked operations like generators, constant values( like \texttt{0}, \texttt{1}, \texttt{true}, \texttt{false}), and variables as introduced as arguments by the function signature.
+              \item Seed terms provide the starting point of our enumeration as our leaf nodes and are made up of our argumentless constructors like \texttt{Nil}, thunked operations like generators, constant values (like \texttt{0}, \texttt{1}, \texttt{true}, \texttt{false}), and variables as introduced as arguments by the function signature.
               \item Components are our abstraction over the ways to construct new terms using primitive operations like \texttt{==}, built-in library functions like \texttt{Cons}, user-provided functions like \texttt{int\_range\_inc}, and the recursive call. Note that the recursive call gains an additional constraint requiring the first argument to be smaller than the first argument in the context. Each component has a generalized apply operation to construct a new term.
           \end{itemize}
     \item Thus we introduced our notion of blocks, program expressions without control flow.
@@ -216,14 +216,14 @@
               \item Leveraging the above abstractions and typing contexts,
                     our enumeration constructs blocks which contain a binding name,
                     an associated typing context, and a simple term which may
-                    reference variables in said typing context.
+                    reference variables in the typing context.
               \item Each of these blocks are stored in a mapping from a base type
                     to list of blocks which represent the enumerated blocks of
                     said type.
-                    We initialize this map with our seeds at the beginning of synthesis.
+                    We initialize this map with our seeds at the beginning of the synthesis process.
               \item At each step, we separate the blocks into two kinds, those
-                    of the largest depth which is equivalent to the number of times
-                    we have iterated so far and all of the smaller terms.
+                    of the largest depth, which is equivalent to the number of times
+                    we have iterated so far, and all of the smaller terms.
                     The blocks of the largest depth are relevant as each new term we
                     construct must reference at least one of these blocks.
                     This guarantees incremental growth of our blocks and avoids constructing redundant terms.
@@ -265,7 +265,7 @@
     Instead, it could be more beneficial to add control-flow
     that depends on arguments or other subterms such as
     \texttt{if is\_nil(arg1)}.
-    Moreover, to reduce the search space, use of subterms
+    Moreover, to reduce the search space, the use of subterms
     are not shared. Consider the image below
 
     \begin{figure}[h!]
