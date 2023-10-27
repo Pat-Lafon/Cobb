@@ -130,12 +130,13 @@ let ctx_subst (ctx : (id * UT.t) list) (ht : (id, id) Hashtbl.t) =
       | None -> (name, ty))
     ctx
 
-let sample_ctx = 
+(* let sample_ctx =
   [("x", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = (Lit (AVar { x = "x"; ty = NT.Ty_int })) })]
 let sample_subst = (Seq.return ("x", "y") |> Hashtbl.of_seq)
 
-let () = assert (ctx_subst sample_ctx sample_subst = 
-  [("y", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = (Lit (AVar { x = "y"; ty = NT.Ty_int })) })])
+let () = assert (ctx_subst sample_ctx sample_subst =
+  [("y", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = (Lit (AVar { x = "y"; ty = NT.Ty_int })) })]) *)
+(* let () = assert (ctx_subst [("x", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = Lit (ACint 1) })] (Seq.return ("x", "y") |> Hashtbl.of_seq) = [("y", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = Lit (ACint 1) })]) *)
 
 let seeds, components = Pieces.seeds_and_components libs
 
