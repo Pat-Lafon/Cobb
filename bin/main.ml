@@ -141,7 +141,10 @@ let ctx_subst (ctx : (id * UT.t) list) (ht : (id, id) Hashtbl.t) =
       | None -> (name, ty))
     ctx
 
-let seeds, componenets = Pieces.seeds_and_components libs
+let seeds, components = Pieces.seeds_and_components libs
+
+(* todo Add argument variables to seeds *)
+(* todo Add recursive component *)
 
 (* Example below shows how to build a term and call inference on it *)
 let example_term () =
@@ -266,11 +269,21 @@ let result =
             seeds
         in
 
-        let _ =
-          Synthesis.synthesis
-            { nctx; ctx = ctx''; libctx }
-            retty 1 seeds componenets
+        let uctx = { nctx; ctx = ctx''; libctx } in
+
+        let seeds =
+          List.map
+            (fun ((id, term), ty) : (Blocks.block * ty) ->
+              let ut = Typecheck.Undercheck.term_type_infer uctx term in
+              let seed_utx =
+                Typectx.ut_force_add_to_right Typectx.empty (id, UtNormal ut)
+              in
+              let term_ty = term.ty in
+              (({ x = id; ty = term_ty }, ut, seed_utx), ty))
+            seeds
         in
+
+        let _ = Synthesis.synthesis uctx retty 2 seeds components in
 
         let res =
           (* Undersub.type_err_to_false (fun () ->

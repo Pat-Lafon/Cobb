@@ -9,6 +9,8 @@ open Assertion
 open Sugar
 open Languages.StrucNA
 
+let dbg_sexp sexp = print_endline (Core.Sexp.to_string_hum sexp)
+
 module Pieces = struct
   type component =
     | Fun of id NNtyped.typed
@@ -85,9 +87,6 @@ module Pieces = struct
     let seeds = prim_seeds @ lib_seeds @ builtin_seeds in
     (seeds, operations @ funs)
 
-  (* let _ =
-     List.map (fun (term, ty) -> Termlang.sexp_of_term term |> dbg_sexp) seeds *)
-
   let mk_app (f_id : id NNtyped.typed) (args : id NNtyped.typed list) k :
       id NNtyped.typed * NL.term =
     let name = Rename.name () in
@@ -121,6 +120,8 @@ module Pieces = struct
           args;
           body = NL.value_to_term (NL.id_to_value resid);
         } )
+
+  let mk_if () = failwith "todo"
 
   let apply (comp : component) (args : id NNtyped.typed list) =
     match comp with

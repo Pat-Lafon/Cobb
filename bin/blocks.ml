@@ -27,7 +27,7 @@ let%test "range" = range 5 = [ 0; 1; 2; 3; 4 ]
 
 module Blocks = struct
   type base_type = Ntyped.t
-  type block = id * NL.term NNtyped.typed
+  type block = id NNtyped.typed * UT.t * MustMayTypectx.ctx
 
   (* bool -> var1, true
      int -> 0, 1, ...*)
@@ -74,17 +74,15 @@ module Blocks = struct
           (P.to_string prop)
     | _ -> UT.sexp_of_t ty |> Core.Sexp.to_string_hum
 
-  let block_print ((name, term) : block) : unit =
-    Printf.printf "%s: %s\n" name (NL.layout term)
+  let block_to_string (({ x = name; ty }, ut, ctx) : block) : id =
+    Printf.sprintf "%s: %s : %s\n" name
+      (base_type_to_string (snd ty))
+      (u_type_to_string ut)
 
   let block_map_print (map : block_map) : unit =
     let aux (ty, terms) =
       Printf.printf "Type: %s\n" (base_type_to_string ty);
-      List.iter
-        (fun t ->
-          print_string "\t";
-          block_print t)
-        terms
+      List.iter (fun t -> Printf.printf "\t%s\n" (block_to_string t)) terms
     in
     List.iter aux map
 
@@ -146,17 +144,24 @@ module Blocks = struct
 
               List.map
                 (fun (args : block list) : (block * base_type) ->
-                  let arg_names =
-                    List.map
-                      (fun (id, ({ x; ty } : NL.term NNtyped.typed)) :
-                           id NNtyped.typed -> { x = id; ty })
-                      args
-                  in
-                  let ({ x = block_id; ty } : id NNtyped.typed), term =
+                  let arg_names = List.map (fun (id, _, _) -> id) args in
+                  let ctxs = List.map (fun (_, _, ctx) -> ctx) args in
+                  let (block_id : id NNtyped.typed), term =
                     Pieces.apply component arg_names
                   in
 
-                  ((block_id, { x = term; ty }), ret_type))
+                  let joined_ctx = failwith "todo" in
+
+                  let new_ut =
+                    Typecheck.Undercheck.term_type_infer joined_ctx
+                      { x = term; ty = block_id.ty }
+                  in
+
+                  let new_ctx =
+                    Typectx.ut_force_add_to_right joined_ctx
+                      (block_id.x, UtNormal new_ut)
+                  in
+                  ((block_id, new_ut, new_ctx), ret_type))
                 l)
             (range (List.length args))
           |> List.flatten)
@@ -179,49 +184,50 @@ let under_ty_to_base_ty (ty : UT.t) : Blocks.base_type =
 
 module Synthesis = struct
   type program = NL.term NNtyped.typed
-  type infered_block = UT.t * Blocks.block
 
-  let infered_block_to_string ((ty, (n, b)) : infered_block) : id =
-    Printf.sprintf "%s: %s: %s\n" n (Blocks.u_type_to_string ty) (NL.layout b)
+  (* let infered_block_to_string
+       ((ty, ({ x = n; ty = _, b }, ut, ctx)) : infered_block) : id =
+     Printf.sprintf "%s: %s: %s %s\n" n
+       (Blocks.u_type_to_string ty)
+       (Blocks.base_type_to_string b)
+       (Blocks.u_type_to_string ut) *)
+
   (* int| P -> prog *)
 
-  (** Given a block list of the appropriate type, run inference on all of them to pair them with their appropriate underapproximate types *)
-  let blocks_list_infer (b_list : Blocks.block list) (uctx : uctx) :
-      infered_block list =
-    (* TODO: Can this panic? What happens if type inference fails and how do we handle it?*)
-    b_list
-    |> List.map (fun (n, b) ->
-           (Typecheck.Undercheck.term_type_infer uctx b, (n, b)))
+  (* (** Given a block list of the appropriate type, run inference on all of them to pair them with their appropriate underapproximate types *)
+     let blocks_list_infer (b_list : Blocks.block list) (uctx : uctx) :
+         infered_block list =
+       (* TODO: Can this panic? What happens if type inference fails and how do we handle it?*)
+       b_list
+       |> List.map (fun (n, ctx) ->
+              (Typecheck.Undercheck.term_type_infer uctx b, (n, b))) *)
 
   (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
-  let under_blocks_join (uctx : uctx) (u_b_list : infered_block list)
-      (target_ty : UT.t) : infered_block list =
+  let under_blocks_join (uctx : uctx) (u_b_list : Blocks.block list)
+      (target_ty : UT.t) : Blocks.block list =
     (* How do we want to combine blocks together? *)
     let super_type_list, sub_type_list =
       List.partition
-        (fun (ty, _) ->
-          Undersub.subtyping_check_bool "" 0 uctx.ctx ty target_ty)
+        (fun (_, ut, _) ->
+          Undersub.subtyping_check_bool "" 0 uctx.ctx ut target_ty)
         u_b_list
     in
     print_endline "Super Types:";
     List.iter
-      (fun x -> infered_block_to_string x |> print_endline)
+      (fun x -> Blocks.block_to_string x |> print_endline)
       super_type_list;
     print_endline "Sub Types:";
-    List.iter
-      (fun x -> infered_block_to_string x |> print_endline)
-      sub_type_list;
+    List.iter (fun x -> Blocks.block_to_string x |> print_endline) sub_type_list;
     print_endline "End";
 
     (* TODO, actually do some joining of blocks*)
     super_type_list
 
-  let choose_program (programs : infered_block list) (target_type : UT.t)
-      (uctx : uctx) : infered_block option =
+  let choose_program (programs : Blocks.block list) (target_type : UT.t) :
+      Blocks.block option =
     (* todo, do something better than just choosing the first one*)
     List.find_opt
-      (fun (ty, p) ->
-        Undersub.subtyping_check_bool "" 0 uctx.ctx ty target_type)
+      (fun (_, ty, p) -> Undersub.subtyping_check_bool "" 0 p ty target_type)
       programs
 
   let rec synthesis_helper (max_depth : int) (target_type : UT.t) (uctx : uctx)
@@ -236,18 +242,12 @@ module Synthesis = struct
         let block_map = Blocks.block_collection_get_full_map collection in
         let base_type = under_ty_to_base_ty target_type in
         let blocks = Blocks.block_map_get block_map base_type in
-        (* Infer the types of all blocks*)
-        let blocks_typed = blocks_list_infer blocks uctx in
-        print_endline "Inferred types for Blocks:";
-        List.iter
-          (fun x -> infered_block_to_string x |> print_endline)
-          blocks_typed;
 
         (* Join blocks together into programs*)
-        let programs = under_blocks_join uctx blocks_typed target_type in
+        let programs = under_blocks_join uctx blocks target_type in
         (* Check if any of the programs satisfy the target type*)
-        match choose_program programs target_type uctx with
-        | Some (_, (_, p)) -> Some p
+        match choose_program programs target_type with
+        | Some (_, _, _) -> failwith "todo"
         | None ->
             (* If not, increment the collection and try again*)
             synthesis_helper (depth - 1) target_type uctx
