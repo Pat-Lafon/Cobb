@@ -22,6 +22,22 @@ let rec n_cartesian_product = function
       let rest = n_cartesian_product xs in
       List.concat (List.map (fun i -> List.map (fun rs -> i :: rs) rest) x)
 
+let map_fst f (l, r) = (f l, r)
+
+let freshen (ctx : Typectx.ctx) =
+  let ht = Hashtbl.create (List.length ctx) in
+  let add (name : id) =
+    let new_name = Rename.unique name in
+    (* TODO: remove this since context addition checks this already ?*)
+    if Hashtbl.mem ht name then failwith "duplicate key";
+    Hashtbl.add ht name new_name;
+    new_name
+  in
+  (List.map (map_fst add) ctx, ht)
+
+let ctx_union_r (l : Typectx.ctx) (r : Typectx.ctx) =
+  map_fst (fun res -> l @ res) (freshen r)
+
 let%test "should fail" = 2 + 2 = 5
 let%test "range" = range 5 = [ 0; 1; 2; 3; 4 ]
 
@@ -115,8 +131,8 @@ module Blocks = struct
   (** Given a collection, we want to construct a new set of blocks using some set of operations
     * Operations should not be valid seeds (i.e. must be operations that take arguments)*)
   let block_collection_increment (collection : block_collection)
-      (operations : (Pieces.component * (base_type list * base_type)) list) :
-      block_collection =
+      (operations : (Pieces.component * (base_type list * base_type)) list)
+      (uctx : uctx) : block_collection =
     (* We pull aside our current `new_blocks`, these are the largest blocks in the collection *)
     let new_blocks = collection.new_blocks in
     (* New and old blocks get merged together *)
@@ -146,14 +162,38 @@ module Blocks = struct
                 (fun (args : block list) : (block * base_type) ->
                   let arg_names = List.map (fun (id, _, _) -> id) args in
                   let ctxs = List.map (fun (_, _, ctx) -> ctx) args in
+
+                  let unchanged_arg_name = List.hd arg_names in
+                  let unchanged_context = List.hd ctxs in
+
+                  (* Correct joining of contexts? *)
+                  let arg_names, joined_ctx =
+                    List.fold_left2
+                      (fun (args, acc_context) (id : id NNtyped.typed)
+                           changed_ctx ->
+                        let new_ctx, mapping =
+                          ctx_union_r acc_context changed_ctx
+                        in
+                        ( args
+                          @ [
+                              ({ x = Hashtbl.find mapping id.x; ty = id.ty }
+                                : id NNtyped.typed);
+                            ],
+                          new_ctx ))
+                      ([ unchanged_arg_name ], unchanged_context)
+                      (List.tl arg_names) (List.tl ctxs)
+                  in
+
                   let (block_id : id NNtyped.typed), term =
                     Pieces.apply component arg_names
                   in
 
-                  let joined_ctx = failwith "todo" in
+                  let new_uctx : uctx =
+                    { ctx = uctx.ctx; nctx = joined_ctx; libctx = uctx.libctx }
+                  in
 
                   let new_ut =
-                    Typecheck.Undercheck.term_type_infer joined_ctx
+                    Typecheck.Undercheck.term_type_infer new_uctx
                       { x = term; ty = block_id.ty }
                   in
 
@@ -184,23 +224,6 @@ let under_ty_to_base_ty (ty : UT.t) : Blocks.base_type =
 
 module Synthesis = struct
   type program = NL.term NNtyped.typed
-
-  (* let infered_block_to_string
-       ((ty, ({ x = n; ty = _, b }, ut, ctx)) : infered_block) : id =
-     Printf.sprintf "%s: %s: %s %s\n" n
-       (Blocks.u_type_to_string ty)
-       (Blocks.base_type_to_string b)
-       (Blocks.u_type_to_string ut) *)
-
-  (* int| P -> prog *)
-
-  (* (** Given a block list of the appropriate type, run inference on all of them to pair them with their appropriate underapproximate types *)
-     let blocks_list_infer (b_list : Blocks.block list) (uctx : uctx) :
-         infered_block list =
-       (* TODO: Can this panic? What happens if type inference fails and how do we handle it?*)
-       b_list
-       |> List.map (fun (n, ctx) ->
-              (Typecheck.Undercheck.term_type_infer uctx b, (n, b))) *)
 
   (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
   let under_blocks_join (uctx : uctx) (u_b_list : Blocks.block list)
@@ -251,7 +274,7 @@ module Synthesis = struct
         | None ->
             (* If not, increment the collection and try again*)
             synthesis_helper (depth - 1) target_type uctx
-              (Blocks.block_collection_increment collection operations)
+              (Blocks.block_collection_increment collection operations uctx)
               operations)
 
   (** Given some initial setup, run the synthesis algorithm *)

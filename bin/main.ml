@@ -113,23 +113,6 @@ let libctx =
 (* let _ = print_endline "seeds"
    let _ = List.map (fun (name, ty) -> print_endline name) lib_seeds *)
 
-let map_fst f (l, r) = (f l, r)
-let map_snd f (l, r) = (l, f r)
-
-let freshen (ctx : Typectx.ctx) =
-  let ht = Hashtbl.create (List.length ctx) in
-  let add (name : id) =
-    let new_name = Rename.unique name in
-    (* TODO: remove this since context addition checks this already ?*)
-    if Hashtbl.mem ht name then failwith "duplicate key";
-    Hashtbl.add ht name new_name;
-    new_name
-  in
-  (List.map (map_fst add) ctx, ht)
-
-let ctx_union_r (l : Typectx.ctx) (r : Typectx.ctx) =
-  map_fst (fun res -> l @ res) (freshen r)
-
 (* TODO `ctx_subst` is wrong.
    We need to substitute occurrences of context variables in
    the propositions they appear in. *)
