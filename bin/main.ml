@@ -113,31 +113,6 @@ let libctx =
 (* let _ = print_endline "seeds"
    let _ = List.map (fun (name, ty) -> print_endline name) lib_seeds *)
 
-(* TODO `ctx_subst` is wrong.
-   We need to substitute occurrences of context variables in
-   the propositions they appear in. *)
-let ctx_subst (ctx : (id * UT.t) list) (ht : (id, id) Hashtbl.t) =
-  List.map
-    (fun (name, ty) ->
-      (* UT.var_space uty (* for each var if it appears in ht call UT.subst_id for that var *)) *)
-      (* foldLeft ( takes the old type, and the id, substitute if id is in old type, return the new type ) (the unsubstituted type) (the var space ) *)
-      let renamed_ty = List.fold_left (fun t name -> match Hashtbl.find_opt ht name with
-        | Some new_name -> UT.subst_id t name new_name
-        | None -> t) ty (UT.var_space ty)
-          in
-      match Hashtbl.find_opt ht name with
-      | Some new_name -> (new_name, renamed_ty)
-      | None -> (name, ty))
-    ctx
-
-(* let sample_ctx =
-  [("x", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = (Lit (AVar { x = "x"; ty = NT.Ty_int })) })]
-let sample_subst = (Seq.return ("x", "y") |> Hashtbl.of_seq)
-
-let () = assert (ctx_subst sample_ctx sample_subst =
-  [("y", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = (Lit (AVar { x = "y"; ty = NT.Ty_int })) })]) *)
-(* let () = assert (ctx_subst [("x", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = Lit (ACint 1) })] (Seq.return ("x", "y") |> Hashtbl.of_seq) = [("y", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = Lit (ACint 1) })]) *)
-
 let seeds, components = Pieces.seeds_and_components libs
 
 (* todo Add argument variables to seeds *)

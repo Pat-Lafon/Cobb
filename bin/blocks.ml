@@ -24,6 +24,45 @@ let rec n_cartesian_product = function
 
 let map_fst f (l, r) = (f l, r)
 
+let mmt_subst_id a before after =
+  let aux (t : Underty.MMT.ut_with_copy) before after =
+    match t with
+    | Underty.MMT.UtNormal t ->
+        Underty.MMT.UtNormal (UT.subst_id t before after)
+    | Underty.MMT.UtCopy { x; ty } ->
+        if String.equal x before then Underty.MMT.UtCopy { x = after; ty }
+        else t
+  in
+  match a with
+  | Underty.MMT.Ot t -> Underty.MMT.Ot (ot_subst_id t before after)
+  | Underty.MMT.Ut t -> Underty.MMT.Ut (aux t before after)
+  | Underty.MMT.Consumed t -> Underty.MMT.Consumed (aux t before after)
+
+let ctx_subst ctx (ht : (id, id) Hashtbl.t) =
+  List.map
+    (fun (name, ty) ->
+      (* foldLeft ( takes the old type, and the id, substitute if id is in old type, return the new type ) (the unsubstituted type) (the var space ) *)
+      let renamed_ty =
+        List.fold_left
+          (fun t name ->
+            match Hashtbl.find_opt ht name with
+            | Some new_name -> mmt_subst_id t name new_name
+            | None -> t)
+          ty (Underty.MMT.fv ty)
+      in
+      match Hashtbl.find_opt ht name with
+      | Some new_name -> (new_name, renamed_ty)
+      | None -> (name, ty))
+    ctx
+
+(* let sample_ctx =
+     [("x", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = (Lit (AVar { x = "x"; ty = NT.Ty_int })) })]
+   let sample_subst = (Seq.return ("x", "y") |> Hashtbl.of_seq)
+
+   let () = assert (ctx_subst sample_ctx sample_subst =
+     [("y", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = (Lit (AVar { x = "y"; ty = NT.Ty_int })) })]) *)
+(* let () = assert (ctx_subst [("x", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = Lit (ACint 1) })] (Seq.return ("x", "y") |> Hashtbl.of_seq) = [("y", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = Lit (ACint 1) })]) *)
+
 let freshen (ctx : Typectx.ctx) =
   let ht = Hashtbl.create (List.length ctx) in
   let add (name : id) =
@@ -33,7 +72,9 @@ let freshen (ctx : Typectx.ctx) =
     Hashtbl.add ht name new_name;
     new_name
   in
-  (List.map (map_fst add) ctx, ht)
+  let _ = List.map (map_fst add) ctx in
+  let res = ctx_subst ctx ht in
+  (res, ht)
 
 let ctx_union_r (l : Typectx.ctx) (r : Typectx.ctx) =
   map_fst (fun res -> l @ res) (freshen r)
