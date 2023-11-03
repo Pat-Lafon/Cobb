@@ -248,7 +248,7 @@ let result =
             (fun ((id, term), ty) : (Blocks.block * ty) ->
               let ut = Typecheck.Undercheck.term_type_infer uctx term in
               let seed_utx =
-                Typectx.ut_force_add_to_right Typectx.empty (id, UtNormal ut)
+                Typectx.ut_force_add_to_right ctx'' (id, UtNormal ut)
               in
               let term_ty = term.ty in
               (({ x = id; ty = term_ty }, ut, seed_utx), ty))

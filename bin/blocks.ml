@@ -230,7 +230,7 @@ module Blocks = struct
                   in
 
                   let new_uctx : uctx =
-                    { ctx = uctx.ctx; nctx = joined_ctx; libctx = uctx.libctx }
+                    { ctx = joined_ctx; nctx = uctx.nctx; libctx = uctx.libctx }
                   in
 
                   let new_ut =
@@ -272,8 +272,10 @@ module Synthesis = struct
     (* How do we want to combine blocks together? *)
     let super_type_list, sub_type_list =
       List.partition
-        (fun (_, ut, _) ->
-          Undersub.subtyping_check_bool "" 0 uctx.ctx ut target_ty)
+        (fun (_, ut, ctx) ->
+          Printf.printf "target_ty %s\n" (ut |> Blocks.u_type_to_string);
+
+          Undersub.subtyping_check_bool "" 0 ctx ut target_ty)
         u_b_list
     in
     print_endline "Super Types:";
@@ -311,7 +313,9 @@ module Synthesis = struct
         let programs = under_blocks_join uctx blocks target_type in
         (* Check if any of the programs satisfy the target type*)
         match choose_program programs target_type with
-        | Some (_, _, _) -> failwith "todo"
+        | Some (_, _, _) ->
+            print_endline "We have a program, are we done?";
+            failwith "todo"
         | None ->
             (* If not, increment the collection and try again*)
             synthesis_helper (depth - 1) target_type uctx
