@@ -199,8 +199,8 @@ module Blocks = struct
               in
               let l = n_cartesian_product l in
 
-              List.map
-                (fun (args : block list) : (block * base_type) ->
+              List.filter_map
+                (fun (args : block list) : (block * base_type) option ->
                   let arg_names = List.map (fun (id, _, _) -> id) args in
                   let ctxs = List.map (fun (_, _, ctx) -> ctx) args in
 
@@ -238,11 +238,14 @@ module Blocks = struct
                       { x = term; ty = block_id.ty }
                   in
 
-                  let new_ctx =
-                    Typectx.ut_force_add_to_right joined_ctx
-                      (block_id.x, UtNormal new_ut)
-                  in
-                  ((block_id, new_ut, new_ctx), ret_type))
+                  match new_ut with
+                  | UnderTy_base { prop = Lit (ACbool false); _ } -> None
+                  | _ ->
+                      let new_ctx =
+                        Typectx.ut_force_add_to_right joined_ctx
+                          (block_id.x, UtNormal new_ut)
+                      in
+                      Some ((block_id, new_ut, new_ctx), ret_type))
                 l)
             (range (List.length args))
           |> List.flatten)
