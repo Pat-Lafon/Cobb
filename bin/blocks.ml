@@ -166,7 +166,7 @@ module Blocks = struct
     | [] -> old_blocks
     | (ty, terms) :: rest ->
         let old_terms = block_map_get old_blocks ty in
-        let new_terms = List.concat [ old_terms; terms ] in
+        let new_terms = List.rev_append old_terms terms in
         (ty, new_terms)
         :: block_collection_get_full_map { new_blocks = rest; old_blocks }
 
@@ -185,10 +185,10 @@ module Blocks = struct
     (* Atleast one arguement use to create each new block must be from `new_blocks`, the rest are from `old_blocks`(which can also have blocks from `new_blocks`). This guarantees that all created blocks are of `new_blocks[i].size + 1` *)
     let resulting_blocks : (block * base_type) list =
       (* Loop over each of the operations*)
-      List.map
+      List.concat_map
         (fun (component, (args, ret_type)) : (block * base_type) list ->
           (* Loop from 0 to args.len - 1 to choose an index for the `new_blocks`*)
-          List.map
+          List.concat_map
             (fun i ->
               (* Loop over each of the arguments, getting a list of blocks for each one *)
               let l =
@@ -248,10 +248,8 @@ module Blocks = struct
                       in
                       Some ((block_id, new_ut, new_ctx), ret_type))
                 l)
-            (range (List.length args))
-          |> List.flatten)
+            (range (List.length args)))
         operations
-      |> List.flatten
     in
 
     (* *)
