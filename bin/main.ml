@@ -119,7 +119,7 @@ let seeds, components = Pieces.seeds_and_components libs
 (* todo Add recursive component *)
 
 (* Example below shows how to build a term and call inference on it *)
-let example_term () =
+(* let example_term () =
   let int_gen = List.nth libs 2 in
 
   let t_int_gen : id NL.typed =
@@ -145,13 +145,13 @@ let example_term () =
       { nctx; ctx = Typectx.empty; libctx }
       { x = prog; ty = (None, Ty_int) }
   in
-
+(*
   print_endline "Typed int_gen example";
   dbg res;
-  dbg_sexp (NL.sexp_of_term prog);
+  dbg_sexp (NL.sexp_of_term prog); *)
   ()
 
-let _ = example_term ()
+let _ = example_term () *)
 
 (* Asserting that there is only one program to synthesize*)
 let () = assert (List.length refinements == 1)
