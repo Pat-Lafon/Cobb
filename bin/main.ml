@@ -110,9 +110,6 @@ let libctx =
     (fun ctx (x, ty) -> Nctx.add_to_right ctx (x, ty))
     Nctx.empty libs
 
-(* let _ = print_endline "seeds"
-   let _ = List.map (fun (name, ty) -> print_endline name) lib_seeds *)
-
 let seeds, components = Pieces.seeds_and_components libs
 
 (* todo Add argument variables to seeds *)
