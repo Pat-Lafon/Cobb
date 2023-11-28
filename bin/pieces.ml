@@ -121,7 +121,12 @@ module Pieces = struct
           body = NL.value_to_term (NL.id_to_value resid);
         } )
 
-  let mk_if () = failwith "todo"
+  let mk_if (cond : id NNtyped.typed) (true_branch : id NNtyped.typed)
+      (false_branch : id NNtyped.typed) : NL.term =
+    let cond = NL.id_to_value cond in
+    let e_t = NL.id_to_value true_branch |> NL.value_to_term in
+    let e_f = NL.id_to_value false_branch |> NL.value_to_term in
+    NL.Ite { cond; e_t; e_f }
 
   let apply (comp : component) (args : id NNtyped.typed list) =
     match comp with
