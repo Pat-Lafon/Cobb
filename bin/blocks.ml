@@ -111,7 +111,7 @@ module Blocks = struct
         if ty = ty' then (ty, block_list_add terms term) :: rest
         else (ty', terms) :: block_map_add rest term ty
 
-  let rec block_map_get (map : block_map) (ty : base_type) : block list =
+  let block_map_get (map : block_map) (ty : base_type) : block list =
     List.find_map
       (fun (ty', terms) -> if ty = ty' then Some terms else None)
       map
