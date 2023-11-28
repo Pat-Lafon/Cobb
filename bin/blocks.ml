@@ -112,9 +112,10 @@ module Blocks = struct
         else (ty', terms) :: block_map_add rest term ty
 
   let rec block_map_get (map : block_map) (ty : base_type) : block list =
-    match map with
-    | [] -> []
-    | (ty', terms) :: rest -> if ty = ty' then terms else block_map_get rest ty
+    List.find_map
+      (fun (ty', terms) -> if ty = ty' then Some terms else None)
+      map
+    |> Option.value ~default:[]
 
   let block_map_init (inital_seeds : (block * base_type) list) : block_map =
     let aux (b_map : block_map) (term, ty) = block_map_add b_map term ty in
