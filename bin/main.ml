@@ -227,17 +227,6 @@ let result =
         dbg retty;
         print_endline "\n\n===\n";
 
-        let seeds =
-          List.map
-            (fun (x, y) ->
-              let name = Rename.name () in
-              ( ( name,
-                  Trans.to_anormal_with_name name false
-                    { x; ty = Some (None, y) } ),
-                y ))
-            seeds
-        in
-
         let uctx = { nctx; ctx = ctx''; libctx } in
 
         let seeds =
