@@ -12,6 +12,13 @@ open Languages.StrucNA
 let dbg_sexp sexp = print_endline (Core.Sexp.to_string_hum sexp)
 
 module Pieces = struct
+  let asts : (id, Termlang.term) Hashtbl.t = Hashtbl.create 128
+
+  let ast_to_string ?(erased = false) (id : id) =
+    let term = Termlang.make_untyped (Hashtbl.find asts id) in
+    let tterm = if erased then Termlang.erase_type term else term in
+    Frontend.Expr.layout tterm
+
   type component =
     | Fun of id NNtyped.typed
     | Op of Op.op
@@ -81,6 +88,7 @@ module Pieces = struct
 
   let mk_seed (x, y) =
     let name = Rename.name () in
+    Hashtbl.add asts name x;
     ((name, Trans.to_anormal_with_name name false { x; ty = Some (None, y) }), y)
 
   let seeds_and_components (libs : (id * UT.t) list) =
@@ -91,39 +99,65 @@ module Pieces = struct
     let seeds = prim_seeds @ lib_seeds @ builtin_seeds in
     (List.map mk_seed seeds, operations @ funs)
 
+  let known : (id, unit) Hashtbl.t = Hashtbl.create 128
+
+  let known_var (a : id) =
+    Hashtbl.add known a ();
+    Hashtbl.add asts a (Termlang.Var a);
+    a
+
+  let asts_lookup (a : id NNtyped.typed) =
+    let expr = Option.map Termlang.make_untyped (Hashtbl.find_opt asts a.x) in
+    Option.value expr ~default:(Termlang.make_untyped (Termlang.Var a.x))
+
   let mk_app (f_id : id NNtyped.typed) (args : id NNtyped.typed list) k :
-      id NNtyped.typed * NL.term =
+      id NNtyped.typed * NL.term * Termlang.term =
     let name = Rename.name () in
     let resty = snd (NT.destruct_arrow_tp (snd f_id.ty)) in
     let resid : id NNtyped.typed = { x = name; ty = (None, resty) } in
+    let term =
+      Termlang.App
+        (Termlang.make_untyped (Termlang.Var f_id.x), List.map asts_lookup args)
+    in
     let args = List.map NL.id_to_value args in
-    (resid, NL.LetApp { ret = resid; f = f_id; args; body = k resid })
+    let aterm = NL.LetApp { ret = resid; f = f_id; args; body = k resid } in
+    (resid, aterm, term)
 
   let mk_ctor (ctor : id NNtyped.typed) (args : id NNtyped.typed list) k :
-      id NNtyped.typed * NL.term =
+      id NNtyped.typed * NL.term * Termlang.term =
     let name = Rename.name () in
     let resty = snd (NT.destruct_arrow_tp (snd ctor.ty)) in
     let resid : id NNtyped.typed = { x = name; ty = (None, resty) } in
+    let term =
+      Termlang.App
+        (Termlang.make_untyped (Termlang.Var ctor.x), List.map asts_lookup args)
+    in
     let args = List.map NL.id_to_value args in
-    (resid, NL.LetDtConstructor { ret = resid; f = ctor; args; body = k resid })
+    let aterm =
+      NL.LetDtConstructor { ret = resid; f = ctor; args; body = k resid }
+    in
+    (resid, aterm, term)
 
   let mk_op (op_id : Op.op) (args : id NNtyped.typed list) :
-      id NNtyped.typed * NL.term =
+      id NNtyped.typed * NL.term * Termlang.term =
     let op_ty =
       Abstraction.Prim.get_primitive_normal_ty (Op.op_to_string op_id)
     in
     let name = Rename.name () in
     let resty = snd (NT.destruct_arrow_tp op_ty) in
     let resid : id NNtyped.typed = { x = name; ty = (None, resty) } in
+    let term = Termlang.Op (op_id, List.map asts_lookup args) in
     let args = List.map NL.id_to_value args in
-    ( resid,
+    let aterm =
       NL.LetOp
         {
           ret = resid;
           op = op_id;
           args;
           body = NL.value_to_term (NL.id_to_value resid);
-        } )
+        }
+    in
+    (resid, aterm, term)
 
   let mk_if (cond : id NNtyped.typed) (true_branch : id NNtyped.typed)
       (false_branch : id NNtyped.typed) : NL.term =
@@ -133,11 +167,15 @@ module Pieces = struct
     NL.Ite { cond; e_t; e_f }
 
   let apply (comp : component) (args : id NNtyped.typed list) =
-    match comp with
-    | Fun f -> mk_app f args (fun x -> NL.value_to_term (NL.id_to_value x))
-    | Op op -> mk_op op args
-    | Ctor ctor ->
-        mk_ctor ctor args (fun x -> NL.value_to_term (NL.id_to_value x))
+    let resid, aterm, term =
+      match comp with
+      | Fun f -> mk_app f args (fun x -> NL.value_to_term (NL.id_to_value x))
+      | Op op -> mk_op op args
+      | Ctor ctor ->
+          mk_ctor ctor args (fun x -> NL.value_to_term (NL.id_to_value x))
+    in
+    let () = Hashtbl.add asts resid.x term in
+    (resid, aterm)
 
   let map_fst f (l, r) = (f l, r)
 
@@ -185,14 +223,23 @@ module Pieces = struct
 
   let freshen (ctx : Typectx.ctx) =
     let ht = Hashtbl.create (List.length ctx) in
-    let add (name : id) =
-      let new_name = Rename.unique name in
-      (* TODO: remove this since context addition checks this already ?*)
-      if Hashtbl.mem ht name then failwith "duplicate key";
-      Hashtbl.add ht name new_name;
-      new_name
+    let maybe_freshen_one (name : id) =
+      if Hashtbl.mem known name then (
+        let new_name = Rename.unique name in
+        let () =
+          match Hashtbl.find_opt asts name with
+          | None -> failwith name
+          | Some x -> ()
+        in
+        (* TODO: remove this since context addition checks this already ?*)
+        if Hashtbl.mem ht name then failwith "duplicate key";
+        Hashtbl.add ht name new_name;
+        new_name)
+      else (
+        Hashtbl.add ht name name;
+        name)
     in
-    let _ = List.map (map_fst add) ctx in
+    let _ = List.map (map_fst maybe_freshen_one) ctx in
     let res = ctx_subst ctx ht in
     (res, ht)
 end

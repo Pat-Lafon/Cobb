@@ -182,7 +182,7 @@ let result =
         in
 
         let decreasing_arg =
-          NL.{ x = Rename.unique fstarg.x; ty = fstarg.ty }
+          NL.{ x = Pieces.known_var (Rename.unique fstarg.x); ty = fstarg.ty }
         in
         let prop =
           Typecheck.Undercheck.make_order_constraint decreasing_arg.x argname
@@ -210,7 +210,7 @@ let result =
         let ctx' =
           Typectx.ot_add_to_right Typectx.empty (decreasing_arg.x, argty)
         in
-        let ctx'' = Typectx.ut_force_add_to_right ctx' (f.x, UtNormal f.ty) in
+        let ctx'' = Typectx.ut_force_add_to_right ctx' (Pieces.known_var f.x, UtNormal f.ty) in
 
         let () = print_endline "What is in our contexts" in
         let () = print_endline "nctx : " in
