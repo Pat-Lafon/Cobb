@@ -229,7 +229,7 @@ module Pieces = struct
         let () =
           match Hashtbl.find_opt asts name with
           | None -> failwith name
-          | Some x -> ()
+          | Some x -> Hashtbl.add asts new_name x
         in
         (* TODO: remove this since context addition checks this already ?*)
         if Hashtbl.mem ht name then failwith "duplicate key";
