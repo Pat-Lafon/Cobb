@@ -152,7 +152,7 @@ module Blocks = struct
     let new_blocks = collection.new_blocks in
     (* New and old blocks get merged together *)
     (* These will make up the old blocks of the next collection *)
-    let old_blocks = block_collection_get_full_map collection in
+    let old_blocks = collection.old_blocks in
 
     (* For each operation in the list, we are going to iterate though it's argument types and pull out blocks that match said types *)
     (* Atleast one arguement use to create each new block must be from `new_blocks`, the rest are from `old_blocks`(which can also have blocks from `new_blocks`). This guarantees that all created blocks are of `new_blocks[i].size + 1` *)
@@ -162,12 +162,12 @@ module Blocks = struct
         (fun (component, (args, ret_type)) : (block * base_type) list ->
           (* Loop from 0 to args.len - 1 to choose an index for the `new_blocks`*)
           List.concat_map
-            (fun i ->
+            (fun new_set ->
               (* Loop over each of the arguments, getting a list of blocks for each one *)
               let l =
                 List.mapi
                   (fun j ty : block list ->
-                    if i == j then block_map_get new_blocks ty
+                    if List.mem j new_set then block_map_get new_blocks ty
                     else block_map_get old_blocks ty)
                   args
               in
@@ -247,7 +247,7 @@ module Blocks = struct
                         |> Printf.printf "Added the following block \n %s\n";
                         Some ((block_id, new_ut, new_ctx), ret_type))
                 l)
-            (range (List.length args)))
+            (range (List.length args) |> superset))
         operations
     in
 
