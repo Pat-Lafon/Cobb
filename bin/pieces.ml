@@ -155,6 +155,17 @@ module Pieces = struct
     | Underty.MMT.Ut t -> Underty.MMT.Ut (aux t before after)
     | Underty.MMT.Consumed t -> Underty.MMT.Consumed (aux t before after)
 
+  let ut_subst (ut : UT.t) (ht : (id, id) Hashtbl.t) =
+    let renamed_ty =
+      List.fold_left
+        (fun t name ->
+          match Hashtbl.find_opt ht name with
+          | Some new_name -> Underty.T.subst_id t name new_name
+          | None -> t)
+        ut (Underty.T.fv ut)
+    in
+    renamed_ty
+
   let ctx_subst ctx (ht : (id, id) Hashtbl.t) =
     List.map
       (fun (name, ty) ->
