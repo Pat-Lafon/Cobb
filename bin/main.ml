@@ -59,201 +59,211 @@ let () = print_endline "Hello, World!"
 
  *)
 
+(** TODO: final report:
+  1. right now the benchmarks are hardcoded. Need to iterate through the existing benchmarks. E.g. in ../underapproximation_type/data/benchmark/quickchick, ../underapproximation_type/data/benchmark/uniquel, etc.
+  <2023-11-29, David Deng> *)
+
 (** As if we are setting this up from main *)
-let meta_config_file = "meta-config.json"
+let source_files = [ 
+  "underapproximation_type/data/benchmark/quickchick/sizedlist/prog.ml";
+  (* "underapproximation_type/data/benchmark/quickchick/sortedlist/prog.ml"; *) 
+  (* "underapproximation_type/data/benchmark/quickchick/sizedtree/prog.ml"; *)
+  ]
 
-let source_file =
-  "underapproximation_type/data/benchmark/quickchick/sizedlist/prog.ml"
+let refine_files = [ 
+  "underapproximation_type/data/benchmark/quickchick/sizedlist/_under.ml";
+  (* "underapproximation_type/data/benchmark/quickchick/sortedlist/_under.ml"; (1* leaf error *1) *)
+  (* "underapproximation_type/data/benchmark/quickchick/sizedtree/_underml"; *)
+  ]
 
-let refine_file =
-  "underapproximation_type/data/benchmark/quickchick/sizedlist/_under.ml"
+let run_benchmark source_file refine_file =
+  (* This sets up global variables pointing to the information in meta-config.json *)
+  let meta_config_file = "meta-config.json" in
+  let () = Env.load_meta meta_config_file in
 
-(* This sets up global variables pointing to the information in meta-config.json *)
-let () = Env.load_meta meta_config_file
+  (* prim.ml:init sets up global maps of the stuff that is loaded from the config *)
+  let () = Config.load refine_file in
 
-(* prim.ml:init sets up global maps of the stuff that is loaded from the config *)
-let () = Config.load refine_file
+  (*** Notations: ... todo *)
+  (*** Libs: a list of library functions loaded in from builtin_randomness_coverage_typing because ...todo *)
+  (*** refinements: a list of specifications from the provided `refine_file`
+      An option for ...todo
+      And a name type pair for the specifications*)
+  (* for Inputstage, see underapproximation_type/driver/inputstage.ml *)
+  let notations, libs, refinements =
+    Inputstage.load_user_defined_under_refinments refine_file in
 
-(*** Notations: ... todo *)
-(*** Libs: a list of library functions loaded in from builtin_randomness_coverage_typing because ...todo *)
-(*** refinements: a list of specifications from the provided `refine_file`
-    An option for ...todo
-    And a name type pair for the specifications*)
-(* for Inputstage, see underapproximation_type/driver/inputstage.ml *)
-let notations, libs, refinements =
-  Inputstage.load_user_defined_under_refinments refine_file
+  let _ = assert (List.length notations == 0) in
+  let dbg_sexp sexp = print_endline (Core.Sexp.to_string_hum sexp) in
+  let dbg (ut : UT.t) = dbg_sexp (UT.sexp_of_t ut) in
+  (* let () = print_endline (List.length notations |> string_of_int) in *)
+  let () = print_endline (List.length libs |> string_of_int) in
 
-let _ = assert (List.length notations == 0)
-let dbg_sexp sexp = print_endline (Core.Sexp.to_string_hum sexp)
-let dbg (ut : UT.t) = dbg_sexp (UT.sexp_of_t ut)
-(* let () = print_endline (List.length notations |> string_of_int)
-let () = print_endline (List.length libs |> string_of_int) *)
-
-(* let _ =
-  List.map
-    (fun (name, x) ->
-      print_endline name;
-      dbg x)
-    libs *)
-
-(* let () = print_endline (List.length refinements |> string_of_int) *)
-let _ = List.map (fun (_, (n, _)) -> print_endline n) refinements
-let code = Inputstage.load_ssa libs source_file
-
-let nctx =
-  Typectx.(
-    List.fold_left
-      (fun ctx (name, ty) -> add_to_right ctx (name, ty))
-      empty notations)
-
-let libctx =
-  List.fold_left
-    (fun ctx (x, ty) -> Nctx.add_to_right ctx (x, ty))
-    Nctx.empty libs
-
-let seeds, components = Pieces.seeds_and_components libs
-
-(* todo Add argument variables to seeds *)
-(* todo Add recursive component *)
-
-(* Example below shows how to build a term and call inference on it *)
-(* let example_term () =
-  let int_gen = List.nth libs 2 in
-
-  let t_int_gen : id NL.typed =
-    { x = fst int_gen; ty = (None, Underty.T.erase (snd int_gen)) }
-  in
-
-  let four = NL.V { x = NL.Lit (NL.ConstI 4); ty = (None, Ty_int) } in
-  let _, prog =
-    Pieces.mk_ctor
-      { x = "tt"; ty = (None, Ty_unit) }
-      []
-      (fun v ->
-        {
-          x =
-            Pieces.mk_app t_int_gen [ v ] (fun v ->
-                NL.value_to_term (NL.id_to_value v))
-            |> snd;
-          ty = (None, Ty_int);
-        })
-  in
-  let res =
-    Typecheck.Undercheck.term_type_infer
-      { nctx; ctx = Typectx.empty; libctx }
-      { x = prog; ty = (None, Ty_int) }
-  in
-(*
-  print_endline "Typed int_gen example";
-  dbg res;
-  dbg_sexp (NL.sexp_of_term prog); *)
-  ()
-
-let _ = example_term () *)
-
-(* Asserting that there is only one program to synthesize*)
-let () = assert (List.length refinements == 1)
-let refinement = List.hd refinements
-
-let result =
-  (fun (_, (name', ty)) ->
-    match List.find_opt (fun { name; _ } -> String.equal name name') code with
-    | None ->
-        _failatwith __FILE__ __LINE__
-          (spf "The source code of given refinement type '%s' is missing." name')
-    | Some { body; name } ->
-        print_string "name : ";
+  (* let _ =
+    List.map
+      (fun (name, x) ->
         print_endline name;
-        (* term_type_check *)
-        let body : NL.term NL.typed = body in
+        dbg x)
+      libs *)
 
-        let body : NL.value NL.typed =
-          match body.x with NL.V x -> x | _ -> failwith "unimplemented"
-        in
+  (* let () = print_endline (List.length refinements |> string_of_int) in *)
+  let _ = List.map (fun (_, (n, _)) -> print_endline n) refinements in
+  let code = Inputstage.load_ssa libs source_file in
 
-        (* passing off to value_type_check *)
+  let nctx =
+    Typectx.(
+      List.fold_left
+        (fun ctx (name, ty) -> add_to_right ctx (name, ty))
+        empty notations) in
 
-        (* Unwrap the function into a recursive call *)
-        let[@warning "-8"] (NL.Fix { fixname; fstarg; lambody }) =
-          (body.NL.x [@warning "+8"])
-        in
-        (* and unwrap the type signature *)
-        let[@warning "-8"] (UnderTy_over_arrow { argname; argty; retty }) =
-          (ty [@warning "+8"])
-        in
+  let libctx =
+    List.fold_left
+      (fun ctx (x, ty) -> Nctx.add_to_right ctx (x, ty))
+      Nctx.empty libs in
 
-        let decreasing_arg =
-          NL.{ x = Pieces.known_var (Rename.unique fstarg.x); ty = fstarg.ty }
-        in
-        let prop =
-          Typecheck.Undercheck.make_order_constraint decreasing_arg.x argname
-            (snd fstarg.ty)
-        in
-        let _ =
-          Typecheck.Undercheck.erase_check_mk_id __FILE__ __LINE__
-            decreasing_arg (ot_to_ut argty)
-        in
+  let seeds, components = Pieces.seeds_and_components libs in
 
-        let f =
-          Typecheck.Undercheck.erase_check_mk_id __FILE__ __LINE__ fixname ty
-        in
-        let f =
-          UL.
-            {
-              x = f.x;
-              ty =
-                UT.modify_retty
-                  (fun _ prop' ->
-                    P.conjunct_tope_uprop __FILE__ __LINE__ [ prop; prop' ])
-                  f.ty;
-            }
-        in
-        let ctx' =
-          Typectx.ot_add_to_right Typectx.empty (decreasing_arg.x, argty)
-        in
-        let ctx'' = Typectx.ut_force_add_to_right ctx' (Pieces.known_var f.x, UtNormal f.ty) in
+  (* todo Add argument variables to seeds *)
+  (* todo Add recursive component *)
 
-(*         let () = print_endline "What is in our contexts" in
-        let () = print_endline "nctx : " in
-        let _ = List.map (fun (x, _) -> print_endline x) nctx in
-        let () = print_endline "ctx'' : " in
-        let _ = List.map (fun (x, _) -> print_endline x) ctx'' in
-        let () = print_endline "libctx : " in
-        let _ = List.map (fun (x, _) -> print_endline x) libctx in
-        let () = print_newline () in *)
+  (* Example below shows how to build a term and call inference on it *)
+  (* let example_term () =
+    let int_gen = List.nth libs 2 in
 
-        let retty = UT.subst_id retty argname decreasing_arg.x in
-        let lambody = NL.subst_id (fstarg.x, decreasing_arg.x) lambody in
+    let t_int_gen : id NL.typed =
+      { x = fst int_gen; ty = (None, Underty.T.erase (snd int_gen)) }
+    in
 
-(*         dbg retty;
-        print_endline "\n\n===\n"; *)
+    let four = NL.V { x = NL.Lit (NL.ConstI 4); ty = (None, Ty_int) } in
+    let _, prog =
+      Pieces.mk_ctor
+        { x = "tt"; ty = (None, Ty_unit) }
+        []
+        (fun v ->
+          {
+            x =
+              Pieces.mk_app t_int_gen [ v ] (fun v ->
+                  NL.value_to_term (NL.id_to_value v))
+              |> snd;
+            ty = (None, Ty_int);
+          })
+    in
+    let res =
+      Typecheck.Undercheck.term_type_infer
+        { nctx; ctx = Typectx.empty; libctx }
+        { x = prog; ty = (None, Ty_int) }
+    in
+  (*
+    print_endline "Typed int_gen example";
+    dbg res;
+    dbg_sexp (NL.sexp_of_term prog); *)
+    ()
 
-        let uctx = { nctx; ctx = ctx''; libctx } in
+  let _ = example_term () *)
 
-        let seeds =
-          List.map
-            (fun ((id, term), ty) : (Blocks.block * ty) ->
-              let ut = Typecheck.Undercheck.term_type_infer uctx term in
-              let seed_utx =
-                Typectx.ut_force_add_to_right ctx'' (id, UtNormal ut)
-              in
-              let term_ty = term.ty in
-              (({ x = id; ty = term_ty }, ut, seed_utx), ty))
-            seeds
-        in
+  (* Asserting that there is only one program to synthesize*)
+  let () = assert (List.length refinements == 1) in
+  let refinement = List.hd refinements in
 
-        let _ = Synthesis.synthesis uctx retty 1 seeds components in
+  let result =
+    (fun (_, (name', ty)) ->
+      match List.find_opt (fun { name; _ } -> String.equal name name') code with
+      | None ->
+          _failatwith __FILE__ __LINE__
+            (spf "The source code of given refinement type '%s' is missing." name')
+      | Some { body; name } ->
+          print_string "name : ";
+          print_endline name;
+          (* term_type_check *)
+          let body : NL.term NL.typed = body in
 
-        let res =
-          (* Undersub.type_err_to_false (fun () ->
-              Typecheck.Undercheck.term_type_check { nctx; ctx; libctx } body
-                ty) *)
-          (* Undersub.type_err_to_false (fun () -> *)
-          Typecheck.Undercheck.term_type_infer
-            { nctx; ctx = ctx''; libctx }
-            lambody
-        in
-        res) (* List.mapi *)
-    refinement
+          let body : NL.value NL.typed =
+            match body.x with NL.V x -> x | _ -> failwith "unimplemented"
+          in
 
-let () = dbg result
+          (* passing off to value_type_check *)
+
+          (* Unwrap the function into a recursive call *)
+          let[@warning "-8"] (NL.Fix { fixname; fstarg; lambody }) =
+            (body.NL.x [@warning "+8"])
+          in
+          (* and unwrap the type signature *)
+          let[@warning "-8"] (UnderTy_over_arrow { argname; argty; retty }) =
+            (ty [@warning "+8"])
+          in
+
+          let decreasing_arg =
+            NL.{ x = Pieces.known_var (Rename.unique fstarg.x); ty = fstarg.ty }
+          in
+          let prop =
+            Typecheck.Undercheck.make_order_constraint decreasing_arg.x argname
+              (snd fstarg.ty)
+          in
+          let _ =
+            Typecheck.Undercheck.erase_check_mk_id __FILE__ __LINE__
+              decreasing_arg (ot_to_ut argty)
+          in
+
+          let f =
+            Typecheck.Undercheck.erase_check_mk_id __FILE__ __LINE__ fixname ty
+          in
+          let f =
+            UL.
+              {
+                x = f.x;
+                ty =
+                  UT.modify_retty
+                    (fun _ prop' ->
+                      P.conjunct_tope_uprop __FILE__ __LINE__ [ prop; prop' ])
+                    f.ty;
+              }
+          in
+          let ctx' =
+            Typectx.ot_add_to_right Typectx.empty (decreasing_arg.x, argty)
+          in
+          let ctx'' = Typectx.ut_force_add_to_right ctx' (Pieces.known_var f.x, UtNormal f.ty) in
+
+  (*         let () = print_endline "What is in our contexts" in
+          let () = print_endline "nctx : " in
+          let _ = List.map (fun (x, _) -> print_endline x) nctx in
+          let () = print_endline "ctx'' : " in
+          let _ = List.map (fun (x, _) -> print_endline x) ctx'' in
+          let () = print_endline "libctx : " in
+          let _ = List.map (fun (x, _) -> print_endline x) libctx in
+          let () = print_newline () in *)
+
+          let retty = UT.subst_id retty argname decreasing_arg.x in
+          let lambody = NL.subst_id (fstarg.x, decreasing_arg.x) lambody in
+
+  (*         dbg retty;
+          print_endline "\n\n===\n"; *)
+
+          let uctx = { nctx; ctx = ctx''; libctx } in
+
+          let seeds =
+            List.map
+              (fun ((id, term), ty) : (Blocks.block * ty) ->
+                let ut = Typecheck.Undercheck.term_type_infer uctx term in
+                let seed_utx =
+                  Typectx.ut_force_add_to_right ctx'' (id, UtNormal ut)
+                in
+                let term_ty = term.ty in
+                (({ x = id; ty = term_ty }, ut, seed_utx), ty))
+              seeds
+          in
+
+          let _ = Synthesis.synthesis uctx retty 1 seeds components in
+
+          let res =
+            (* Undersub.type_err_to_false (fun () ->
+                Typecheck.Undercheck.term_type_check { nctx; ctx; libctx } body
+                  ty) *)
+            (* Undersub.type_err_to_false (fun () -> *)
+            Typecheck.Undercheck.term_type_infer
+              { nctx; ctx = ctx''; libctx }
+              lambody
+          in
+          res) (* List.mapi *)
+      refinement in dbg result
+
+  let () = List.iter2 run_benchmark source_files refine_files
