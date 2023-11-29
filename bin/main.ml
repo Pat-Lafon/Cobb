@@ -1,3 +1,4 @@
+[@@@landmark "auto"]
 (* underapproximation_type/typecheck *)
 open Typecheck
 
@@ -241,7 +242,7 @@ let result =
             seeds
         in
 
-        let _ = Synthesis.synthesis uctx retty 2 seeds components in
+        let _ = Synthesis.synthesis uctx retty 1 seeds components in
 
         let res =
           (* Undersub.type_err_to_false (fun () ->
