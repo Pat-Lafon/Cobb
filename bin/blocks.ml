@@ -15,6 +15,17 @@ open Pieces
 (** Produces a list from 0..n-1*)
 let range n = List.init n (fun x -> x)
 
+(** https://stackoverflow.com/questions/40141955/computing-a-set-of-all-subsets-power-set
+  *)
+let rec superset_helper = function
+  | [] -> [ [] ]
+  | x :: xs ->
+      let ps = superset_helper xs in
+      ps @ List.map (fun ss -> x :: ss) ps
+
+(* Superset, except remove the first element which is the nil element *)
+let superset l = superset_helper l |> List.tl
+
 (** Takes a list and performs a giant multi-cartesian product
   * Used to compute a new list of function arguments from a list of possible arguments for each position
 *)
