@@ -226,7 +226,7 @@ module Blocks = struct
                             then false
                             else
                               Typecheck.Undersub.mmt_check_bool "" 0 joined_ctx
-                                (MMT.Ut (MMT.UtNormal new_ut)) arg_t)
+                                arg_t (MMT.Ut (MMT.UtNormal new_ut)))
                           (arg_names
                           |> List.map (fun ({ x; ty } : id NNtyped.typed) -> x)
                           )
@@ -243,8 +243,9 @@ module Blocks = struct
                             (block_id.x, UtNormal new_ut)
                         in
 
-                        Pieces.ast_to_string block_id.x
-                        |> Printf.printf "Added the following block \n %s\n";
+                        Printf.printf "Added the following block \n %s\n %s\n"
+                          (Pieces.ast_to_string block_id.x)
+                          (u_type_to_string new_ut);
                         Some ((block_id, new_ut, new_ctx), ret_type))
                 l)
             (range (List.length args) |> superset))
