@@ -85,17 +85,17 @@ let notations, libs, refinements =
 let _ = assert (List.length notations == 0)
 let dbg_sexp sexp = print_endline (Core.Sexp.to_string_hum sexp)
 let dbg (ut : UT.t) = dbg_sexp (UT.sexp_of_t ut)
-let () = print_endline (List.length notations |> string_of_int)
-let () = print_endline (List.length libs |> string_of_int)
+(* let () = print_endline (List.length notations |> string_of_int)
+let () = print_endline (List.length libs |> string_of_int) *)
 
-let _ =
+(* let _ =
   List.map
     (fun (name, x) ->
       print_endline name;
       dbg x)
-    libs
+    libs *)
 
-let () = print_endline (List.length refinements |> string_of_int)
+(* let () = print_endline (List.length refinements |> string_of_int) *)
 let _ = List.map (fun (_, (n, _)) -> print_endline n) refinements
 let code = Inputstage.load_ssa libs source_file
 
@@ -212,20 +212,20 @@ let result =
         in
         let ctx'' = Typectx.ut_force_add_to_right ctx' (Pieces.known_var f.x, UtNormal f.ty) in
 
-        let () = print_endline "What is in our contexts" in
+(*         let () = print_endline "What is in our contexts" in
         let () = print_endline "nctx : " in
         let _ = List.map (fun (x, _) -> print_endline x) nctx in
         let () = print_endline "ctx'' : " in
         let _ = List.map (fun (x, _) -> print_endline x) ctx'' in
         let () = print_endline "libctx : " in
         let _ = List.map (fun (x, _) -> print_endline x) libctx in
-        let () = print_newline () in
+        let () = print_newline () in *)
 
         let retty = UT.subst_id retty argname decreasing_arg.x in
         let lambody = NL.subst_id (fstarg.x, decreasing_arg.x) lambody in
 
-        dbg retty;
-        print_endline "\n\n===\n";
+(*         dbg retty;
+        print_endline "\n\n===\n"; *)
 
         let uctx = { nctx; ctx = ctx''; libctx } in
 

@@ -2,7 +2,7 @@ let[@library] eq =
   let a = (true : [%v: int]) [@over] in
   let b = (true : [%v: int]) [@over] in
   (iff v (a == b) : [%v: bool]) [@under]
-
+(*
 let[@library] neq =
   let a = (true : [%v: int]) [@over] in
   let b = (true : [%v: int]) [@over] in
@@ -27,6 +27,7 @@ let[@library] ge =
   let a = (true : [%v: int]) [@over] in
   let b = (true : [%v: int]) [@over] in
   (iff v (a >= b) : [%v: bool]) [@under]
+*)
 
 let[@library] plus =
   let a = (true : [%v: int]) [@over] in

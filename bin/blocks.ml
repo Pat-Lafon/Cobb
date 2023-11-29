@@ -1,3 +1,5 @@
+[@@@landmark "auto"]
+
 open Typecheck
 open Underctx
 open Languages
@@ -39,6 +41,12 @@ let%test "range" = range 5 = [ 0; 1; 2; 3; 4 ]
 module Blocks = struct
   type base_type = Ntyped.t
   type block = id NNtyped.typed * UT.t * MustMayTypectx.ctx
+
+  let block_compare ((id1, _, _) : block) ((id2, _, _) : block) =
+    compare id1.x id2.x
+
+  let block_list_compare (l1 : block list) (l2 : block list) =
+    List.compare block_compare l1 l2
 
   (* bool -> var1, true
      int -> 0, 1, ...*)
@@ -196,11 +204,37 @@ module Blocks = struct
                   match new_ut with
                   | UnderTy_base { prop = Lit (ACbool false); _ } -> None
                   | _ ->
-                      let new_ctx =
-                        Typectx.ut_force_add_to_right joined_ctx
-                          (block_id.x, UtNormal new_ut)
-                      in
-                      Some ((block_id, new_ut, new_ctx), ret_type))
+                      if
+                        List.for_all
+                          (fun id ->
+                            let arg_id, arg_t =
+                              List.find (fun (id', _) -> id = id') joined_ctx
+                            in
+
+                            if not (NT.eq (MMT.erase arg_t) (UT.erase new_ut))
+                            then true
+                            else
+                              Typecheck.Undersub.mmt_check_bool "" 0 joined_ctx
+                                (MMT.Ut (MMT.UtNormal new_ut)) arg_t)
+                          (arg_names
+                          |> List.map (fun ({ x; ty } : id NNtyped.typed) -> x)
+                          )
+                      then (
+                        let new_ctx =
+                          Typectx.ut_force_add_to_right joined_ctx
+                            (block_id.x, UtNormal new_ut)
+                        in
+
+                        Pieces.ast_to_string block_id.x
+                        |> Printf.printf "Added the following block \n %s\n";
+                        Some ((block_id, new_ut, new_ctx), ret_type))
+                      else
+                        let () =
+                          Printf.printf
+                            "Failed to add the following block \n %s\n"
+                            (Pieces.ast_to_string block_id.x)
+                        in
+                        None)
                 l)
             (range (List.length args)))
         operations
@@ -209,7 +243,10 @@ module Blocks = struct
     (* *)
     let new_map = block_map_init resulting_blocks in
 
-    { new_blocks = new_map; old_blocks = new_blocks }
+    {
+      new_blocks = new_map;
+      old_blocks = block_collection_get_full_map collection;
+    }
 end
 
 let under_ty_to_base_ty (ty : UT.t) : Blocks.base_type =
@@ -223,17 +260,26 @@ module Synthesis = struct
   type program = NL.term NNtyped.typed
 
   (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
-  let under_blocks_join (uctx : uctx) (u_b_list : Blocks.block list)
-      (target_ty : UT.t) : Blocks.block list =
+  let under_blocks_join (uctx : uctx) (collection : Blocks.block_collection)
+      (target_ty : UT.t) : program option =
+    (* Get all blocks from the collection*)
+    let block_map = Blocks.block_collection_get_full_map collection in
+    let base_type = under_ty_to_base_ty target_ty in
+    let u_b_list = Blocks.block_map_get block_map base_type in
+
+    (*
+    print_endline "Blocks:";
+    Blocks.block_collection_print collection; *)
+
     (* How do we want to combine blocks together? *)
     let super_type_list, sub_type_list =
       List.partition
         (fun (_, ut, ctx) ->
-          Printf.printf "target_ty %s\n" (ut |> Blocks.u_type_to_string);
-
+          (* Printf.printf "target_ty %s\n" (ut |> Blocks.u_type_to_string); *)
           Undersub.subtyping_check_bool "" 0 ctx ut target_ty)
         u_b_list
     in
+
     print_endline "Super Types:";
     List.iter
       (fun x -> Blocks.block_to_string x |> print_endline)
@@ -242,15 +288,33 @@ module Synthesis = struct
     List.iter (fun x -> Blocks.block_to_string x |> print_endline) sub_type_list;
     print_endline "End";
 
-    (* TODO, actually do some joining of blocks*)
-    super_type_list
+    (* I assume that there is always atleast one super type that satisfies the
+       program because that type is of the generic generator *)
+    let potential_program = List.hd super_type_list in
+    (* We will check all of the other super_types to see if there is a program
+       that is smaller but still works *)
+    let potential_program =
+      List.fold_left
+        (fun p e ->
+          let _, ut, ctx = p in
+          let _, ut', ctx' = e in
+          let combined_ctx, mapping = ctx_union_r ctx ctx' in
+          let updated_ut = Pieces.ut_subst ut' mapping in
 
-  let choose_program (programs : Blocks.block list) (target_type : UT.t) :
-      Blocks.block option =
-    (* todo, do something better than just choosing the first one*)
-    List.find_opt
-      (fun (_, ty, p) -> Undersub.subtyping_check_bool "" 0 p ty target_type)
-      programs
+          if Undersub.subtyping_check_bool "" 0 combined_ctx ut updated_ut then
+            p
+          else e)
+        potential_program (List.tl super_type_list)
+    in
+
+    (* actually do some joining of blocks*)
+    if List.length sub_type_list > 1 then
+      (* it is worth trying to *)
+      failwith "todo"
+    else (
+      print_endline "Potential Program:";
+      Blocks.block_to_string potential_program |> print_endline;
+      exit 1)
 
   let rec synthesis_helper (max_depth : int) (target_type : UT.t) (uctx : uctx)
       (collection : Blocks.block_collection)
@@ -258,25 +322,14 @@ module Synthesis = struct
         (Pieces.component * (Blocks.base_type list * Blocks.base_type)) list) :
       program option =
     match max_depth with
-    | 0 -> None
-    | depth -> (
-        (* Get all blocks from the collection*)
-        let block_map = Blocks.block_collection_get_full_map collection in
-        let base_type = under_ty_to_base_ty target_type in
-        let blocks = Blocks.block_map_get block_map base_type in
-
+    | 0 ->
         (* Join blocks together into programs*)
-        let programs = under_blocks_join uctx blocks target_type in
-        (* Check if any of the programs satisfy the target type*)
-        match choose_program programs target_type with
-        | Some (_, _, _) ->
-            print_endline "We have a program, are we done?";
-            failwith "todo"
-        | None ->
-            (* If not, increment the collection and try again*)
-            synthesis_helper (depth - 1) target_type uctx
-              (Blocks.block_collection_increment collection operations uctx)
-              operations)
+        under_blocks_join uctx collection target_type
+    | depth ->
+        (* If not, increment the collection and try again*)
+        synthesis_helper (depth - 1) target_type uctx
+          (Blocks.block_collection_increment collection operations uctx)
+          operations
 
   (** Given some initial setup, run the synthesis algorithm *)
   let synthesis (uctx : uctx) (target_type : UT.t) (max_depth : int)
@@ -285,6 +338,6 @@ module Synthesis = struct
         (Pieces.component * (Blocks.base_type list * Blocks.base_type)) list) :
       program option =
     let init_collection = Blocks.block_collection_init inital_seeds in
-    Blocks.block_collection_print init_collection;
+    (*         Blocks.block_collection_print init_collection; *)
     synthesis_helper max_depth target_type uctx init_collection operations
 end
