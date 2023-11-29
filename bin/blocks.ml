@@ -205,21 +205,28 @@ module Blocks = struct
                   | UnderTy_base { prop = Lit (ACbool false); _ } -> None
                   | _ ->
                       if
-                        List.for_all
+                        List.exists
                           (fun id ->
                             let arg_id, arg_t =
                               List.find (fun (id', _) -> id = id') joined_ctx
                             in
 
                             if not (NT.eq (MMT.erase arg_t) (UT.erase new_ut))
-                            then true
+                            then false
                             else
                               Typecheck.Undersub.mmt_check_bool "" 0 joined_ctx
                                 (MMT.Ut (MMT.UtNormal new_ut)) arg_t)
                           (arg_names
                           |> List.map (fun ({ x; ty } : id NNtyped.typed) -> x)
                           )
-                      then (
+                      then
+                        let () =
+                          Printf.printf
+                            "Failed to add the following block \n %s\n"
+                            (Pieces.ast_to_string block_id.x)
+                        in
+                        None
+                      else
                         let new_ctx =
                           Typectx.ut_force_add_to_right joined_ctx
                             (block_id.x, UtNormal new_ut)
@@ -228,13 +235,6 @@ module Blocks = struct
                         Pieces.ast_to_string block_id.x
                         |> Printf.printf "Added the following block \n %s\n";
                         Some ((block_id, new_ut, new_ctx), ret_type))
-                      else
-                        let () =
-                          Printf.printf
-                            "Failed to add the following block \n %s\n"
-                            (Pieces.ast_to_string block_id.x)
-                        in
-                        None)
                 l)
             (range (List.length args)))
         operations
@@ -282,10 +282,16 @@ module Synthesis = struct
 
     print_endline "Super Types:";
     List.iter
-      (fun x -> Blocks.block_to_string x |> print_endline)
+      (fun (id, _, _) ->
+        Pieces.ast_to_string ~erased:true (id : id NNtyped.typed).x
+        |> print_endline)
       super_type_list;
     print_endline "Sub Types:";
-    List.iter (fun x -> Blocks.block_to_string x |> print_endline) sub_type_list;
+    List.iter
+      (fun (id, _, _) ->
+        Pieces.ast_to_string ~erased:true (id : id NNtyped.typed).x
+        |> print_endline)
+      sub_type_list;
     print_endline "End";
 
     (* I assume that there is always atleast one super type that satisfies the
@@ -313,7 +319,8 @@ module Synthesis = struct
       failwith "todo"
     else (
       print_endline "Potential Program:";
-      Blocks.block_to_string potential_program |> print_endline;
+      let id, _, _ = potential_program in
+      Pieces.ast_to_string ~erased:true id.x |> print_endline;
       exit 1)
 
   let rec synthesis_helper (max_depth : int) (target_type : UT.t) (uctx : uctx)
