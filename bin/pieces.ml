@@ -197,9 +197,8 @@ module Pieces = struct
     let renamed_ty =
       List.fold_left
         (fun t name ->
-          match Hashtbl.find_opt ht name with
-          | Some new_name -> Underty.T.subst_id t name new_name
-          | None -> t)
+          let new_name = Hashtbl.find ht name in
+          Underty.T.subst_id t name new_name)
         ut (Underty.T.fv ut)
     in
     renamed_ty
@@ -211,20 +210,21 @@ module Pieces = struct
         let renamed_ty =
           List.fold_left
             (fun t name ->
-              match Hashtbl.find_opt ht name with
-              | Some new_name -> mmt_subst_id t name new_name
-              | None -> t)
+              let new_name = Hashtbl.find ht name in
+              mmt_subst_id t name new_name)
             ty (Underty.MMT.fv ty)
         in
-        match Hashtbl.find_opt ht name with
-        | Some new_name -> (new_name, renamed_ty)
-        | None -> (name, ty))
+        let new_name = Hashtbl.find ht name in
+        (new_name, renamed_ty))
       ctx
 
   let freshen (ctx : Typectx.ctx) =
     let ht = Hashtbl.create (List.length ctx) in
     let maybe_freshen_one (name : id) =
       if Hashtbl.mem known name then (
+        Hashtbl.add ht name name;
+        name)
+      else
         let new_name = Rename.unique name in
         let () =
           match Hashtbl.find_opt asts name with
@@ -234,10 +234,7 @@ module Pieces = struct
         (* TODO: remove this since context addition checks this already ?*)
         if Hashtbl.mem ht name then failwith "duplicate key";
         Hashtbl.add ht name new_name;
-        new_name)
-      else (
-        Hashtbl.add ht name name;
-        name)
+        new_name
     in
     let _ = List.map (map_fst maybe_freshen_one) ctx in
     let res = ctx_subst ctx ht in
