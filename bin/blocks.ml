@@ -1,5 +1,3 @@
-[@@@landmark "auto"]
-
 open Typecheck
 open Underctx
 open Languages

@@ -1,4 +1,3 @@
-[@@@landmark "auto"]
 (* underapproximation_type/typecheck *)
 open Typecheck
 
