@@ -105,6 +105,11 @@ module Blocks = struct
           (P.to_string prop)
     | _ -> UT.sexp_of_t ty |> Core.Sexp.to_string_hum
 
+  let mmt_type_to_string (ty : MMT.t) : id =
+    match ty with
+    | MMT.Ut (MMT.UtNormal ut) -> u_type_to_string ut
+    | _ -> MMT.sexp_of_t ty |> Core.Sexp.to_string_hum
+
   let block_to_string (({ x = name; ty }, ut, ctx) : block) : id =
     Printf.sprintf "%s: %s : %s\n" name
       (base_type_to_string (snd ty))
