@@ -266,13 +266,6 @@ module Blocks = struct
     }
 end
 
-let under_ty_to_base_ty (ty : UT.t) : Blocks.base_type =
-  match ty with
-  | UnderTy_base { basename : id; normalty : normalty; prop : P.t } -> normalty
-  | UnderTy_under_arrow _ -> failwith "not a base type"
-  | UnderTy_over_arrow _ -> failwith "not a base type"
-  | UnderTy_tuple _ -> failwith "not a base type"
-
 module Synthesis = struct
   type program = NL.term NNtyped.typed
 
@@ -281,7 +274,7 @@ module Synthesis = struct
       (target_ty : UT.t) : program option =
     (* Get all blocks from the collection*)
     let block_map = Blocks.block_collection_get_full_map collection in
-    let base_type = under_ty_to_base_ty target_ty in
+    let base_type = UT.erase target_ty in
     let u_b_list = Blocks.block_map_get block_map base_type in
 
     (*
