@@ -24,58 +24,63 @@ open Languages.StrucNA
 open Pieces
 open Blocks
 
-(*
-
-(* All of the basenames come as some string ID... not sure where from*)
-let my_basename = "v1"
-(* The base version of the type*)
-let my_normalty = Ty_arrow (Ty_int, Ty_int)
-(* The predicate attached to the base type*)
-let my_prop = Lit (ACbool true)
-
-(* This is some kind of list of (String, Underapproximate Types from ast/underty.ml)*)
-let my_libctx = [("Inc", UnderTy_base {basename = my_basename; normalty = my_normalty; prop = my_prop})]
-
-(*
-  I'm not 100% on what it contains but it looks like a context, a normalized context, and a library context
-*)
-let under_ctx = {
-  ctx = [];
-  nctx = [];
-  libctx = my_libctx;
+type synth_input = {
+  name : string;
+  source_file : string;
+  refine_file : string;
+  bound : int;
 }
 
-(* Some normalized term in the language which has a type that doesn't make much sense to me*)
-let term = Languages.NL.V ({x=(Lit (ConstI 1)); ty= None, Ty_int})
-let typed_term: NL.term NNtyped.typed = {x = term; ty = None, Ty_int}
-
-(* This is our main inference worker *)
-(* It takes an underapproximate context and a normalized term and produces that terms underapproximate type*)
-let x = Typecheck.Undercheck.term_type_infer under_ctx typed_term
-
-let () = print_endline "Hello, World!"
-
-
- *)
-
-(** TODO: final report:
-  1. right now the benchmarks are hardcoded. Need to iterate through the existing benchmarks. E.g. in ../underapproximation_type/data/benchmark/quickchick, ../underapproximation_type/data/benchmark/uniquel, etc.
-  <2023-11-29, David Deng> *)
-
-(** As if we are setting this up from main *)
-let source_files = [ 
-  "underapproximation_type/data/benchmark/quickchick/sizedlist/prog.ml";
-  (* "underapproximation_type/data/benchmark/quickchick/sortedlist/prog.ml"; *) 
-  (* "underapproximation_type/data/benchmark/quickchick/sizedtree/prog.ml"; *)
+let benchmarks =
+  [
+    {
+      name = "sizedlist";
+      source_file =
+        "underapproximation_type/data/benchmark/quickchick/sizedlist/prog.ml";
+      refine_file =
+        "underapproximation_type/data/benchmark/quickchick/sizedlist/_under.ml";
+      bound = 1;
+    };
+    {
+      name = "sortedlist";
+      source_file =
+        "underapproximation_type/data/benchmark/quickchick/sortedlist/prog.ml";
+      refine_file =
+        "underapproximation_type/data/benchmark/quickchick/sortedlist/_under.ml";
+      bound = 3;
+    };
+    {
+      name = "sizedtree";
+      source_file =
+        "underapproximation_type/data/benchmark/quickchick/sizedtree/prog.ml";
+      refine_file =
+        "underapproximation_type/data/benchmark/quickchick/sizedtree/_under.ml";
+      bound = 3;
+    };
+    {
+      name = "uniquel";
+      source_file = "underapproximation_type/data/benchmark/uniquel/prog.ml";
+      refine_file = "underapproximation_type/data/benchmark/uniquel/_under.ml";
+      bound = 3;
+    };
+    {
+      name = "sizedtree";
+      source_file =
+        "underapproximation_type/data/benchmark/quickchick/sizedtree/prog.ml";
+      refine_file =
+        "underapproximation_type/data/benchmark/quickchick/sizedtree/_under.ml";
+      bound = 3;
+    };
+    {
+      name = "rbtree";
+      source_file = "underapproximation_type/data/benchmark/quickchick/rbtree/prog.ml";
+      refine_file = "underapproximation_type/data/benchmark/quickchick/rbtree/_under.ml";
+      bound = 3;
+    };
   ]
 
-let refine_files = [ 
-  "underapproximation_type/data/benchmark/quickchick/sizedlist/_under.ml";
-  (* "underapproximation_type/data/benchmark/quickchick/sortedlist/_under.ml"; (1* leaf error *1) *)
-  (* "underapproximation_type/data/benchmark/quickchick/sizedtree/_underml"; *)
-  ]
-
-let run_benchmark source_file refine_file =
+(* todo can we get rid of the source_file here?*)
+let run_benchmark source_file refine_file bound =
   (* This sets up global variables pointing to the information in meta-config.json *)
   let meta_config_file = "meta-config.json" in
   let () = Env.load_meta meta_config_file in
@@ -90,7 +95,8 @@ let run_benchmark source_file refine_file =
       And a name type pair for the specifications*)
   (* for Inputstage, see underapproximation_type/driver/inputstage.ml *)
   let notations, libs, refinements =
-    Inputstage.load_user_defined_under_refinments refine_file in
+    Inputstage.load_user_defined_under_refinments refine_file
+  in
 
   let _ = assert (List.length notations == 0) in
   let dbg_sexp sexp = print_endline (Core.Sexp.to_string_hum sexp) in
@@ -99,11 +105,11 @@ let run_benchmark source_file refine_file =
   let () = print_endline (List.length libs |> string_of_int) in
 
   (* let _ =
-    List.map
-      (fun (name, x) ->
-        print_endline name;
-        dbg x)
-      libs *)
+     List.map
+       (fun (name, x) ->
+         print_endline name;
+         dbg x)
+       libs *)
 
   (* let () = print_endline (List.length refinements |> string_of_int) in *)
   let _ = List.map (fun (_, (n, _)) -> print_endline n) refinements in
@@ -113,12 +119,14 @@ let run_benchmark source_file refine_file =
     Typectx.(
       List.fold_left
         (fun ctx (name, ty) -> add_to_right ctx (name, ty))
-        empty notations) in
+        empty notations)
+  in
 
   let libctx =
     List.fold_left
       (fun ctx (x, ty) -> Nctx.add_to_right ctx (x, ty))
-      Nctx.empty libs in
+      Nctx.empty libs
+  in
 
   let seeds, components = Pieces.seeds_and_components libs in
 
@@ -127,38 +135,38 @@ let run_benchmark source_file refine_file =
 
   (* Example below shows how to build a term and call inference on it *)
   (* let example_term () =
-    let int_gen = List.nth libs 2 in
+       let int_gen = List.nth libs 2 in
 
-    let t_int_gen : id NL.typed =
-      { x = fst int_gen; ty = (None, Underty.T.erase (snd int_gen)) }
-    in
+       let t_int_gen : id NL.typed =
+         { x = fst int_gen; ty = (None, Underty.T.erase (snd int_gen)) }
+       in
 
-    let four = NL.V { x = NL.Lit (NL.ConstI 4); ty = (None, Ty_int) } in
-    let _, prog =
-      Pieces.mk_ctor
-        { x = "tt"; ty = (None, Ty_unit) }
-        []
-        (fun v ->
-          {
-            x =
-              Pieces.mk_app t_int_gen [ v ] (fun v ->
-                  NL.value_to_term (NL.id_to_value v))
-              |> snd;
-            ty = (None, Ty_int);
-          })
-    in
-    let res =
-      Typecheck.Undercheck.term_type_infer
-        { nctx; ctx = Typectx.empty; libctx }
-        { x = prog; ty = (None, Ty_int) }
-    in
-  (*
-    print_endline "Typed int_gen example";
-    dbg res;
-    dbg_sexp (NL.sexp_of_term prog); *)
-    ()
+       let four = NL.V { x = NL.Lit (NL.ConstI 4); ty = (None, Ty_int) } in
+       let _, prog =
+         Pieces.mk_ctor
+           { x = "tt"; ty = (None, Ty_unit) }
+           []
+           (fun v ->
+             {
+               x =
+                 Pieces.mk_app t_int_gen [ v ] (fun v ->
+                     NL.value_to_term (NL.id_to_value v))
+                 |> snd;
+               ty = (None, Ty_int);
+             })
+       in
+       let res =
+         Typecheck.Undercheck.term_type_infer
+           { nctx; ctx = Typectx.empty; libctx }
+           { x = prog; ty = (None, Ty_int) }
+       in
+     (*
+       print_endline "Typed int_gen example";
+       dbg res;
+       dbg_sexp (NL.sexp_of_term prog); *)
+       ()
 
-  let _ = example_term () *)
+     let _ = example_term () *)
 
   (* Asserting that there is only one program to synthesize*)
   let () = assert (List.length refinements == 1) in
@@ -166,10 +174,15 @@ let run_benchmark source_file refine_file =
 
   let result =
     (fun (_, (name', ty)) ->
-      match List.find_opt (fun { name; _ } -> String.equal name name') code with
+      match
+        List.find_opt
+          (fun ({ name; _ } : StrucNA.t) -> String.equal name name')
+          code
+      with
       | None ->
           _failatwith __FILE__ __LINE__
-            (spf "The source code of given refinement type '%s' is missing." name')
+            (spf "The source code of given refinement type '%s' is missing."
+               name')
       | Some { body; name } ->
           print_string "name : ";
           print_endline name;
@@ -220,23 +233,24 @@ let run_benchmark source_file refine_file =
           let ctx' =
             Typectx.ot_add_to_right Typectx.empty (decreasing_arg.x, argty)
           in
-          let ctx'' = Typectx.ut_force_add_to_right ctx' (Pieces.known_var f.x, UtNormal f.ty) in
+          let ctx'' =
+            Typectx.ut_force_add_to_right ctx'
+              (Pieces.known_var f.x, UtNormal f.ty)
+          in
 
-  (*         let () = print_endline "What is in our contexts" in
-          let () = print_endline "nctx : " in
-          let _ = List.map (fun (x, _) -> print_endline x) nctx in
-          let () = print_endline "ctx'' : " in
-          let _ = List.map (fun (x, _) -> print_endline x) ctx'' in
-          let () = print_endline "libctx : " in
-          let _ = List.map (fun (x, _) -> print_endline x) libctx in
-          let () = print_newline () in *)
-
+          (* let () = print_endline "What is in our contexts" in
+             let () = print_endline "nctx : " in
+             let _ = List.map (fun (x, _) -> print_endline x) nctx in
+             let () = print_endline "ctx'' : " in
+             let _ = List.map (fun (x, _) -> print_endline x) ctx'' in
+             let () = print_endline "libctx : " in
+             let _ = List.map (fun (x, _) -> print_endline x) libctx in
+             let () = print_newline () in *)
           let retty = UT.subst_id retty argname decreasing_arg.x in
           let lambody = NL.subst_id (fstarg.x, decreasing_arg.x) lambody in
 
-  (*         dbg retty;
-          print_endline "\n\n===\n"; *)
-
+          (* dbg retty;
+             print_endline "\n\n===\n"; *)
           let uctx = { nctx; ctx = ctx''; libctx } in
 
           let seeds =
@@ -251,7 +265,7 @@ let run_benchmark source_file refine_file =
               seeds
           in
 
-          let _ = Synthesis.synthesis uctx retty 1 seeds components in
+          let _ = Synthesis.synthesis uctx retty bound seeds components in
 
           let res =
             (* Undersub.type_err_to_false (fun () ->
@@ -263,6 +277,17 @@ let run_benchmark source_file refine_file =
               lambody
           in
           res) (* List.mapi *)
-      refinement in dbg result
+      refinement
+  in
+  dbg result
 
-  let () = List.iter2 run_benchmark source_files refine_files
+(** Benchmarks can be provided as a command line argument *)
+let benchmark_name =
+  if Int.equal (Array.length Sys.argv) 1 then "sizedlist" else Sys.argv.(1)
+
+let benchmark_to_run =
+  List.find (fun x -> String.equal x.name benchmark_name) benchmarks
+
+let () =
+  run_benchmark benchmark_to_run.source_file benchmark_to_run.refine_file
+    benchmark_to_run.bound
