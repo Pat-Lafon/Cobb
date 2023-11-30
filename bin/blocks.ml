@@ -281,12 +281,25 @@ module Synthesis = struct
     print_endline "Blocks:";
     Blocks.block_collection_print collection; *)
 
+    (* todo remove dubs from typeing contexts now that not all values are
+       freshened *)
+
     (* How do we want to combine blocks together? *)
     let super_type_list, sub_type_list =
       List.partition
-        (fun (_, ut, ctx) ->
-          (* Printf.printf "target_ty %s\n" (ut |> Blocks.u_type_to_string); *)
-          Undersub.subtyping_check_bool "" 0 ctx ut target_ty)
+        (fun (id, ut, ctx) ->
+          Blocks.u_type_to_string ut |> print_endline;
+          List.iter
+            (fun (id, mmt) ->
+              print_string (id ^ ": ");
+              print_endline (Blocks.mmt_type_to_string mmt))
+            ctx;
+          print_string ((id : id NNtyped.typed).x ^ ": ");
+          Pieces.ast_to_string ~erased:true (id : id NNtyped.typed).x
+          |> print_endline;
+          let combined_ctx, mapping = ctx_union_r ctx uctx.ctx in
+          let updated_target_ty = Pieces.ut_subst target_ty mapping in
+          Undersub.subtyping_check_bool "" 0 ctx ut updated_target_ty)
         u_b_list
     in
 
