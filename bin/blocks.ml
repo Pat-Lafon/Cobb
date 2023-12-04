@@ -96,11 +96,15 @@ module Blocks = struct
   let base_type_to_string (ty : base_type) : id =
     Ntyped.sexp_of_t ty |> Core.Sexp.to_string_hum
 
-  let u_type_to_string (ty : UT.t) : id =
+  let rec u_type_to_string (ty : UT.t) : id =
     match ty with
     | UnderTy_base { basename; normalty; prop } ->
         Printf.sprintf "[%s: %s | %s]" basename (NT.to_string normalty)
           (P.to_string prop)
+    | UnderTy_over_arrow { argname : id; argty : ot; retty : UT.t } ->
+        Printf.sprintf "{%s as %s: %s | %s} -> %s" argty.basename argname
+          (NT.to_string argty.normalty)
+          (P.to_string argty.prop) (u_type_to_string retty)
     | _ -> UT.sexp_of_t ty |> Core.Sexp.to_string_hum
 
   let mmt_type_to_string (ty : MMT.t) : id =
