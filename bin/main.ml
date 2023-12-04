@@ -265,8 +265,18 @@ let run_benchmark source_file refine_file bound =
               seeds
           in
 
-          let _ = Synthesis.synthesis uctx retty bound seeds components in
+          (* Add arguments as variables *)
 
+          (* Add Recursive Componenet*)
+          let nty = UT.erase f.ty in
+          let argtys, resty = NT.destruct_arrow_tp nty in
+          let recursive_piece : Pieces.component =
+            Fun { x = f.x; ty = (None, nty) }
+          in
+          let components = (recursive_piece, (argtys, resty)) :: components in
+
+          Synthesis.synthesis uctx retty bound seeds components
+      (*
           let res =
             (* Undersub.type_err_to_false (fun () ->
                 Typecheck.Undercheck.term_type_check { nctx; ctx; libctx } body
@@ -276,10 +286,11 @@ let run_benchmark source_file refine_file bound =
               { nctx; ctx = ctx''; libctx }
               lambody
           in
-          res) (* List.mapi *)
+          res *))
+      (* List.mapi *)
       refinement
   in
-  dbg result
+  print_endline "Finished Synthesis"
 
 (** Benchmarks can be provided as a command line argument *)
 let benchmark_name =
