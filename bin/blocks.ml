@@ -49,7 +49,7 @@ let%test "range" = range 5 = [ 0; 1; 2; 3; 4 ]
 
 module Blocks = struct
   type base_type = Ntyped.t
-  type block = id NNtyped.typed * UT.t * MustMayTypectx.ctx
+  type block = id NNtyped.typed * MMT.t * MustMayTypectx.ctx
 
   let block_compare ((id1, _, _) : block) ((id2, _, _) : block) =
     compare id1.x id2.x
@@ -113,9 +113,10 @@ module Blocks = struct
     | _ -> MMT.sexp_of_t ty |> Core.Sexp.to_string_hum
 
   let block_to_string (({ x = name; ty }, ut, ctx) : block) : id =
-    Printf.sprintf "%s: %s : %s\n" name
+    Printf.sprintf "%s: %s : %s\n"
+      (Pieces.ast_to_string name)
       (base_type_to_string (snd ty))
-      (u_type_to_string ut)
+      (mmt_type_to_string ut)
 
   let block_map_print (map : block_map) : unit =
     let aux (ty, terms) =
@@ -219,8 +220,14 @@ module Blocks = struct
                       { x = term; ty = block_id.ty }
                   in
 
+                  let new_mmt = MMT.Ut (MMT.UtNormal new_ut) in
+
                   match new_ut with
-                  | UnderTy_base { prop = Lit (ACbool false); _ } -> None
+                  | UnderTy_base { prop = Lit (ACbool false); _ } ->
+                      (* The block does not type check most likely because one of
+                         the arguments does not meet the precondition for the componenet
+                      *)
+                      None
                   | _ ->
                       if
                         List.exists
@@ -233,7 +240,9 @@ module Blocks = struct
                             then false
                             else
                               Typecheck.Undersub.mmt_check_bool "" 0 joined_ctx
-                                arg_t (MMT.Ut (MMT.UtNormal new_ut)))
+                                arg_t new_mmt
+                              && Typecheck.Undersub.mmt_check_bool "" 0
+                                   joined_ctx new_mmt arg_t)
                           (arg_names
                           |> List.map (fun ({ x; ty } : id NNtyped.typed) -> x)
                           )
@@ -253,7 +262,7 @@ module Blocks = struct
                         Printf.printf "Added the following block \n %s\n %s\n"
                           (Pieces.ast_to_string block_id.x)
                           (u_type_to_string new_ut);
-                        Some ((block_id, new_ut, new_ctx), ret_type))
+                        Some ((block_id, new_mmt, new_ctx), ret_type))
                 l)
             (range (List.length args) |> superset))
         operations
@@ -290,7 +299,7 @@ module Synthesis = struct
     let super_type_list, sub_type_list =
       List.partition
         (fun (id, ut, ctx) ->
-          Blocks.u_type_to_string ut |> print_endline;
+          Blocks.mmt_type_to_string ut |> print_endline;
           List.iter
             (fun (id, mmt) ->
               print_string (id ^ ": ");
@@ -301,7 +310,8 @@ module Synthesis = struct
           |> print_endline;
           let combined_ctx, mapping = ctx_union_r ctx uctx.ctx in
           let updated_target_ty = Pieces.ut_subst target_ty mapping in
-          Undersub.subtyping_check_bool "" 0 ctx ut updated_target_ty)
+          let mmt_target_ty = MMT.Ut (MMT.UtNormal updated_target_ty) in
+          Typecheck.Undersub.mmt_check_bool "" 0 ctx ut mmt_target_ty)
         u_b_list
     in
 
@@ -319,23 +329,28 @@ module Synthesis = struct
       sub_type_list;
     print_endline "End";
 
-    (* I assume that there is always atleast one super type that satisfies the
-       program because that type is of the generic generator *)
-    let potential_program = List.hd super_type_list in
-    (* We will check all of the other super_types to see if there is a program
-       that is smaller but still works *)
     let potential_program =
-      List.fold_left
-        (fun p e ->
-          let _, ut, ctx = p in
-          let _, ut', ctx' = e in
-          let combined_ctx, mapping = ctx_union_r ctx ctx' in
-          let updated_ut = Pieces.ut_subst ut' mapping in
+      if List.length super_type_list > 0 then
+        let potential_program = List.hd super_type_list in
+        (* We will check all of the other super_types to see if there is a program
+           that is smaller but still works *)
+        let potential_program =
+          List.fold_left
+            (fun p e ->
+              let _, mmt, ctx = p in
+              let _, mmt', ctx' = e in
+              let combined_ctx, mapping = ctx_union_r ctx ctx' in
+              let updated_mmt = Pieces.mmt_subst mmt' mapping in
 
-          if Undersub.subtyping_check_bool "" 0 combined_ctx ut updated_ut then
-            p
-          else e)
-        potential_program (List.tl super_type_list)
+              if
+                Typecheck.Undersub.mmt_check_bool "" 0 combined_ctx mmt
+                  updated_mmt
+              then p
+              else e)
+            potential_program (List.tl super_type_list)
+        in
+        Some potential_program
+      else None
     in
 
     (* actually do some joining of blocks*)
@@ -344,9 +359,12 @@ module Synthesis = struct
       failwith "todo"
     else (
       print_endline "Potential Program:";
-      let id, _, _ = potential_program in
-      Pieces.ast_to_string ~erased:true id.x |> print_endline;
-      exit 1)
+      (match potential_program with
+      | Some (id, _, _) ->
+          Pieces.ast_to_string ~erased:true id.x |> print_endline;
+          ()
+      | None -> ());
+      failwith "todo")
 
   let rec synthesis_helper (max_depth : int) (target_type : UT.t) (uctx : uctx)
       (collection : Blocks.block_collection)

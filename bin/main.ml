@@ -271,11 +271,10 @@ let run_benchmark source_file refine_file bound =
             List.map
               (fun ((id, term), ty) : (Blocks.block * ty) ->
                 let ut = Typecheck.Undercheck.term_type_infer uctx term in
-                let seed_utx =
-                  Typectx.ut_force_add_to_right ctx'' (id, UtNormal ut)
-                in
+                let mmt = MMT.UtNormal ut in
+                let seed_utx = Typectx.ut_force_add_to_right ctx'' (id, mmt) in
                 let term_ty = term.ty in
-                (({ x = id; ty = term_ty }, ut, seed_utx), ty))
+                (({ x = id; ty = term_ty }, Ut mmt, seed_utx), ty))
               seeds
           in
 
