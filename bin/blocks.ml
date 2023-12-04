@@ -33,19 +33,8 @@ let rec n_cartesian_product = function
       let rest = n_cartesian_product xs in
       List.concat (List.map (fun i -> List.map (fun rs -> i :: rs) rest) x)
 
-(* let sample_ctx =
-     [("x", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = (Lit (AVar { x = "x"; ty = NT.Ty_int })) })]
-   let sample_subst = (Seq.return ("x", "y") |> Hashtbl.of_seq)
-
-   let () = assert (ctx_subst sample_ctx sample_subst =
-     [("y", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = (Lit (AVar { x = "y"; ty = NT.Ty_int })) })]) *)
-(* let () = assert (ctx_subst [("x", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = Lit (ACint 1) })] (Seq.return ("x", "y") |> Hashtbl.of_seq) = [("y", UnderTy_base { basename = UT.default_v_name; normalty = NT.Ty_int; prop = Lit (ACint 1) })]) *)
-
 let ctx_union_r (l : Typectx.ctx) (r : Typectx.ctx) =
   Pieces.map_fst (fun res -> l @ res) (Pieces.freshen r)
-
-let%test "should fail" = 2 + 2 = 5
-let%test "range" = range 5 = [ 0; 1; 2; 3; 4 ]
 
 module Blocks = struct
   type base_type = Ntyped.t
@@ -373,6 +362,7 @@ module Synthesis = struct
       program option =
     match max_depth with
     | 0 ->
+        Blocks.block_collection_print collection;
         (* Join blocks together into programs*)
         under_blocks_join uctx collection target_type
     | depth ->
