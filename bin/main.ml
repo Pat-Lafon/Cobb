@@ -73,8 +73,10 @@ let benchmarks =
     };
     {
       name = "rbtree";
-      source_file = "underapproximation_type/data/benchmark/quickchick/rbtree/prog.ml";
-      refine_file = "underapproximation_type/data/benchmark/quickchick/rbtree/_under.ml";
+      source_file =
+        "underapproximation_type/data/benchmark/quickchick/rbtree/prog.ml";
+      refine_file =
+        "underapproximation_type/data/benchmark/quickchick/rbtree/_under.ml";
       bound = 3;
     };
   ]
@@ -101,8 +103,9 @@ let run_benchmark source_file refine_file bound =
   let _ = assert (List.length notations == 0) in
   let dbg_sexp sexp = print_endline (Core.Sexp.to_string_hum sexp) in
   let dbg (ut : UT.t) = dbg_sexp (UT.sexp_of_t ut) in
+
   (* let () = print_endline (List.length notations |> string_of_int) in *)
-  let () = print_endline (List.length libs |> string_of_int) in
+  (*   let () = print_endline (List.length libs |> string_of_int) in *)
 
   (* let _ =
      List.map
@@ -211,6 +214,10 @@ let run_benchmark source_file refine_file bound =
             Typecheck.Undercheck.make_order_constraint decreasing_arg.x argname
               (snd fstarg.ty)
           in
+
+          print_string "What is prop: ";
+          P.to_string prop |> print_endline;
+
           let _ =
             Typecheck.Undercheck.erase_check_mk_id __FILE__ __LINE__
               decreasing_arg (ot_to_ut argty)
@@ -230,6 +237,10 @@ let run_benchmark source_file refine_file bound =
                     f.ty;
               }
           in
+
+          print_endline ("What is decreasing_arg: " ^ decreasing_arg.x);
+          print_endline ("What is argname: " ^ argname);
+
           let ctx' =
             Typectx.ot_add_to_right Typectx.empty (decreasing_arg.x, argty)
           in
@@ -247,10 +258,13 @@ let run_benchmark source_file refine_file bound =
              let _ = List.map (fun (x, _) -> print_endline x) libctx in
              let () = print_newline () in *)
           let retty = UT.subst_id retty argname decreasing_arg.x in
-          let lambody = NL.subst_id (fstarg.x, decreasing_arg.x) lambody in
 
-          (* dbg retty;
-             print_endline "\n\n===\n"; *)
+          Blocks.u_type_to_string (ot_to_ut argty) |> print_endline;
+          UT.reduce_arrow_type_to_post ty
+          |> Blocks.u_type_to_string |> print_endline;
+          Blocks.u_type_to_string ty |> print_endline;
+          Blocks.u_type_to_string retty |> print_endline;
+
           let uctx = { nctx; ctx = ctx''; libctx } in
 
           let seeds =
