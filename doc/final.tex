@@ -178,21 +178,99 @@
 \maketitle
 
 \section{Introduction}
+% Describe the high-level problem you were tackling
+
+Synthesizing test input generators that satisfy a given coverage specification.
+
+Addressing a gap left between type-theoretic but over-approximate synthesis
+techniques and
 
 \section{Overview}
+% Recap any relevant existing work on this problem, give a high-level
+% description of your solution, and summarize the relationship of how your
+% solution relates to previous work. Include concrete examples(if applicable),
+% that illustrate your solution
 
-https://github.com/Pat-Lafon/Cobb
+\subsection{Property-Based Testing}
 
-\section{Implementation}
+\subsection{Bottom-Up Synthesis}
 
-\section{Results}
+\subsection{Coverage Types}
 
 Coverage Types\cite{Poirot}
 
+\subsection{Our Solution}
+
+Coverage + bottom up + test input generators
+
+Deductive synthesis with recursive specifications + bottom up
+
+The intuition behind blocks, covering subsections of the program space. Small
+depth programs as contrasted by long traces needed in inductive synthesis.
+
+\section{Implementation}
+% Provide key technical details about your solution, e.g. your toplevel
+% algorithm, aprecise encoding of your problem in logic, etc.
+We have implemented our solution as a bottom-up deductive synthesizer called
+Cobb~(https://github.com/Pat-Lafon/Cobb)
+
+Load in various files
+
+Prepare recursive call, structurally decreasing argument with context
+
+Set typechecker global state, initialize starting seeds: constants, variables,
+0-arity functions and constructors, and unit generators. Setting up component
+abstractions.
+
+Converting seeds to blocks, anormal form and the use of typing contexts to carry
+incremental typing state.
+
+Initializing a collection of blocks based on typing. Old and new maps
+
+Incrementing/joining blocks together. Joining contexts/renaming, false coverage
+types. Coverage equivalence as a parallel to observational equivalence
+
+Iterating to a fixed depth
+
+Splitting blocks into subtypes versus supertypes, computing joins over the
+subtypes.
+
+Choosing the tightest solution
+
+extracting out the final program
+
+\section{Summary of Results}
+% Describe how you validated your approach: if you ran experiments to evaluate
+% your approach. provide any data or results from those.
+
 \section{Reflection}
-% A one-paragraph description of the individual team member's contributions
+% Describe any key design and implementation challenges; how you addressed them
+% (what worked, what didn't, and why);and how this work could lead to a real
+% tool or a full-length conference paper. What did you learn from doing this project?
+
+Challenges with building on top of the hodge-podge of Poirot's code base.
+
+Finding the right interactions between over and under approximate reasoning. Not
+needing overapproximate subtyping to set an upper bounds. Needing blocks with
+both over and under approximate types to account for the hybrid typing of arrow
+types.
+
+Unlike traditional bottom-up enumeration, you can't look for a solution at every
+iteration. The simplest solution is probably the smallest one though that one will
+be too general. For example, if you have the generic generator for the target
+type, you have a solution to synthesis before you even start. We also need to
+limit the number to SMT queries made as they begin to pile up and are expensive.
+It seems like this should be easily parallelizable, especially with the release
+of Ocaml 5.0 if the type checker has limited mutable state.
+
+The original need for simpler generators arose out of not knowing enough about
+the problem space. What actually needed addressing is when to partition the
+input space.
+
+Anything else?
 
 \section{Teamwork}
+% A one-paragraph description of the individual team member's contributions
 
 \subsection{Patrick}
 
@@ -210,7 +288,6 @@ safety properties and exhaustive state space exploration.
 
 % and a one-paragraph description (if applicable) of any topics that would have
 % been useful but weren't covered in the course.
-
 Program synthesis was a planned topic for this course but unfortunately not
 covered due to time constraints. In particular, the subtopics of Component-Based
 Synthesis and Deductive Synthesis would have been particularly relevant. For
@@ -219,8 +296,8 @@ could have gone further in discussing refinement types as a type-theoretic
 approach to a decidable fragment of first order logic.
 
 \begin{acks}
-    Christopher Nolan for making Inception for which this tool is named after
-    the main character.
+    Christopher Nolan for making Inception for whom's main character this tool is
+    named after.
     Ashish Mishra who originally purposed the idea of a bottom-up synthesizer
     for coverage types and for allowing Patrick to sit in on his
     under-approximate synthesis meetings and under-approximate reading group.
@@ -233,7 +310,6 @@ approach to a decidable fragment of first order logic.
 %% the bibliography file.
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{cobb}
-
 
 \end{document}
 \endinput
