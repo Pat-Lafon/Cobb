@@ -13,7 +13,8 @@
 (library
  (name blocks)
  (libraries underapproximation_type.typecheck underapproximation_type.driver pieces)
- (modules blocks))
+ (modules blocks)
+ (preprocess (pps ppx_optcomp ppx_compare ppx_sexp_conv)))
 
 (library
  (name pieces)

@@ -266,8 +266,25 @@ module Blocks = struct
     }
 end
 
+let group_by f lst =
+  let rec aux acc f = function
+    | [] -> acc
+    | h :: t ->
+        let new_acc =
+          let n = f h in
+          match List.assoc_opt n acc with
+          | None -> (n, [ h ]) :: acc
+          | Some t2 -> (n, h :: t2) :: List.remove_assoc n acc
+        in
+        aux new_acc f t
+  in
+  aux [] f lst
+
 module Synthesis = struct
   type program = NL.term NNtyped.typed
+
+  type relation = Equiv | ImpliesTarget | ImpliedByTarget | None
+  [@@deriving sexp]
 
   (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
   let under_blocks_join (uctx : uctx) (collection : Blocks.block_collection)
@@ -283,40 +300,60 @@ module Synthesis = struct
 
     (* todo remove dubs from typeing contexts now that not all values are
        freshened *)
-
     (* How do we want to combine blocks together? *)
-    let super_type_list, sub_type_list =
-      List.partition
+    let groups =
+      group_by
         (fun (id, ut, ctx) ->
+          print_endline "\n\nNew candidate";
           Blocks.mmt_type_to_string ut |> print_endline;
           List.iter
             (fun (id, mmt) ->
               print_string (id ^ ": ");
-              print_endline (Blocks.mmt_type_to_string mmt))
+              print_endline (Blocks.mmt_type_to_string mmt);
+              print_endline (Pieces.ast_to_string ~erased:true id))
             ctx;
           print_string ((id : id NNtyped.typed).x ^ ": ");
           Pieces.ast_to_string ~erased:true (id : id NNtyped.typed).x
           |> print_endline;
-          let combined_ctx, mapping = ctx_union_r ctx uctx.ctx in
-          let updated_target_ty = Pieces.ut_subst target_ty mapping in
-          let mmt_target_ty = MMT.Ut (MMT.UtNormal updated_target_ty) in
-          Typecheck.Undersub.mmt_check_bool "" 0 ctx ut mmt_target_ty)
+          (* subtyping_check __FILE__ __LINE__ uctx
+             (MMT.UtNormal (UT.make_basic_bot (snd body.NL.ty)))
+             ty *)
+          let mmt_target_ty = MMT.Ut (MMT.UtNormal target_ty) in
+          let implies_target =
+            Typecheck.Undersub.mmt_check_bool "" 0 ctx ut mmt_target_ty
+          in
+          let implied_by_target =
+            Typecheck.Undersub.mmt_check_bool "" 0 ctx mmt_target_ty ut
+          in
+          if implies_target && implied_by_target then Equiv
+          else if implies_target then ImpliesTarget
+          else if implied_by_target then ImpliedByTarget
+          else None)
         u_b_list
     in
 
-    print_endline "Super Types:";
-    List.iter
-      (fun (id, _, _) ->
-        Pieces.ast_to_string ~erased:true (id : id NNtyped.typed).x
-        |> print_endline)
-      super_type_list;
-    print_endline "Sub Types:";
-    List.iter
-      (fun (id, _, _) ->
-        Pieces.ast_to_string ~erased:true (id : id NNtyped.typed).x
-        |> print_endline)
-      sub_type_list;
-    print_endline "End";
+    print_endline "\n\n";
+    let _ =
+      List.iter
+        (fun ((g, es) : relation * Blocks.block list) ->
+          print_string "Group ";
+          print_endline (Core.Sexp.to_string_hum (sexp_of_relation g));
+          List.iter
+            (fun (id, mmt, _) ->
+              let _ = print_endline (id : id NNtyped.typed).x in
+              Pieces.ast_to_string ~erased:true (id : id NNtyped.typed).x
+              |> print_endline;
+              print_endline (Blocks.mmt_type_to_string mmt))
+            es)
+        groups
+    in
+
+    let super_type_list =
+      snd (List.find (fun (g, es) -> g == ImpliesTarget) groups)
+    in
+    let sub_type_list =
+      snd (List.find (fun (g, es) -> g == ImpliedByTarget) groups)
+    in
 
     let potential_program =
       if List.length super_type_list > 0 then
