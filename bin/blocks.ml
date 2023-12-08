@@ -15,6 +15,7 @@ let range n = List.init n (fun x -> x)
 
 (** https://stackoverflow.com/questions/40141955/computing-a-set-of-all-subsets-power-set
   *)
+(** Computes a powerset from a list of elements *)
 let rec superset_helper = function
   | [] -> [ [] ]
   | x :: xs ->
@@ -32,6 +33,21 @@ let rec n_cartesian_product = function
   | x :: xs ->
       let rest = n_cartesian_product xs in
       List.concat (List.map (fun i -> List.map (fun rs -> i :: rs) rest) x)
+
+(** Group elements of a list by some property *)
+let group_by f lst =
+  let rec aux acc f = function
+    | [] -> acc
+    | h :: t ->
+        let new_acc =
+          let n = f h in
+          match List.assoc_opt n acc with
+          | None -> (n, [ h ]) :: acc
+          | Some t2 -> (n, h :: t2) :: List.remove_assoc n acc
+        in
+        aux new_acc f t
+  in
+  aux [] f lst
 
 let ctx_union_r (l : Typectx.ctx) (r : Typectx.ctx) =
   Pieces.map_fst (fun res -> l @ res) (Pieces.freshen r)
@@ -265,20 +281,6 @@ module Blocks = struct
       old_blocks = block_collection_get_full_map collection;
     }
 end
-
-let group_by f lst =
-  let rec aux acc f = function
-    | [] -> acc
-    | h :: t ->
-        let new_acc =
-          let n = f h in
-          match List.assoc_opt n acc with
-          | None -> (n, [ h ]) :: acc
-          | Some t2 -> (n, h :: t2) :: List.remove_assoc n acc
-        in
-        aux new_acc f t
-  in
-  aux [] f lst
 
 module Synthesis = struct
   type program = NL.term NNtyped.typed
