@@ -199,6 +199,8 @@ Property-based testing stands in the middle ground between random testing and fo
 \subsection{Bottom-Up Synthesis}
 We are taking ideas from bottom-up synthesis by starting from the leaf node. Although bottom-up synthesis (citation?) are often inductive and example-based, we use a deductive approach that is based on underapproximate type-checking to ensure correctness of the synthesized program.
 
+\subsection{Deductive synthesis}
+
 \subsection{Coverage Types}
 
 Coverage Types\cite{Poirot}
@@ -272,6 +274,17 @@ the problem space. What actually needed addressing is when to partition the
 input space.
 
 Anything else?
+
+\subsection{Possible Typechecker Bugs?}
+In our project, the subtyping checks are largely treated as a black box. In the
+coarse of using Poirot, we believe we may have ran into some issues that
+impacted the correctness of our synthesizer.
+
+\subsubsection{Let binding immediate shadowing}
+
+\subsubsection{Measure issues? The singleton list}
+
+\subsubsection{Structural decreasing constraint on the return type instead of the argument}
 
 \section{Teamwork}
 % A one-paragraph description of the individual team member's contributions
