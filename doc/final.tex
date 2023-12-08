@@ -192,8 +192,12 @@ techniques and
 % that illustrate your solution
 
 \subsection{Property-Based Testing}
+A wide range of methods exist to ensure software safety. On the one hand, random testing or fuzzing uses random input to discover, but with the drawback that bugs requiring complex input may not be easily discovered; on the other hand, formal verification provides full safety guarantee, but it requires manual work to prove that the program is safe. 
+
+Property-based testing stands in the middle ground between random testing and formal verification, in that the input generation is guided by the interested property, specified by programmers as logical predicates. This allows the programmers to guide the generated input using the testing predicate, allowing it to discover more intricate bugs, at the same time leveraging automation using SMT solvers to alleviate manual effort.
 
 \subsection{Bottom-Up Synthesis}
+We are taking ideas from bottom-up synthesis by starting from the leaf node. Although bottom-up synthesis (citation?) are often inductive and example-based, we use a deductive approach that is based on underapproximate type-checking to ensure correctness of the synthesized program.
 
 \subsection{Coverage Types}
 
