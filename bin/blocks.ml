@@ -13,9 +13,9 @@ open Pieces
 (** Produces a list from 0..n-1*)
 let range n = List.init n (fun x -> x)
 
-(** https://stackoverflow.com/questions/40141955/computing-a-set-of-all-subsets-power-set
-  *)
-(** Computes a powerset from a list of elements *)
+(** Computes a powerset from a list of elements
+  * https://stackoverflow.com/questions/40141955/computing-a-set-of-all-subsets-power-set
+    *)
 let rec superset_helper = function
   | [] -> [ [] ]
   | x :: xs ->
@@ -51,6 +51,25 @@ let group_by f lst =
 
 let ctx_union_r (l : Typectx.ctx) (r : Typectx.ctx) =
   Pieces.map_fst (fun res -> l @ res) (Pieces.freshen r)
+
+module Relations = struct
+  type relation = Equiv | ImpliesTarget | ImpliedByTarget | None
+  [@@deriving sexp]
+
+  let mmt_typing_relation ctx target_ty ty =
+    if not (NT.eq (MMT.erase target_ty) (MMT.erase ty)) then None
+    else
+      let implies_target =
+        Typecheck.Undersub.mmt_check_bool "" 0 ctx ty target_ty
+      in
+      let implied_by_target =
+        Typecheck.Undersub.mmt_check_bool "" 0 ctx target_ty ty
+      in
+      if implies_target && implied_by_target then Equiv
+      else if implies_target then ImpliesTarget
+      else if implied_by_target then ImpliedByTarget
+      else None
+end
 
 module Blocks = struct
   type base_type = Ntyped.t
@@ -240,14 +259,9 @@ module Blocks = struct
                             let arg_id, arg_t =
                               List.find (fun (id', _) -> id = id') joined_ctx
                             in
-
-                            if not (NT.eq (MMT.erase arg_t) (UT.erase new_ut))
-                            then false
-                            else
-                              Typecheck.Undersub.mmt_check_bool "" 0 joined_ctx
-                                arg_t new_mmt
-                              && Typecheck.Undersub.mmt_check_bool "" 0
-                                   joined_ctx new_mmt arg_t)
+                            Relations.mmt_typing_relation joined_ctx arg_t
+                              new_mmt
+                            == Relations.Equiv)
                           (arg_names
                           |> List.map (fun ({ x; ty } : id NNtyped.typed) -> x)
                           )
@@ -285,9 +299,6 @@ end
 module Synthesis = struct
   type program = NL.term NNtyped.typed
 
-  type relation = Equiv | ImpliesTarget | ImpliedByTarget | None
-  [@@deriving sexp]
-
   (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
   let under_blocks_join (uctx : uctx) (collection : Blocks.block_collection)
       (target_ty : UT.t) : program option =
@@ -321,25 +332,16 @@ module Synthesis = struct
              (MMT.UtNormal (UT.make_basic_bot (snd body.NL.ty)))
              ty *)
           let mmt_target_ty = MMT.Ut (MMT.UtNormal target_ty) in
-          let implies_target =
-            Typecheck.Undersub.mmt_check_bool "" 0 ctx ut mmt_target_ty
-          in
-          let implied_by_target =
-            Typecheck.Undersub.mmt_check_bool "" 0 ctx mmt_target_ty ut
-          in
-          if implies_target && implied_by_target then Equiv
-          else if implies_target then ImpliesTarget
-          else if implied_by_target then ImpliedByTarget
-          else None)
+          Relations.mmt_typing_relation ctx mmt_target_ty ut)
         u_b_list
     in
 
     print_endline "\n\n";
     let _ =
       List.iter
-        (fun ((g, es) : relation * Blocks.block list) ->
+        (fun ((g, es) : Relations.relation * Blocks.block list) ->
           print_string "Group ";
-          print_endline (Core.Sexp.to_string_hum (sexp_of_relation g));
+          print_endline (Core.Sexp.to_string_hum (Relations.sexp_of_relation g));
           List.iter
             (fun (id, mmt, _) ->
               let _ = print_endline (id : id NNtyped.typed).x in
@@ -351,10 +353,10 @@ module Synthesis = struct
     in
 
     let super_type_list =
-      snd (List.find (fun (g, es) -> g == ImpliesTarget) groups)
+      snd (List.find (fun (g, es) -> g == Relations.ImpliesTarget) groups)
     in
     let sub_type_list =
-      snd (List.find (fun (g, es) -> g == ImpliedByTarget) groups)
+      snd (List.find (fun (g, es) -> g == Relations.ImpliedByTarget) groups)
     in
 
     let potential_program =
