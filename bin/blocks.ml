@@ -75,12 +75,6 @@ module Blocks = struct
   type base_type = Ntyped.t
   type block = id NNtyped.typed * MMT.t * MustMayTypectx.ctx
 
-  let block_compare ((id1, _, _) : block) ((id2, _, _) : block) =
-    compare id1.x id2.x
-
-  let block_list_compare (l1 : block list) (l2 : block list) =
-    List.compare block_compare l1 l2
-
   (* bool -> var1, true
      int -> 0, 1, ...*)
   type block_map = (base_type * block list) list
