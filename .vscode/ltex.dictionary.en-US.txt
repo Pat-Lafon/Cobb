@@ -4,3 +4,4 @@ Anxhelo
 Xhebraj
 LaFontaine
 EUFA
+parallelizable

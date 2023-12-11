@@ -183,12 +183,12 @@
 \section{Introduction}
 % Describe the high-level problem you were tackling
 
-The goal of this project is to utilize coverage types to synthesize test input generators. 
-Common approaches use an overapproxime synthesis which leads to sound but incomplete generators. 
+The goal of this project is to utilize coverage types to synthesize test input generators.
+Common approaches use an overapproxime synthesis which leads to sound but incomplete generators.
 With list generators, for example, generators produced using overapproximate synthesis could always generate the empty list which would satisfy most conditions one is interested in (e.g.~``sorted'', ``unique'' etc.) but fail to provide a variety of tests that cover the majority of or the entire input space.
 
 Instead of overapproximate synthesis that uses refinement types as a basis for test input specification, our approach uses coverage types\citep{Poirot}, which is based on a recently proposed underapproximate, incorrectness logic\citep{IL}, to ensure the completeness of the synthesized test input generators.
-% On the flip side, this approach but might produce extraneous test inputs that fall outside of the given specification. 
+% On the flip side, this approach but might produce extraneous test inputs that fall outside of the given specification.
 
 \section{Overview}
 % Recap any relevant existing work on this problem, give a high-level
@@ -200,20 +200,20 @@ Instead of overapproximate synthesis that uses refinement types as a basis for t
 
 Property Based Testing (PBT) stands in the middle ground between random testing and formal verification, in that the input generation is guided by the interested property, specified by programmers as logical predicates. This allows the programmers to guide the generated input using the testing predicate, allowing it to discover more intricate bugs, at the same time leveraging automation using SMT solvers to alleviate manual effort.
 
-Property Based Testing  is useful because it lifts the burden of writing tests by providing a safety specification and a method of generating random inputs. 
-However, non-trivial preconditions can lead to many spurious inputs from generic generators (e.g.~syntactic generators that simply recurse over the constructors but do not consider the semantics), increasing testing time or leading to incomplete/partial coverage. 
-An alternative is hand-writing specialized test input generators which is laborious and potentially faulty. 
+Property Based Testing  is useful because it lifts the burden of writing tests by providing a safety specification and a method of generating random inputs.
+However, non-trivial preconditions can lead to many spurious inputs from generic generators (e.g.~syntactic generators that simply recurse over the constructors but do not consider the semantics), increasing testing time or leading to incomplete/partial coverage.
+An alternative is hand-writing specialized test input generators which is laborious and potentially faulty.
 To overcome these limitations, recent work has proposed: fuzzing (and mutation-based) generators, type-based generators, automated Correct-by-Construction generators for limited domains, and over-approximate program synthesis.
 
 \subsection{Coverage Types}
 
-Coverage Types~\cite{Poirot} are a type based interpretation of the recently developed Incorrectness Logic\citep{IL}. 
-These types describe the domain of reachable output values from some valid input value. 
-They can be viewed as the inverse of Refinement Types with their corresponding logical interpretation in Hoare Logic. 
+Coverage Types~\cite{Poirot} are a type based interpretation of the recently developed Incorrectness Logic\citep{IL}.
+These types describe the domain of reachable output values from some valid input value.
+They can be viewed as the inverse of Refinement Types with their corresponding logical interpretation in Hoare Logic.
 This kind of under-approximate logic have strong use cases in bug-finding and program analysis.
 
 \subsection{Bottom-Up Synthesis}
-We are taking ideas from bottom-up synthesis by starting from the leaf node. 
+We are taking ideas from bottom-up synthesis by starting from the leaf node.
 Although bottom-up synthesis (citation?) are often inductive and example-based, we use a deductive approach that is based on underapproximate type-checking to ensure correctness of the synthesized program.
 
 \subsection{Deductive synthesis}
@@ -250,15 +250,14 @@ An example of the initial information that the user provides
 is shown below.
 
 \begin{align*}
-& T := \textsf{bool} \mid \textsf{int} \mid \textsf{int list} \\
-& \text{Seed} := \textsf{bool\_gen}() \mid 0 \mid 1 \mid \textsf{int\_gen()} \mid \textsf{nil} \mid \textsf{list\_gen()} \\
-& \text{Component} := \\
-&\  \mid\, !: \textsf{bool} \rightarrow \textsf{bool} \\
-&\  \mid +: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{int}\\
-&\  \mid -: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{int}\\
-&\  \mid \leq: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{bool} \\
-&\  \mid \textsf{cons}: \textsf{int} \rightarrow \textsf{int list} \\
-& \dots
+   & T := \textsf{bool} \mid \textsf{int} \mid \textsf{int list}                                                            \\
+   & \text{Seed} := \textsf{bool\_gen}() \mid 0 \mid 1 \mid \textsf{int\_gen()} \mid \textsf{nil} \mid \textsf{list\_gen()} \\
+   & \text{Component} :=                                                                                                    \\
+   & \  \mid +: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{int}                                              \\
+   & \  \mid -: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{int}                                              \\
+   & \  \mid \leq: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{bool}                                          \\
+   & \  \mid \textsf{cons}: \textsf{int} \rightarrow \textsf{int list}                                                      \\
+   & \dots
 \end{align*}
 The types that should be used in the synthesis are
 booleans, integers and lists of integers.
@@ -285,15 +284,15 @@ of the function's specification to ensure that only applications
 where at least one argument is structurally decreasing are formed.
 
 \todo{Set typechecker global state, initialize starting seeds: constants, variables,
-0-arity functions and constructors, and unit generators. Setting up component
-abstractions.
+  0-arity functions and constructors, and unit generators. Setting up component
+  abstractions.
 }
 
 Once seeds, components, and self-application with structurally decreasing
 arguments is setup, the synthesis algorithm begins by enumerating
 all terms up to a target level\footnote{The level of a node is what would
-be commonly referred to as height in the tree. But since
-we are constructing trees bottom-up we prefer the term level} specified by the user.
+  be commonly referred to as height in the tree. But since
+  we are constructing trees bottom-up we prefer the term level} specified by the user.
 \begin{lstlisting}[language=Python, basicstyle=\small\ttfamily, mathescape, numbers=left, numbersep=3pt]
 def synth(seeds, components, tgt_sign, tgt_l):
  blocks = seeds
@@ -440,8 +439,8 @@ the target specification.
 
 \subsection{Representing AST Nodes for Typing}
 \todo{
-Converting seeds to blocks, anormal form and the use of typing contexts to carry
-incremental typing state.
+  Converting seeds to blocks, anormal form and the use of typing contexts to carry
+  incremental typing state.
 }
 
 Similarly to other refinement-type checkers, Poirot uses
@@ -495,32 +494,72 @@ extracting out the final program
 \section{Reflection}
 % Describe any key design and implementation challenges; how you addressed them
 % (what worked, what didn't, and why);and how this work could lead to a real
-% tool or a full-length conference paper. What did you learn from doing this project?
+% tool or a full-length conference paper. What did you learn from doing this
+% project?
 
-Challenges with building on top of the hodge-podge of Poirot's code base.
+\subsection{Poirot as a black-box}
+For this project, we created a fork
+\footnote{\url{https://github.com/Pat-Lafon/underapproximation_type}} of Poirot
+\footnote{\url{https://github.com/zhezhouzz/underapproximation_type/commit/beb65e3410d07f207f5b75a09a7428c146b4099f}}
+with only minor modifications to help print out values and dispatch to the
+correct subtyping calls for \lstinline|MMT.t| types. In general, learning how to
+navigate this code base took some getting use to for our team. Our synthesizer
+largely uses Poirot as a black-box to dispatch subtyping checks. This choice was
+largely over our lack of confidence with modifying the typechecking procedure
+for fear of introducing bugs. Alternatively, a more tightly coupled integration
+between the type checker and synthesizer could have a lot of benefit. Since
+there are multiple variations of a term with small changes to the argument,
+there are many duplicates or structurally similar subtyping checks that could
+be reused.
 
+\subsection{Challenges with using an under-approximate logic for synthesis}
+In traditional bottom-up synthesis, you enumerate a set of terms at a given
+level and then check for a solution. If one isn't found, you repeat the process
+for the next level. Our solution instead only checks for a solution at the very
+end after enumerating to a user-specified depth. This is done for two reasons.
+For one, the process of checking for a solution is currently expensive as we
+perform a subtyping check on each term of the correct base type to partition the
+solution space, perform SMT queries to find an optimal set of smaller terms to
+join together, and then a final round of subtyping checks to identify a
+solution. This procedure scales poorly as the number of terms increases and as
+such should only really be done once. It would be interesting to consider a way
+to do this incrementally.
+
+Additionally, because the logic is under-approximate, the traditional benefit of
+a deductive synthesis search does not apply as there are most likely many
+possible solutions. And unlike in traditional inductive synthesis, the smallest
+solution is unlikely to be the best one because it is probably too general. For
+example, if the generic generator for a given base type is available, then it
+will be included as a seed term and will always be a solution at any depth
+level. This means that the synthesis procedure can not attempt to terminate
+early as a better solution may be available. It is possible that heuristics
+
+\subsection{Leveraging both over- and under-approximate logics}
 Finding the right interactions between over and under approximate reasoning. Not
-needing overapproximate subtyping to set an upper bounds. Needing blocks with
+needing over-approximate subtyping to set an upper bounds. Needing blocks with
 both over and under approximate types to account for the hybrid typing of arrow
 types.
-
-Unlike traditional bottom-up enumeration, you can't look for a solution at every
-iteration. The simplest solution is probably the smallest one though that one will
-be too general. For example, if you have the generic generator for the target
-type, you have a solution to synthesis before you even start. We also need to
-limit the number to SMT queries made as they begin to pile up and are expensive.
-It seems like this should be easily parallelizable, especially with the release
-of Ocaml 5.0 if the type checker has limited mutable state.
 
 The original need for simpler generators arose out of not knowing enough about
 the problem space. What actually needed addressing is when to partition the
 input space.
 
-Anything else?
+\subsection{CBS with non-determinism}
+
+\subsection{If as a component}
+
+\subsection{Abduction}
+
+\subsection{Parallelism}
+It seems like this should be easily parallelizable, especially with the release
+of Ocaml 5.0 if the type checker has limited mutable state.
 
 \subsection{Possible Typechecker Bugs?}
-In our project, the subtyping checks are largely treated as a black box. In the
-coarse of using Poirot, we believe we may have ran into some issues that
+In our project, the use of Poirot was largely treated as a black-box
+
+
+In the
+course of using Poirot, we believe we may have run into some issues that
 impacted the correctness of our synthesizer.
 
 \subsubsection{Let binding immediate shadowing}
@@ -528,6 +567,7 @@ impacted the correctness of our synthesizer.
 \subsubsection{Measure issues? The singleton list}
 
 \subsubsection{Structural decreasing constraint on the return type instead of the argument}
+
 
 \section{Teamwork}
 % A one-paragraph description of the individual team member's contributions
@@ -556,13 +596,13 @@ could have gone further in discussing refinement types as a type-theoretic
 approach to a decidable fragment of first order logic.
 
 \begin{acks}
-    Christopher Nolan for making Inception for whom's main character this tool is
-    named after.
-    Ashish Mishra who originally purposed the idea of a bottom-up synthesizer
-    for coverage types and for allowing Patrick to sit in on his
-    under-approximate synthesis meetings and under-approximate reading group.
-    Zhe Zhou for the Poirot type checker and showing much patience in answering
-    our questions about Poirot's implementation and Coverage Types in general.
+  Christopher Nolan for making Inception for whom's main character this tool is
+  named after.
+  Ashish Mishra who originally purposed the idea of a bottom-up synthesizer
+  for coverage types and for allowing Patrick to sit in on his
+  under-approximate synthesis meetings and under-approximate reading group.
+  Zhe Zhou for the Poirot type checker and showing much patience in answering
+  our questions about Poirot's implementation and Coverage Types in general.
 \end{acks}
 
 %%

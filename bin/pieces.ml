@@ -166,7 +166,18 @@ module Pieces = struct
     let e_f = NL.id_to_value false_branch |> NL.value_to_term in
     NL.Ite { cond; e_t; e_f }
 
-  let apply (comp : component) (args : id NNtyped.typed list) =
+  (* A special case for the moment when we want to create if's where the second
+  branch is an exception *)
+  (* I don't want to bind Exn to an id because then it gets executed after the
+  condition no? *)
+  let mk_one_sided_if (cond : id NNtyped.typed) (true_branch : id NNtyped.typed)
+      : NL.term =
+    let cond = NL.id_to_value cond in
+    let e_t = NL.id_to_value true_branch |> NL.value_to_term in
+    let exn = { x = NL.Exn; ty = true_branch.ty } |> NL.value_to_term in
+    NL.Ite { cond; e_t; e_f = exn }
+
+  let apply (comp : component) (args : id NNtyped.typed list) : id NNtyped.typed * NL.term =
     let resid, aterm, term =
       match comp with
       | Fun f -> mk_app f args (fun x -> NL.value_to_term (NL.id_to_value x))

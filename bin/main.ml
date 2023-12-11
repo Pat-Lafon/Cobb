@@ -134,7 +134,6 @@ let run_benchmark source_file refine_file bound =
   let seeds, components = Pieces.seeds_and_components libs in
 
   (* todo Add argument variables to seeds *)
-  (* todo Add recursive component *)
 
   (* Example below shows how to build a term and call inference on it *)
   (* let example_term () =
@@ -279,6 +278,7 @@ let run_benchmark source_file refine_file bound =
           in
 
           (* Add arguments as variables *)
+(*           let _ = exit 1 in *)
 
           (* Add Recursive Componenet*)
           let nty = UT.erase f.ty in
@@ -300,7 +300,6 @@ let run_benchmark source_file refine_file bound =
               lambody
           in
           res *))
-      (* List.mapi *)
       refinement
   in
   print_endline "Finished Synthesis"
