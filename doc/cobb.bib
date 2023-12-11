@@ -1,3 +1,50 @@
+@article{Burst,
+  author     = {Miltner, Anders and Nu\~{n}ez, Adrian Trejo and Brendel, Ana and Chaudhuri, Swarat and Dillig, Isil},
+  title      = {Bottom-up Synthesis of Recursive Functional Programs Using Angelic Execution},
+  year       = {2022},
+  issue_date = {January 2022},
+  publisher  = {Association for Computing Machinery},
+  address    = {New York, NY, USA},
+  volume     = {6},
+  number     = {POPL},
+  url        = {https://doi.org/10.1145/3498682},
+  doi        = {10.1145/3498682},
+  abstract   = {We present a novel bottom-up method for the synthesis of functional recursive programs. While bottom-up synthesis techniques can work better than top-down methods in certain settings, there is no prior technique for synthesizing recursive programs from logical specifications in a purely bottom-up fashion. The main challenge is that effective bottom-up methods need to execute sub-expressions of the code being synthesized, but it is impossible to execute a recursive subexpression of a program that has not been fully constructed yet. In this paper, we address this challenge using the concept of angelic semantics. Specifically, our method finds a program that satisfies the specification under angelic semantics (we refer to this as angelic synthesis), analyzes the assumptions made during its angelic execution, uses this analysis to strengthen the specification, and finally reattempts synthesis with the strengthened specification. Our proposed angelic synthesis algorithm is based on version space learning and therefore deals effectively with many incremental synthesis calls made during the overall algorithm. We have implemented this approach in a prototype called Burst and evaluate it on synthesis problems from prior work. Our experiments show that Burst is able to synthesize a solution to 94\% of the benchmarks in our benchmark suite, outperforming prior work.},
+  journal    = {Proc. ACM Program. Lang.},
+  month      = {jan},
+  articleno  = {21},
+  numpages   = {29},
+  keywords   = {Angelic Execution, Logical Specifications, Program Synthesis}
+}
+
+@article{IL,
+  author     = {O'Hearn, Peter W.},
+  title      = {Incorrectness Logic},
+  year       = {2019},
+  issue_date = {January 2020},
+  publisher  = {Association for Computing Machinery},
+  address    = {New York, NY, USA},
+  volume     = {4},
+  number     = {POPL},
+  url        = {https://doi.org/10.1145/3371078},
+  doi        = {10.1145/3371078},
+  abstract   = {Program correctness and incorrectness are two sides of the same coin. As a programmer, even if you would like to have correctness, you might find yourself spending most of your time reasoning about incorrectness. This includes informal reasoning that people do while looking at or thinking about their code, as well as that supported by automated testing and static analysis tools. This paper describes a simple logic for program incorrectness which is, in a sense, the other side of the coin to Hoare's logic of correctness.},
+  journal    = {Proc. ACM Program. Lang.},
+  month      = {dec},
+  articleno  = {10},
+  numpages   = {32},
+  keywords   = {none}
+}
+
+@misc{li2023efficient,
+  title         = {Efficient Bottom-Up Synthesis for Programs with Local Variables},
+  author        = {Xiang Li and Xiangyu Zhou and Rui Dong and Yihong Zhang and Xinyu Wang},
+  year          = {2023},
+  eprint        = {2311.03705},
+  archiveprefix = {arXiv},
+  primaryclass  = {cs.PL}
+}
+
 @article{Poirot,
   author     = {Zhou, Zhe and Mishra, Ashish and Delaware, Benjamin and Jagannathan, Suresh},
   title      = {Covering All the Bases: Type-Based Verification of Test Input Generators},
@@ -15,32 +62,4 @@
   articleno  = {157},
   numpages   = {24},
   keywords   = {property-based testing, refinement types, underapproximate reasoning}
-}
-
-@article{IL,
-	author = {O'Hearn, Peter W.},
-	title = {Incorrectness Logic},
-	year = {2019},
-	issue_date = {January 2020},
-	publisher = {Association for Computing Machinery},
-	address = {New York, NY, USA},
-	volume = {4},
-	number = {POPL},
-	url = {https://doi.org/10.1145/3371078},
-	doi = {10.1145/3371078},
-	abstract = {Program correctness and incorrectness are two sides of the same coin. As a programmer, even if you would like to have correctness, you might find yourself spending most of your time reasoning about incorrectness. This includes informal reasoning that people do while looking at or thinking about their code, as well as that supported by automated testing and static analysis tools. This paper describes a simple logic for program incorrectness which is, in a sense, the other side of the coin to Hoare's logic of correctness.},
-	journal = {Proc. ACM Program. Lang.},
-	month = {dec},
-	articleno = {10},
-	numpages = {32},
-	keywords = {none}
-}
-
-@misc{li2023efficient,
-  title         = {Efficient Bottom-Up Synthesis for Programs with Local Variables},
-  author        = {Xiang Li and Xiangyu Zhou and Rui Dong and Yihong Zhang and Xinyu Wang},
-  year          = {2023},
-  eprint        = {2311.03705},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.PL}
 }

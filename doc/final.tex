@@ -220,8 +220,15 @@ of test-input generators. For a test-input generator to be complete, it must
 fully cover the set of values satisfying the input precondition.
 
 \subsection{Bottom-Up Synthesis}
-We are taking ideas from bottom-up synthesis by starting from the leaf node.
-Although bottom-up synthesis (citation?) are often inductive and example-based, we use a deductive approach that is based on under-approximate type-checking to ensure correctness of the synthesized program.
+Bottom-up synthesis is a well-known technique in the inductive synthesis world
+whose example-based inputs can be viewed as a form of under-approximate
+reasoning. Here, smaller terms are composed together using components to form
+larger terms. At each step, terms can be checked for their semantics, often by
+running them against a set of input values. There are two main weaknesses to
+bottom-up synthesis: the number of partial programs that are not used to
+construct the goal is large, and it is in general not possible to reason about
+recursion during the enumeration. For the latter issue, recent work leverages
+angelic semantics to give some semantics recursion when used as a component\cite{Burst}.
 
 \subsection{Deductive synthesis}
 
