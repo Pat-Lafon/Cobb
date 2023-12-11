@@ -46,6 +46,7 @@
 %%%% Generic manuscript mode, required for submission
 %%%% and peer review
 \documentclass[review, sigplan]{acmart}
+\usepackage{listings}
 %% Fonts used in the template cannot be substituted; margin
 %% adjustments are not allowed.
 %%
@@ -218,7 +219,40 @@ depth programs as contrasted by long traces needed in inductive synthesis.
 % Provide key technical details about your solution, e.g. your toplevel
 % algorithm, aprecise encoding of your problem in logic, etc.
 We have implemented our solution as a bottom-up deductive synthesizer called
-Cobb~(https://github.com/Pat-Lafon/Cobb)
+Cobb~(\url{https://github.com/Pat-Lafon/Cobb}).
+Internally the algorithm uses Poirot for guiding the synthesis and pruning
+the search space.
+
+The program requires the user to specify the refined signature of the function
+they would like to synthesize and a set of ``components'' and types
+that should be used for enumerating terms.
+Note that the components should have their refined types specified as
+well.
+
+An example of the initial information that the user provides
+is shown below.
+
+\begin{align*}
+& T := \textsf{bool} \mid \textsf{int} \mid \textsf{int list} \\
+& \text{Seed} := \textsf{bool\_gen}() \mid 0 \mid 1 \mid \textsf{int\_gen()} \mid \textsf{nil} \mid \textsf{list\_gen()} \\
+& \text{Component} := \\
+&\  \mid +: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{int}\\
+&\  \mid -: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{int}\\
+&\  \mid \leq: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{bool} \\
+&\  \mid \textsf{cons}: \textsf{int} \rightarrow \textsf{int list} \\
+& \dots
+\end{align*}
+
+The types that should be used in the synthesis should be
+booleans, integers and lists of integers.
+Seeds are elementary constructors such as 0, 1, and \textsf{nil}
+but also non-deterministic applications of generators of values of
+base types. Components are functions or constructors.
+All elements needed for the synthesis must have all the signatures
+that are needed for Poirot to be able to check them.
+Fortunately, by leveraging Poirot we reduce the overhead needed for setting
+up the synthesis by reusing key lemmas and properties of common
+data-types provided by Poirot already.
 
 Load in various files
 
@@ -230,6 +264,38 @@ abstractions.
 
 Converting seeds to blocks, anormal form and the use of typing contexts to carry
 incremental typing state.
+
+\subsection{Representing AST Nodes for Typing}
+Similarly to other refinement-type checkers, Poirot uses
+ANF to simplify checking of dependencies of return types on arguments.
+The standard approach of bottom-up synthesis to work on ASTs would
+be suboptimal -- inferring the types of new terms would require to
+first translate them in ANF and then for the type-checker to traverse
+the ANF term to ``unpack'' it into contexts while inferring intermediate
+nodes to finally type the full tree.
+
+Our solution instead relies on representing terms by their
+typing contexts and a global term table that keeps track of
+the term corresponding to each variable.
+Consider the following ANF term.
+\begin{lstlisting}[language=caml, basicstyle=\small\ttfamily]
+let a = int_gen()
+ let b = 2
+   a + b
+\end{lstlisting}
+
+The only information we keep track of is the following context
+
+\begin{lstlisting}[language=caml, basicstyle=\small\ttfamily, mathescape]
+{
+ a: ${\color{blue}[}\nu: \textsf{int} \mid \textit{true}{\color{blue}]}$,
+ b: ${\color{blue}[}\nu: \textsf{int} \mid \nu == 2{\color{blue}]}$
+ c: ${\color{blue}[}\nu: \textsf{int} \mid \textit{true}{\color{blue}]}$
+}
+\end{lstlisting}
+
+where \lstinline|c| is the type of the value resulting from the
+ANF term.
 
 Initializing a collection of blocks based on typing. Old and new maps
 
