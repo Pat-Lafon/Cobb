@@ -231,11 +231,15 @@ recursion during the enumeration. For the latter issue, recent work leverages
 angelic semantics to give some semantics recursion when used as a component\cite{Burst}.
 
 \subsection{Deductive synthesis}
-\todo{bleh}
-
-Program Synthesis makes use of input specification in the form of logic or types as used in deductive synthesis or in the form of input/output examples as used by inductive synthesis.
-Gap
-However, over-approximation logic tends to perform poorly when addressing the issue of completeness. Over-approximate specifications when used in synthesizing generators allow for generators which only produce trivial values. For example, synthesizing a unique lists generator using over-approximation specification may result in a generator that just produces empty or single element lists which trivially satisfy the specification. Such generators are not useful in PBT.
+Deductive synthesis uses a series of logical rules to iteratively refine a goal
+into sub-problems until a solution is found. The form of synthesis is appealing
+as the resulting program is said to be ``correct-by-construction'' in that the
+rules used to create the program can be leveraged into a proof of correctness
+with respect to the specification. One form of deductive synthesis that has seen
+popularity is that of synthesis with refinement types as championed by
+Synquid\cite{Synquid}. There, polymorphic Haskell functions can be derived from
+a type signature written with Refinement Types\cite{Refinement} whose rules can
+be efficiently dispatched using an SMT solver.
 
 \subsection{Our Solution}
 Our solution identifies what might be a nice intersection of strengths. As shown
@@ -479,24 +483,24 @@ The only information we keep track of is its context
 where \lstinline|c| is the type of the value resulting from the
 ANF term.
 
-
-Initializing a collection of blocks based on typing. Old and new maps
-
-Incrementing/joining blocks together. Joining contexts/renaming, false coverage
-types. Coverage equivalence as a parallel to observational equivalence
-
-Iterating to a fixed depth
-
-Splitting blocks into subtypes versus supertypes, computing joins over the
-subtypes.
-
-Choosing the tightest solution
-
-extracting out the final program
-
 \section{Summary of Results}
 % Describe how you validated your approach: if you ran experiments to evaluate
 % your approach. provide any data or results from those.
+Our synthesizer, Cobb, was evaluated against the benchmarks listing in Poirot's
+7.3 evaluation. This benchmark ran a combination of a deductive component-based
+synthesizer on a refinement type version of each of the specifications and then
+checked the synthesized programs using the coverage type specification using
+Poirot.
+
+In contrast, our tool can synthesize complete programs in the first go and is
+``complete-by-construction'' thanks to leveraging Poirot during the synthesis
+process. We ran our tool on the three list benchmarks and successfully
+synthesized programs for which Poirot said satisfied the specification. Our tool
+ran to the same depth/level as in 7.3 so far more programs were ruled out by
+leveraging coverage. However, we have some reservations about our results as
+laid out in \ref{measure} in that some of the programs synthesized do not seem
+to be obviously correct. In this way, our synthesizer is only as good as our
+trusted base, Poirot.
 
 \section{Reflection}
 % Describe any key design and implementation challenges; how you addressed them
@@ -549,11 +553,14 @@ logic. Currently, the main interaction with over-approximate types comes from th
 initial named arguments from the signature and arrow types with over approximate
 arguments.
 
-\todo{Not needing over-approximate subtyping to set an upper bounds. Needing
-  blocks with both over and under approximate types to account for the hybrid
-  typing of arrow types. The original need for simpler generators arose out of not
-  knowing enough about the problem space. What actually needed addressing is when
-  to partition the input space.}
+There is a possible balancing act that can be played where the synthesizer could
+keep track of both the over- and under-approximate typing of each term. This
+would provide a stronger concrete upper bounds for refining the search and for
+use in abducing useful subterms. However, this would also double the number of
+SMT queries for each term which might severely hamper the performance in terms
+of generating larger blocks. Perhaps there is a middle ground where
+over-approximate reasoning is leveraged selectively when the synthesizer has
+gotten stuck in a local minimum.
 
 \subsection{CBS with non-determinism}
 Traditionally component-based synthesis reasons about deterministic operations.
@@ -597,17 +604,113 @@ the synthesizer could be modified to better run these tasks in parallel. There
 is some mutable state at both ends that would need to be worked out to make this safe.
 
 \subsection{Possible Typechecker Bugs?}
-
-\todo{In the
-  course of using Poirot, we believe we may have run into some issues that
-  impacted the correctness of our synthesizer.}
+We are using Poirot, a research tool, in a couple of potentially unexpected
+ways. We are also not fully confident in our understanding of coverage types and
+where unexpected behavior may occur. Given this, we include a couple of
+behaviors we encountered which may or may not be correct, and given so, may
+impact the results of our tool.
 
 \subsubsection{Let binding immediate shadowing}
 
-\subsubsection{Measure issues? The singleton list}
+While it might not impact the correctness of our tool, we notice significant
+differences in the type predicates inferred when it came to some of our terms
+when a specific flag was set. We had investigated this when trying to identify
+the issue in \ref{measure}.
+
+\begin{lstlisting}[language=caml, basicstyle=\small\ttfamily]
+and handle_let_body (uctx : uctx)
+      rets body target_type : UL.t =
+  (* HACK: Why I fail here? *)
+  let if_opt = false in
+  let opt_infer =
+    match (body, rets) with
+    | NL.{ x = NL.V { x = NL.Var id; _ }; _ },
+          [ (id', idty') ]
+      when String.equal id.x id' ->
+        if if_opt then Some idty' else None
+    | _ -> None
+  in
+\end{lstlisting}
+
+\subsubsection{Measure issues? The singleton list}\label{measure}
+One of our benchmarks is the generation of sized lists which illustrates the following
+issue. Given the following specification as used in Poirot's benchmarks:
+
+\begin{lstlisting}[language=caml, basicstyle=\small\ttfamily]
+  external method_predicates : t = "len" "<="
+
+  let sized_list_gen =
+    let s = (0 <= v : [%v: int]) [@over] in
+    (fun (u : [%forall: int]) ->
+        implies (len v u) (0 <= u && u <= s)
+      : [%v: int list])
+      [@under]
+\end{lstlisting}
+
+The following program type checks:
+
+\begin{lstlisting}[language=caml, basicstyle=\small\ttfamily]
+let rec sized_list_gen (size:int):int list =
+  let (b : bool) = size == 0 in
+  if b then []
+  else
+    let (b1 : bool) = bool_gen () in
+    if b1 then []
+    else
+      let (size1 : int) = size - 1 in
+      let (l:int list)=sized_list_gen size1 in
+      let (n : int) = int_gen () in
+      n :: l
+\end{lstlisting}
+
+What we might imagine is that as we reduce this program (looking at terms in the
+inverse order that they are synthesized), smaller terms should not be able to
+satisfy the spec.
+
+This is true for the following smaller program:
+\begin{lstlisting}[language=caml, basicstyle=\small\ttfamily]
+  let rec sized_list_gen (size:int):int list =
+      let (b1 : bool) = bool_gen () in
+      if b1 then []
+      else
+        let (size1 : int) = size - 1 in
+        let (l:int list)=sized_list_gen size1 in
+        let (n : int) = int_gen () in
+        n :: l
+  \end{lstlisting}
+
+but not true for both of the following programs(bot of the following strictly
+smaller programs typecheck):
+
+\begin{lstlisting}[language=caml, basicstyle=\small\ttfamily]
+let rec sized_list_gen (size:int):int list =
+      let (size1 : int) = size - 1 in
+      let (l : int list) = sized_list_gen size1 in
+      let (n : int) = int_gen () in
+      n :: l
+\end{lstlisting}
+
+\begin{lstlisting}[language=caml, basicstyle=\small\ttfamily]
+let rec sized_list_gen (size:int):int list =
+  let (l : int list) = [] in
+  let (n : int) = int_gen () in
+  n :: l
+\end{lstlisting}
+
+In such cases, our synthesizer returns a program that provides ``complete''
+coverage, but this is only true up to the correctness of Poirot.
 
 \subsubsection{Structural decreasing constraint on the return type instead of the argument}
+We were surprised to find that inside of Poirot adds the structurally decreasing
+order constraint on the return type of the fixpoint call instead of on the
+argument as seemed to be described in the TFix rule in Type-Base Verification of
+Test Input Generators.
 
+This might be equivalent since it presumably just has the component return
+something semantically equivalent to false, but it was still surprising nonetheless. We include the code in question, not the call to modify the return type
+with the order constraint.
+
+\includegraphics[scale=.35]{fix.png}
 
 \section{Teamwork}
 % A one-paragraph description of the individual team member's contributions

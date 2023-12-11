@@ -63,3 +63,42 @@
   numpages   = {24},
   keywords   = {property-based testing, refinement types, underapproximate reasoning}
 }
+
+@article{Synquid,
+  author     = {Polikarpova, Nadia and Kuraj, Ivan and Solar-Lezama, Armando},
+  title      = {Program Synthesis from Polymorphic Refinement Types},
+  year       = {2016},
+  issue_date = {June 2016},
+  publisher  = {Association for Computing Machinery},
+  address    = {New York, NY, USA},
+  volume     = {51},
+  number     = {6},
+  issn       = {0362-1340},
+  url        = {https://doi.org/10.1145/2980983.2908093},
+  doi        = {10.1145/2980983.2908093},
+  abstract   = {We present a method for synthesizing recursive functions that provably satisfy a given specification in the form of a polymorphic refinement type. We observe that such specifications are particularly suitable for program synthesis for two reasons. First, they offer a unique combination of expressive power and decidability, which enables automatic verification—and hence synthesis—of nontrivial programs. Second, a type-based specification for a program can often be effectively decomposed into independent specifications for its components, causing the synthesizer to consider fewer component combinations and leading to a combinatorial reduction in the size of the search space. At the core of our synthesis procedure is a newalgorithm for refinement type checking, which supports specification decomposition. We have evaluated our prototype implementation on a large set of synthesis problems and found that it exceeds the state of the art in terms of both scalability and usability. The tool was able to synthesize more complex programs than those reported in prior work (several sorting algorithms and operations on balanced search trees), as well as most of the benchmarks tackled by existing synthesizers, often starting from a more concise and intuitive user input.},
+  journal    = {SIGPLAN Not.},
+  month      = {jun},
+  pages      = {522–538},
+  numpages   = {17},
+  keywords   = {Program Synthesis, Predicate Abstraction, Refinement Types, Functional Programming}
+}
+
+@article{Refinement,
+  author     = {Vazou, Niki and Seidel, Eric L. and Jhala, Ranjit and Vytiniotis, Dimitrios and Peyton-Jones, Simon},
+  title      = {Refinement Types for Haskell},
+  year       = {2014},
+  issue_date = {September 2014},
+  publisher  = {Association for Computing Machinery},
+  address    = {New York, NY, USA},
+  volume     = {49},
+  number     = {9},
+  issn       = {0362-1340},
+  url        = {https://doi.org/10.1145/2692915.2628161},
+  doi        = {10.1145/2692915.2628161},
+  abstract   = {SMT-based checking of refinement types for call-by-value languages is a well-studied subject. Unfortunately, the classical translation of refinement types to verification conditions is unsound under lazy evaluation. When checking an expression, such systems implicitly assume that all the free variables in the expression are bound to values. This property is trivially guaranteed by eager, but does not hold under lazy, evaluation. Thus, to be sound and precise, a refinement type system for Haskell and the corresponding verification conditions must take into account which subset of binders actually reduces to values. We present a stratified type system that labels binders as potentially diverging or not, and that (circularly) uses refinement types to verify the labeling. We have implemented our system in LIQUIDHASKELL and present an experimental evaluation of our approach on more than 10,000 lines of widely used Haskell libraries. We show that LIQUIDHASKELL is able to prove 96\% of all recursive functions terminating, while requiring a modest 1.7 lines of termination-annotations per 100 lines of code.},
+  journal    = {SIGPLAN Not.},
+  month      = {aug},
+  pages      = {269–282},
+  numpages   = {14}
+}
