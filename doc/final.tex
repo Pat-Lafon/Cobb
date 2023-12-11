@@ -231,19 +231,25 @@ recursion during the enumeration. For the latter issue, recent work leverages
 angelic semantics to give some semantics recursion when used as a component\cite{Burst}.
 
 \subsection{Deductive synthesis}
+\todo{bleh}
 
 Program Synthesis makes use of input specification in the form of logic or types as used in deductive synthesis or in the form of input/output examples as used by inductive synthesis.
 Gap
 However, over-approximation logic tends to perform poorly when addressing the issue of completeness. Over-approximate specifications when used in synthesizing generators allow for generators which only produce trivial values. For example, synthesizing a unique lists generator using over-approximation specification may result in a generator that just produces empty or single element lists which trivially satisfy the specification. Such generators are not useful in PBT.
 
 \subsection{Our Solution}
-
-Coverage + bottom up + test input generators
-
-Deductive synthesis with recursive specifications + bottom up
-
-The intuition behind blocks, covering subsections of the program space. Small
-depth programs as contrasted by long traces needed in inductive synthesis.
+Our solution identifies what might be a nice intersection of strengths. As shown
+in past work, coverage types sufficiently capture the semantics of what
+programmers are looking for in their test input generators. However, existing
+synthesis techniques leverage refinement types which are over-approximate and
+often fail to produce candidate programs with sufficient coverage. Bottom-up
+enumeration which is a technique leveraged in inductive synthesis reasons about
+the produced value of a term and would be synonymous with using type inference
+from a bidirectional type checker on the enumerated term. Interestingly, because
+our synthesis here is deductive, we will also be able to overcome one of the
+limitation of bottom-up enumeration in that our recursive component will have
+well-defined semantics as provided by the synthesis goal. In this way, we can
+treat the recursive call as just another component.
 
 \section{Implementation}
 % Provide key technical details about your solution, e.g. your toplevel
