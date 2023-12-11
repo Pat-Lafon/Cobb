@@ -198,9 +198,13 @@ Instead, our approach uses Coverage Types\citep{Poirot}, which is based on a rec
 
 \subsection{Property-Based Testing}
 
-Property Based Testing (PBT) stands in the middle ground between random testing and formal verification, in that the input generation is guided by the interested property, specified by programmers as logical predicates. This allows the programmers to guide the generated input using the testing predicate, allowing it to discover more intricate bugs, at the same time leveraging automation using SMT solvers to alleviate manual effort.
+Property Based Testing (PBT) stands in the middle ground between random testing
+and formal verification, helping the programmer find bugs with relatively low
+effort. Given a user specified input preconditions and final postcondition, a
+series of inputs are generated, checked, executed against the target program,
+and then the result verified.
 
-Property Based Testing  is useful because it lifts the burden of writing tests by providing a safety specification and a method of generating random inputs.
+Property Based Testing is useful because it lifts the burden of writing manual tests by providing a safety specification and a method of generating random inputs.
 However, non-trivial preconditions can lead to many spurious inputs from generic generators (e.g.~syntactic generators that simply recurse over the constructors but do not consider the semantics), increasing testing time or leading to incomplete/partial coverage.
 An alternative is hand-writing specialized test input generators which is laborious and potentially faulty.
 To overcome these limitations, recent work has proposed: fuzzing (and mutation-based) generators, type-based generators, automated Correct-by-Construction generators for limited domains, and over-approximate program synthesis.
