@@ -47,6 +47,7 @@
 %%%% and peer review
 \documentclass[review, sigplan]{acmart}
 \usepackage{listings}
+\usepackage{cleveref}
 %% Fonts used in the template cannot be substituted; margin
 %% adjustments are not allowed.
 %%
@@ -148,6 +149,7 @@
 %% of authors' names for this purpose.
 \renewcommand{\shortauthors}{LaFontaine et al.}
 
+\newcommand\todo[1]{\textcolor{red}{#1}}
 
 %\begin{abstract}
 %    This thing is cool
@@ -204,7 +206,7 @@ We are taking ideas from bottom-up synthesis by starting from the leaf node. Alt
 
 \subsection{Coverage Types}
 
-Coverage Types\cite{Poirot}
+Coverage Types~\cite{Poirot}
 
 \subsection{Our Solution}
 
@@ -242,30 +244,91 @@ is shown below.
 &\  \mid \textsf{cons}: \textsf{int} \rightarrow \textsf{int list} \\
 & \dots
 \end{align*}
-
-The types that should be used in the synthesis should be
+The types that should be used in the synthesis are
 booleans, integers and lists of integers.
 Seeds are elementary constructors such as 0, 1, and \textsf{nil}
 but also non-deterministic applications of generators of values of
-base types. Components are functions or constructors.
+base types.
+
+Components are functions or constructors.
 All elements needed for the synthesis must have all the signatures
 that are needed for Poirot to be able to check them.
 Fortunately, by leveraging Poirot we reduce the overhead needed for setting
 up the synthesis by reusing key lemmas and properties of common
-data-types provided by Poirot already.
+data-types provided by its codebase already.
 
-Load in various files
+\todo{Load in various files}
 
-Prepare recursive call, structurally decreasing argument with context
+Cobb additionally supports the generation of recursive functions.
+We achieve this by adding the signature of the function being
+generated in the pool of components available for use,
+no different from standard typing of recursive bindings in non-refined
+type-systems.
+However, an additional constraint is added to the return type
+of the function's specification to ensure that only applications
+where at least one argument is structurally decreasing are formed.
 
-Set typechecker global state, initialize starting seeds: constants, variables,
+\todo{Set typechecker global state, initialize starting seeds: constants, variables,
 0-arity functions and constructors, and unit generators. Setting up component
 abstractions.
+}
 
-Converting seeds to blocks, anormal form and the use of typing contexts to carry
-incremental typing state.
+Once seeds, components, and self-application with structurally decreasing
+arguments is setup, the synthesis algorithm begins by enumerating
+all terms up to a target level\footnote{The level of a node is what would
+be commonly referred to as height in the tree. But since
+we are constructing trees bottom-up we prefer the term level} specified by the user.
+\begin{lstlisting}[language=Python, basicstyle=\small\ttfamily, mathescape, numbers=left, numbersep=3pt]
+def synth(seeds, components, tgt_sign, tgt_l):
+ blocks = seeds
+ for l in range(tgt_l):
+   current_level = apply(components, blocks)
+   # Prune redundant programs
+   for p1, p2 in product(current_level, blocks):
+     if coverage(p1) == coverage(p2): $\label{line:cvgcheck}$
+       current_level.remove(p1)
+   blocks = current_level + blocks
+
+ return join(blocks, tgt_sign)
+\end{lstlisting}
+At level $\ell + 1$, we enumerate all blocks of height $\ell + 1$ by applying
+the components to the blocks of level $i \leq \ell$.
+Accordingly, at least one of the arguments must be of height $\ell$ to produce
+a tree of height $\ell + 1$.
+When building new terms in \lstinline[basicstyle=\small\ttfamily]|apply|
+we ensure that components are applied only to \emph{simply well-typed} terms
+to avoid expensive SMT calls for trivially simply ill-typed terms.
+
+\begin{lstlisting}[language=Python, basicstyle=\small\ttfamily, mathescape, numbers=left, numbersep=3pt]
+def apply(components, blocks):
+ for c in components:
+   argss = product_filter(blocks, c.arg_types)
+   for args in argss:
+      block = $'${ c(*args) }
+      # Skip block if covered by argument
+      if any(coverage(block) <= coverage(arg) $\label{line:cvginc}$
+            for arg in args):
+        continue
+      yield block
+\end{lstlisting}
+
+Therefore, \lstinline[basicstyle=\small\ttfamily]|product_filter|
+generates all potential arguments sequences \lstinline|argss|
+that a component can be applied to, to produce a new simply well-typed
+term of height $\ell + 1$.
+
+There are two key optimizations we perform:
+(1) when building a new block in \lstinline[basicstyle=\small\ttfamily]|apply|,
+we make sure that it has an increased coverage with respect to its arguments (\Cref{line:cvgcheck}).
+This is needed to avoid spurious terms such as
+\lstinline[basicstyle=\small\ttfamily]|int_gen() + int_gen()|.
 
 \subsection{Representing AST Nodes for Typing}
+\todo{
+Converting seeds to blocks, anormal form and the use of typing contexts to carry
+incremental typing state.
+}
+
 Similarly to other refinement-type checkers, Poirot uses
 ANF to simplify checking of dependencies of return types on arguments.
 The standard approach of bottom-up synthesis to work on ASTs would
@@ -283,8 +346,7 @@ let a = int_gen()
  let b = 2
    a + b
 \end{lstlisting}
-
-The only information we keep track of is the following context
+The only information we keep track of is its context
 
 \begin{lstlisting}[language=caml, basicstyle=\small\ttfamily, mathescape]
 {
@@ -293,9 +355,9 @@ The only information we keep track of is the following context
  c: ${\color{blue}[}\nu: \textsf{int} \mid \textit{true}{\color{blue}]}$
 }
 \end{lstlisting}
-
 where \lstinline|c| is the type of the value resulting from the
 ANF term.
+
 
 Initializing a collection of blocks based on typing. Old and new maps
 
