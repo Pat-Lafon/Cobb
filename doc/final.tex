@@ -183,10 +183,12 @@
 \section{Introduction}
 % Describe the high-level problem you were tackling
 
-Synthesizing test input generators that satisfy a given coverage specification.
+The goal of this project is to utilize coverage types to synthesize test input generators. 
+Common approaches use an overapproxime synthesis which leads to sound but incomplete generators. 
+With list generators, for example, generators produced using overapproximate synthesis could always generate the empty list which would satisfy most conditions one is interested in (e.g.~``sorted'', ``unique'' etc.) but fail to provide a variety of tests that cover the majority of or the entire input space.
 
-Addressing a gap left between type-theoretic but over-approximate synthesis
-techniques and
+Instead of overapproximate synthesis that uses refinement types as a basis for test input specification, our approach uses coverage types\citep{Poirot}, which is based on a recently proposed underapproximate, incorrectness logic\citep{IL}, to ensure the completeness of the synthesized test input generators.
+% On the flip side, this approach but might produce extraneous test inputs that fall outside of the given specification. 
 
 \section{Overview}
 % Recap any relevant existing work on this problem, give a high-level
@@ -195,18 +197,31 @@ techniques and
 % that illustrate your solution
 
 \subsection{Property-Based Testing}
-A wide range of methods exist to ensure software safety. On the one hand, random testing or fuzzing uses random input to discover, but with the drawback that bugs requiring complex input may not be easily discovered; on the other hand, formal verification provides full safety guarantee, but it requires manual work to prove that the program is safe. 
 
-Property-based testing stands in the middle ground between random testing and formal verification, in that the input generation is guided by the interested property, specified by programmers as logical predicates. This allows the programmers to guide the generated input using the testing predicate, allowing it to discover more intricate bugs, at the same time leveraging automation using SMT solvers to alleviate manual effort.
+Property Based Testing (PBT) stands in the middle ground between random testing and formal verification, in that the input generation is guided by the interested property, specified by programmers as logical predicates. This allows the programmers to guide the generated input using the testing predicate, allowing it to discover more intricate bugs, at the same time leveraging automation using SMT solvers to alleviate manual effort.
 
-\subsection{Bottom-Up Synthesis}
-We are taking ideas from bottom-up synthesis by starting from the leaf node. Although bottom-up synthesis (citation?) are often inductive and example-based, we use a deductive approach that is based on underapproximate type-checking to ensure correctness of the synthesized program.
-
-\subsection{Deductive synthesis}
+Property Based Testing  is useful because it lifts the burden of writing tests by providing a safety specification and a method of generating random inputs. 
+However, non-trivial preconditions can lead to many spurious inputs from generic generators (e.g.~syntactic generators that simply recurse over the constructors but do not consider the semantics), increasing testing time or leading to incomplete/partial coverage. 
+An alternative is hand-writing specialized test input generators which is laborious and potentially faulty. 
+To overcome these limitations, recent work has proposed: fuzzing (and mutation-based) generators, type-based generators, automated Correct-by-Construction generators for limited domains, and over-approximate program synthesis.
 
 \subsection{Coverage Types}
 
-Coverage Types~\cite{Poirot}
+Coverage Types~\cite{Poirot} are a type based interpretation of the recently developed Incorrectness Logic\citep{IL}. 
+These types describe the domain of reachable output values from some valid input value. 
+They can be viewed as the inverse of Refinement Types with their corresponding logical interpretation in Hoare Logic. 
+This kind of under-approximate logic have strong use cases in bug-finding and program analysis.
+
+\subsection{Bottom-Up Synthesis}
+We are taking ideas from bottom-up synthesis by starting from the leaf node. 
+Although bottom-up synthesis (citation?) are often inductive and example-based, we use a deductive approach that is based on underapproximate type-checking to ensure correctness of the synthesized program.
+
+\subsection{Deductive synthesis}
+
+Program Synthesis makes use of input specification in the form of logic or types as used in deductive synthesis or in the form of input/output examples as used by inductive synthesis.
+Gap
+However, overapproximation logic tends to perform poorly when addressing the issue of completeness. Overapproximate specifications when used in synthesizing generators allow for generators which only produce trivial values. For example, synthesizing a unique lists generator using overapproximation specification may result in a generator that just produces empty or single element lists which trivially satisfy the specification. Such generators are not useful in PBT.
+
 
 \subsection{Our Solution}
 
