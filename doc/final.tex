@@ -271,8 +271,6 @@ Fortunately, by leveraging Poirot we reduce the overhead needed for setting
 up the synthesis by reusing key lemmas and properties of common
 data-types provided by its codebase already.
 
-\todo{Load in various files}
-
 Cobb additionally supports the generation of recursive functions.
 We achieve this by adding the signature of the function being
 generated in the pool of components available for use,
@@ -281,11 +279,6 @@ type-systems.
 However, an additional constraint is added to the return type
 of the function's specification to ensure that only applications
 where at least one argument is structurally decreasing are formed.
-
-\todo{Set typechecker global state, initialize starting seeds: constants, variables,
-  0-arity functions and constructors, and unit generators. Setting up component
-  abstractions.
-}
 
 Once seeds, components, and self-application with structurally decreasing
 arguments is setup, the synthesis algorithm begins by enumerating
@@ -437,11 +430,6 @@ Finally, as last resort we return a program that surely over-covers
 the target specification.
 
 \subsection{Representing AST Nodes for Typing}
-\todo{
-  Converting seeds to blocks, anormal form and the use of typing contexts to carry
-  incremental typing state.
-}
-
 Similarly to other refinement-type checkers, Poirot uses
 ANF to simplify checking of dependencies of return types on arguments.
 The standard approach of bottom-up synthesis to work on ASTs would
@@ -553,25 +541,46 @@ This makes it trivial to reason about this problem as just a manner of how you
 build AST's. In this way, there is no difference in let-binding values so that
 they can be reused versus recomputing their values.
 
-This is not true for our use case as generators are non-deterministic.
-
-\cite{li2023efficient}
-
-\subsection{If as a component}
+This is not true for our use case as generators are non-deterministic. There are
+a couple of possible solutions to this problem including leveraging recent
+developments in using let bindings in bottom-up
+enumeration\cite{li2023efficient}. We currently choose to treat all of our terms
+as if they contain non-determinism and therefore must be made afresh each time
+they are used. This maintains our coverage requirement and is efficient in terms
+of our synthesis algorithm but means that our synthesis approach is incomplete
+as some more optimal programs with term sharing are not reachable. This warrants
+further research into how other areas of synthesis address this issue.
 
 \subsection{Abduction}
+Currently, our synthesizer naively checks the set of boolean conditions that
+have been enumerated with an ill-typed term to see if the term can be made
+valid. Conceptually, the tool is looking for the constraint that limits the
+input space to the term enough for it to satisfy its preconditions. This could
+be better framed as a condition abduction problem of sorts. One way to improve
+this would to have a full fledge abduction procedure that looks for a condition
+that helps a term become well-typed and satisfy a subtyping constraint.
+
+Note while this is needed for helping ill-typed terms satisfy an
+over-approximate constraint, a proper procedure would also help in creating more
+precise generators. There, the guard is used to prune the output space to
+generate less extraneous terms.
 
 \subsection{Parallelism}
-It seems like this should be easily parallelizable, especially with the release
-of Ocaml 5.0 if the type checker has limited mutable state.
+In principle, bottom-up enumeration should be an easily parallelizable process.
+All the inputs for a given loop are known in advance and are immutable for the
+duration of the loop. Each iteration is independent of the other iterations, and
+if the SMT is a sufficient bottleneck over the cost of parallelization then
+this should be an easy win.
+
+With the release of Ocaml 5.0, it seems possible that the type checker, and then
+the synthesizer could be modified to better run these tasks in parallel. There
+is some mutable state at both ends that would need to be worked out to make this safe.
 
 \subsection{Possible Typechecker Bugs?}
-In our project, the use of Poirot was largely treated as a black-box
 
-
-In the
+\todo{In the
 course of using Poirot, we believe we may have run into some issues that
-impacted the correctness of our synthesizer.
+impacted the correctness of our synthesizer.}
 
 \subsubsection{Let binding immediate shadowing}
 
