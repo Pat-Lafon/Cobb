@@ -238,6 +238,7 @@ is shown below.
 & T := \textsf{bool} \mid \textsf{int} \mid \textsf{int list} \\
 & \text{Seed} := \textsf{bool\_gen}() \mid 0 \mid 1 \mid \textsf{int\_gen()} \mid \textsf{nil} \mid \textsf{list\_gen()} \\
 & \text{Component} := \\
+&\  \mid\, !: \textsf{bool} \rightarrow \textsf{bool} \\
 &\  \mid +: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{int}\\
 &\  \mid -: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{int}\\
 &\  \mid \leq: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{bool} \\
@@ -284,7 +285,7 @@ def synth(seeds, components, tgt_sign, tgt_l):
  for l in range(tgt_l):
    current_level = apply(components, blocks)
    # Prune redundant programs
-   for p1, p2 in product(current_level, blocks):
+   for p1, p2 in product(current_level):
      if coverage(p1) == coverage(p2): $\label{line:cvgcheck}$
        current_level.remove(p1)
    blocks = current_level + blocks
@@ -306,22 +307,121 @@ def apply(components, blocks):
    for args in argss:
       block = $'${ c(*args) }
       # Skip block if covered by argument
-      if any(coverage(block) <= coverage(arg) $\label{line:cvginc}$
+      if any(coverage(block) $\leq$ coverage(arg) $\label{line:cvginc}$
             for arg in args):
         continue
       yield block
 \end{lstlisting}
 
 Therefore, \lstinline[basicstyle=\small\ttfamily]|product_filter|
-generates all potential arguments sequences \lstinline|argss|
+generates all potential arguments sequences \lstinline[basicstyle=\small\ttfamily]|argss|
 that a component can be applied to, to produce a new simply well-typed
 term of height $\ell + 1$.
 
+\subsection{Pruning the search space}
 There are two key optimizations we perform:
 (1) when building a new block in \lstinline[basicstyle=\small\ttfamily]|apply|,
 we make sure that it has an increased coverage with respect to its arguments (\Cref{line:cvgcheck}).
 This is needed to avoid spurious terms such as
 \lstinline[basicstyle=\small\ttfamily]|int_gen() + int_gen()|.
+(2) once the blocks at level $\ell + 1$ are enumerated,
+we prune blocks that have equivalent coverage to other blocks at the same
+level.
+This check approximates observational equivalence and deduplicates
+blocks of the form \lstinline[basicstyle=\small\ttfamily]|a + 1|
+and \lstinline[basicstyle=\small\ttfamily]|1 + a| which are
+syntactically different but observationally equivalent.
+
+\subsection{Adding control-flow}
+
+The algorithm we described so far builds only blocks without
+control-flow.
+However control-flow is necessary to build any non-trivial term and
+especially so in the presence of over-approximate specifications
+in the parameters of the functions.
+
+Consider for exmaple the component
+\lstinline[basicstyle=\small\ttfamily, mathescape]|f: ${\color{red}\{} s: \mathsf{int} \mid s \geq 0 {\color{red}\}} \rightarrow \dots $|
+which requires for the first argument to be a natural and suppose
+we would like to apply that component to \lstinline[basicstyle=\small\ttfamily, mathescape]|x : $\mathsf{int}$|.
+Simply creating the term \lstinline[language=caml, basicstyle=\small\ttfamily, mathescape]|f x|
+would lead to an unreachable execution where the return type is $\bot$.
+Whenever such cases occur, we try adding control-flow that can potentially
+satisfy the unmet precondition.
+We create the term \lstinline[language=caml, basicstyle=\small\ttfamily, mathescape]|if $(b: \textsf{bool})$ then f x else Exn|
+where $b$ can be \emph{any} block where the base type is \textsf{bool}
+and check if that leads to well-typed term\footnote{
+As a potential optimization we could try only boolean blocks where
+variables appearing in the over-approximate signature appear however
+that complicates implementation and could reduce completeness of the
+enumeration.}.
+We considered the alternative of treating conditionals as components
+$\textsf{if}_\textsf{T} \rightarrow \textsf{bool} \rightarrow \textsf{T} \rightarrow \textsf{T}$
+however we've found that the increase in search space size
+bottlenecks exploration.
+Our strategy allows to build terms such as
+\lstinline[language=caml, basicstyle=\small\ttfamily, mathescape]|if x $\geq$ 0 then f x else Exn|
+increasing the search space \emph{on-demand} only when required
+by the function signatures.
+
+\subsection{Finding the Best Program That Meets the Specification}
+Once we have enumerated all ASTs up to a given target level the
+final missing piece is which of the synthesized program
+meets the target specification the best.
+First, we can note that if a ``generic'' seed that generates
+all the space of values inhabited by the target specification is provided
+(e.g. \lstinline[language=caml, basicstyle=\small\ttfamily, mathescape]|list_gen()|)
+then the synthesis algorithm always succeeds in finding a program satisfying the
+target under-approximation specification.
+However such program is not a satisfying synthesis in that it doesn't satisfy
+the over-approximation specification as well.
+
+To generate a target program that satisfies the over-approximation
+``as close as possible'' we use the following heuristic.
+We partition the blocks into four sets:
+\lstinline[language=caml, basicstyle=\small\ttfamily, mathescape]|none|,
+the programs that can be discarded since they do not satisfy the target
+specification;
+\lstinline[language=caml, basicstyle=\small\ttfamily, mathescape]|eq|,
+the programs that are exactly equivalent to the specification which
+means that they also satisfy the over-approximate specification and
+would be the ideal candidate;
+\lstinline[language=caml, basicstyle=\small\ttfamily, mathescape]|sub|,
+programs that have smaller coverage than the target specification;
+\lstinline[language=caml, basicstyle=\small\ttfamily, mathescape]|sup|,
+programs that have bigger coverage than the target specification
+(i.e. contains \lstinline[language=caml, basicstyle=\small\ttfamily, mathescape]|list_gen()|).
+
+\begin{lstlisting}[language=Python, basicstyle=\small\ttfamily, mathescape, numbers=left, numbersep=3pt]
+def join(blocks, target):
+ none, sub, eq, sup = (
+    partition(blocks, target)
+ )
+ if len(eq) > 0:
+   yield eq
+
+ for b1, b2 in product(sub):
+   candidate = $'${if bool_gen() then b1 else b2}
+   if target $\leq$ coverage(candidate):
+     yield candidate
+
+ if len(sup) > 0:
+   yield sup[0]
+ yield None
+\end{lstlisting}
+
+If \lstinline[language=caml, basicstyle=\small\ttfamily, mathescape]|eq| is non-empty,
+then we are done and return the first program in such set. It could be possible
+to also select the smallest among such programs but we don't do that as of the moment.
+If there is no program coverage-equivalent to the specification, then
+we try to non-deterministically join the programs
+in \lstinline[language=caml, basicstyle=\small\ttfamily, mathescape]|sub| to meet
+the specification.
+The key idea here is that there could be programs that don't meet
+the specification just because of a single case but their join
+could meet it.
+Finally, as last resort we return a program that surely over-covers
+the target specification.
 
 \subsection{Representing AST Nodes for Typing}
 \todo{
