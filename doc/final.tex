@@ -184,10 +184,10 @@
 % Describe the high-level problem you were tackling
 
 The goal of this project is to utilize coverage types to synthesize test input generators.
-Common approaches use an overapproxime synthesis which leads to sound but incomplete generators.
-With list generators, for example, generators produced using overapproximate synthesis could always generate the empty list which would satisfy most conditions one is interested in (e.g.~``sorted'', ``unique'' etc.) but fail to provide a variety of tests that cover the majority of or the entire input space.
+Common approaches use an over-approximate synthesis which leads to sound but incomplete generators.
+With list generators, for example, generators produced using over-approximate synthesis could always generate the empty list which would satisfy most conditions one is interested in (e.g.~``sorted'', ``unique'' etc.) but fail to provide a variety of tests that cover the majority of or the entire input space.
 
-Instead of overapproximate synthesis that uses refinement types as a basis for test input specification, our approach uses coverage types\citep{Poirot}, which is based on a recently proposed underapproximate, incorrectness logic\citep{IL}, to ensure the completeness of the synthesized test input generators.
+Instead, our approach uses Coverage Types\citep{Poirot}, which is based on a recently proposed under-approximate, Incorrectness Logic\citep{IL}, to ensure the completeness of the synthesized test input generators.
 % On the flip side, this approach but might produce extraneous test inputs that fall outside of the given specification.
 
 \section{Overview}
@@ -579,8 +579,8 @@ is some mutable state at both ends that would need to be worked out to make this
 \subsection{Possible Typechecker Bugs?}
 
 \todo{In the
-course of using Poirot, we believe we may have run into some issues that
-impacted the correctness of our synthesizer.}
+  course of using Poirot, we believe we may have run into some issues that
+  impacted the correctness of our synthesizer.}
 
 \subsubsection{Let binding immediate shadowing}
 
