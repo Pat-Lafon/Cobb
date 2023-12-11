@@ -214,17 +214,20 @@ To overcome these limitations, recent work has proposed: fuzzing (and mutation-b
 Coverage Types~\cite{Poirot} are a type based interpretation of the recently developed Incorrectness Logic\citep{IL}.
 These types describe the domain of reachable output values from some valid input value.
 They can be viewed as the inverse of Refinement Types with their corresponding logical interpretation in Hoare Logic.
-This kind of under-approximate logic have strong use cases in bug-finding and program analysis.
+Coverage types can be leveraged to describe the set of values a program is
+guaranteed to produced; fitting nicely into the role of describing the semantics
+of test-input generators. For a test-input generator to be complete, it must
+fully cover the set of values satisfying the input precondition.
 
 \subsection{Bottom-Up Synthesis}
 We are taking ideas from bottom-up synthesis by starting from the leaf node.
-Although bottom-up synthesis (citation?) are often inductive and example-based, we use a deductive approach that is based on underapproximate type-checking to ensure correctness of the synthesized program.
+Although bottom-up synthesis (citation?) are often inductive and example-based, we use a deductive approach that is based on under-approximate type-checking to ensure correctness of the synthesized program.
 
 \subsection{Deductive synthesis}
 
 Program Synthesis makes use of input specification in the form of logic or types as used in deductive synthesis or in the form of input/output examples as used by inductive synthesis.
 Gap
-However, overapproximation logic tends to perform poorly when addressing the issue of completeness. Overapproximate specifications when used in synthesizing generators allow for generators which only produce trivial values. For example, synthesizing a unique lists generator using overapproximation specification may result in a generator that just produces empty or single element lists which trivially satisfy the specification. Such generators are not useful in PBT.
+However, over-approximation logic tends to perform poorly when addressing the issue of completeness. Over-approximate specifications when used in synthesizing generators allow for generators which only produce trivial values. For example, synthesizing a unique lists generator using over-approximation specification may result in a generator that just produces empty or single element lists which trivially satisfy the specification. Such generators are not useful in PBT.
 
 \subsection{Our Solution}
 
