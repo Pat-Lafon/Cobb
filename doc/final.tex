@@ -364,10 +364,10 @@ satisfy the unmet precondition.
 We create the term \lstinline[language=caml, basicstyle=\small\ttfamily, mathescape]|if $(b: \textsf{bool})$ then f x else Exn|
 where $b$ can be \emph{any} block where the base type is \textsf{bool}
 and check if that leads to well-typed term\footnote{
-As a potential optimization we could try only boolean blocks where
-variables appearing in the over-approximate signature appear however
-that complicates implementation and could reduce completeness of the
-enumeration.}.
+  As a potential optimization we could try only boolean blocks where
+  variables appearing in the over-approximate signature appear however
+  that complicates implementation and could reduce completeness of the
+  enumeration.}.
 We considered the alternative of treating conditionals as components
 $\textsf{if}_\textsf{T} \rightarrow \textsf{bool} \rightarrow \textsf{T} \rightarrow \textsf{T}$
 however we've found that the increase in search space size
@@ -531,19 +531,31 @@ solution is unlikely to be the best one because it is probably too general. For
 example, if the generic generator for a given base type is available, then it
 will be included as a seed term and will always be a solution at any depth
 level. This means that the synthesis procedure can not attempt to terminate
-early as a better solution may be available. It is possible that heuristics
+early as a better solution may be available. It is possible that heuristics from
+inductive synthesis which has a similar problem with overfitting or use of
+over-approximate logics may help with this.
 
 \subsection{Leveraging both over- and under-approximate logics}
-Finding the right interactions between over and under approximate reasoning. Not
-needing over-approximate subtyping to set an upper bounds. Needing blocks with
-both over and under approximate types to account for the hybrid typing of arrow
-types.
+Our synthesizer primarily operates using coverage types as an under-approximate
+logic. Currently, the main interaction with over-approximate types comes from the
+initial named arguments from the signature and arrow types with over approximate
+arguments.
 
-The original need for simpler generators arose out of not knowing enough about
-the problem space. What actually needed addressing is when to partition the
-input space.
+\todo{Not needing over-approximate subtyping to set an upper bounds. Needing
+  blocks with both over and under approximate types to account for the hybrid
+  typing of arrow types. The original need for simpler generators arose out of not
+  knowing enough about the problem space. What actually needed addressing is when
+  to partition the input space.}
 
 \subsection{CBS with non-determinism}
+Traditionally component-based synthesis reasons about deterministic operations.
+This makes it trivial to reason about this problem as just a manner of how you
+build AST's. In this way, there is no difference in let-binding values so that
+they can be reused versus recomputing their values.
+
+This is not true for our use case as generators are non-deterministic.
+
+\cite{li2023efficient}
 
 \subsection{If as a component}
 
@@ -572,12 +584,37 @@ impacted the correctness of our synthesizer.
 % A one-paragraph description of the individual team member's contributions
 
 \subsection{Patrick}
+\begin{itemize}
+  \item Sketched out the initial project and kicked the tires on how to infer
+        the types of terms.
+  \item Lead the project's delegation of tasks and overall structure.
+  \item Lead the writing of the project's proposal document, check-in document,
+        final report, and presentation.
+  \item Designed and implemented much of the synthesis algorithm.
+        \begin{itemize}
+          \item Designing blocks as the base synthesis unit.
+          \item Synthesis incrementally using typing contexts (jointly with Anxhelo)
+          \item Block levels and the construction of new block from components
+          \item Generalizing from UT to MMT types
+          \item Extraction of final program from list of candidates
+        \end{itemize}
+  \item Set up the debugging support for pretty-printing terms, types, and
+        synthesis state.
+  \item Motivated and implemented term exploration optimizations with
+        discussion/rebuttal from Anxhelo
+        \begin{itemize}
+          \item Coverage equivalence
+          \item Generating if statements as a last resort
+          \item Generators as seed terms with renaming
+          \item Pruning ill-typed terms as false
+        \end{itemize}
+\end{itemize}
 
 \subsection{Anxhelo}
 \begin{itemize}
   \item Make environment automated and pin dependencies to get started quickly
   \item Design managing terms as contexts (jointly with Patrick) and implement
-    related utilities
+        related utilities
   \item Implement seed and component discovery and abstraction
   \item Abstract Poirot terms in a simpler interface for synthesis
   \item Sketch and debug substitution (jointly with David)
@@ -612,9 +649,9 @@ could have gone further in discussing refinement types as a type-theoretic
 approach to a decidable fragment of first order logic.
 
 \begin{acks}
-  Christopher Nolan for making Inception for whom's main character this tool is
+  Christopher Nolan for making Inception for who's main character this tool is
   named after.
-  Ashish Mishra who originally purposed the idea of a bottom-up synthesizer
+  Ashish Mishra who originally proposed the idea of a bottom-up synthesizer
   for coverage types and for allowing Patrick to sit in on his
   under-approximate synthesis meetings and under-approximate reading group.
   Zhe Zhou for the Poirot type checker and showing much patience in answering
