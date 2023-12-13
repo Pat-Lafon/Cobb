@@ -592,6 +592,65 @@ over-approximate constraint, a proper procedure would also help in creating more
 precise generators. There, the guard is used to prune the output space to
 generate less extraneous terms.
 
+For one example:
+
+\begin{lstlisting}[language=caml, basicstyle=\small\ttfamily]
+let sorted_list_gen =
+  let s = (0 <= v : [%v: int]) [@over] in
+  let x = (true : [%v: int]) [@over] in
+  (rng v s &&
+    fun (u : [%forall: int])
+    (w : [%forall: int]) ->
+    implies (mem v u) (x <= u) &&
+    implies (ord v u w) (u <= w)
+      : [%v: int list])[@under]
+
+
+let rec sorted_list_gen (size : int) (x : int) : int list =
+  let (y : int) = int_gen () in
+  let (size2 : int) = size - 1 in
+  let (l : int list) = sorted_list_gen size2 y in
+  let (l2 : int list) = x :: l in
+  l2
+
+\end{lstlisting}
+
+This term is most of the way to the correct solution. It has two main issues,
+first, it's typing is false because the precondition of sorted list generator is
+not satisfied. It expects to take only natural numbers but size2 could be
+negative one. This can be solved with a size guard.
+
+\begin{lstlisting}[language=caml, basicstyle=\small\ttfamily]
+let rec sorted_list_gen (size : int) (x : int) : int list =
+  let (b : bool) = size == 0 in
+  if b then []
+  else
+    let (y : int) = int_gen () in
+    let (size2 : int) = size - 1 in
+    let (l : int list) = sorted_list_gen size2 y in
+    let (l2 : int list) = x :: l in
+    l2
+\end{lstlisting}
+
+However, now we would like to constrain ourselves to just the underapproximate specification. While this
+produces all possible lists, the goal of the generator is to produce all sorted
+lists. This can be adjusted by adding an guard that checks that the
+integer values are increasing and errors out otherwise(which won't increase coverage).
+
+\begin{lstlisting}[language=caml, basicstyle=\small\ttfamily]
+let rec sorted_list_gen (size : int) (x : int) : int list =
+let (b : bool) = size == 0 in
+if b then []
+else
+  let (y : int) = int_gen () in
+  if x <= y then
+    let (size2 : int) = size - 1 in
+    let (l : int list) = sorted_list_gen size2 y in
+    let (l2 : int list) = x :: l in
+    l2
+  else Exn
+\end{lstlisting}
+
 \subsection{Parallelism}
 In principle, bottom-up enumeration should be an easily parallelizable process.
 All the inputs for a given loop are known in advance and are immutable for the
