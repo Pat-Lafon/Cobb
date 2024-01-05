@@ -273,14 +273,14 @@ An example of the initial information that the user provides
 is shown below.
 
 \begin{align*}
-   & T := \textsf{bool} \mid \textsf{int} \mid \textsf{int list}                                                            \\
-   & \text{Seed} := \textsf{bool\_gen}() \mid 0 \mid 1 \mid \textsf{int\_gen()} \mid \textsf{nil} \mid \textsf{list\_gen()} \\
-   & \text{Component} :=                                                                                                    \\
-   & \  \mid +: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{int}                                              \\
-   & \  \mid -: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{int}                                              \\
-   & \  \mid \leq: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{bool}                                          \\
-   & \  \mid \textsf{cons}: \textsf{int} \rightarrow \textsf{int list}                                                      \\
-   & \dots
+     & T := \textsf{bool} \mid \textsf{int} \mid \textsf{int list}                                                            \\
+     & \text{Seed} := \textsf{bool\_gen}() \mid 0 \mid 1 \mid \textsf{int\_gen()} \mid \textsf{nil} \mid \textsf{list\_gen()} \\
+     & \text{Component} :=                                                                                                    \\
+     & \  \mid +: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{int}                                              \\
+     & \  \mid -: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{int}                                              \\
+     & \  \mid \leq: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{bool}                                          \\
+     & \  \mid \textsf{cons}: \textsf{int} \rightarrow \textsf{int list}                                                      \\
+     & \dots
 \end{align*}
 The types that should be used in the synthesis are
 booleans, integers and lists of integers.
@@ -307,8 +307,8 @@ where at least one argument is structurally decreasing are formed.
 Once seeds, components, and self-application with structurally decreasing
 arguments is setup, the synthesis algorithm begins by enumerating
 all terms up to a target level\footnote{The level of a node is what would
-  be commonly referred to as height in the tree. But since
-  we are constructing trees bottom-up we prefer the term level} specified by the user.
+    be commonly referred to as height in the tree. But since
+    we are constructing trees bottom-up we prefer the term level} specified by the user.
 \begin{lstlisting}[language=Python, basicstyle=\small\ttfamily, mathescape, numbers=left, numbersep=3pt]
 def synth(seeds, components, tgt_sign, tgt_l):
  blocks = seeds
@@ -381,10 +381,10 @@ satisfy the unmet precondition.
 We create the term \lstinline[language=caml, basicstyle=\small\ttfamily, mathescape]|if $(b: \textsf{bool})$ then f x else Exn|
 where $b$ can be \emph{any} block where the base type is \textsf{bool}
 and check if that leads to well-typed term\footnote{
-  As a potential optimization we could try only boolean blocks where
-  variables appearing in the over-approximate signature appear however
-  that complicates implementation and could reduce completeness of the
-  enumeration.}.
+    As a potential optimization we could try only boolean blocks where
+    variables appearing in the over-approximate signature appear however
+    that complicates implementation and could reduce completeness of the
+    enumeration.}.
 We considered the alternative of treating conditionals as components
 $\textsf{if}_\textsf{T} \rightarrow \textsf{bool} \rightarrow \textsf{T} \rightarrow \textsf{T}$
 however we've found that the increase in search space size
@@ -813,6 +813,24 @@ let rbtree_gen =
 
 \subsection{Timeouts}
 
+In bottom-up enumeration, you usually rely on the construction of each
+individual term being cheap to construct. This is straight forward when doing
+inductive component-based synthesis with well-formed recursion because running
+the program on a set of inputs can be expected to terminate quickly, allowing
+for the synthesizer to quickly probe the program's behavior.
+
+Cobb infers and leverages coverage types for each of the terms it synthesizes.
+Because coverages types end up having their subtyping checks dispatched by an
+smt solver, even though they are decidable, they may not be quick. SMT solvers
+leverage timeouts to avoid running for far longer than the user may like,
+returning no useful information from their failure. The choice of timeout in
+Cobb turns out to be important. Poirot sets this timeout value to roughly 100
+seconds. As the number of terms grows, some checks will use much of their
+allotted time and this ruins the synthesizer's responsiveness. The solution is
+to lower this value dramatically, to around .1-1 seconds(exact value to be
+determined). This is a trade-off, the lower this timeout threshold, the more
+terms we will reject because their checks take too long. The higher the
+threshold, the longer the synthesis process will take.
 
 \end{document}
 \endinput
