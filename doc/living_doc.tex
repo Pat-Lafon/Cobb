@@ -774,89 +774,45 @@ with the order constraint.
 
 \includegraphics[scale=.35]{fix.png}
 
-\section{Teamwork}
-% A one-paragraph description of the individual team member's contributions
 
-\subsection{Patrick}
-\begin{itemize}
-  \item Sketched out the initial project and kicked the tires on how to infer
-        the types of terms.
-  \item Lead the project's delegation of tasks and overall structure.
-  \item Lead the writing of the project's proposal document, check-in document,
-        final report, and presentation.
-  \item Designed and implemented much of the synthesis algorithm.
-        \begin{itemize}
-          \item Designing blocks as the base synthesis unit.
-          \item Synthesis incrementally using typing contexts (jointly with Anxhelo)
-          \item Block levels and the construction of new block from components
-          \item Generalizing from UT to MMT types
-          \item Extraction of final program from list of candidates
-        \end{itemize}
-  \item Set up the debugging support for pretty-printing terms, types, and
-        synthesis state.
-  \item Motivated and implemented term exploration optimizations with
-        discussion/rebuttal from Anxhelo
-        \begin{itemize}
-          \item Coverage equivalence
-          \item Generating if statements as a last resort
-          \item Generators as seed terms with renaming
-          \item Pruning ill-typed terms as false
-        \end{itemize}
-\end{itemize}
+\subsection{Supporting Red-Black Trees}
+Base Typing
+\begin{lstlisting}[language=caml, basicstyle=\small\ttfamily]
+type 'a rbtree = Rbleaf
+| Rbnode of (color: color;
+            val: a';
+            ltree : 'a rbtree;
+            rtree: 'a rbtree)
+\end{lstlisting}
 
-\subsection{Anxhelo}
-\begin{itemize}
-  \item Make environment automated and pin dependencies to get started quickly
-  \item Design managing terms as contexts (jointly with Patrick) and implement
-        related utilities
-  \item Implement seed and component discovery and abstraction
-  \item Abstract Poirot terms in a simpler interface for synthesis
-  \item Sketch and debug substitution (jointly with David)
-  \item Add support for global term table and final program printing
-  \item Refine and fix bugs in subtyping checks
-  \item Criticizing Patrick's term exploration decisions
-\end{itemize}
+Program underapprox spec
+\begin{lstlisting}[language=caml, basicstyle=\small\ttfamily]
+external method_predicates :
+    t = "numblack" "hdcolor" "noredred"
 
-\subsection{David}
-\begin{itemize}
-  \item Understand the synthesis algorithm with zero prior experience in Ocaml
-  \item Implement substitution helper functions and refactoring
-  \item Understand the challenges we faced with the explanation of Patrick and Anxhelo
-  \item Help finding high resolution memes for the presentation
-\end{itemize}
+let rbtree_gen =
+  let inv = (v >= 0 : [%v: int]) [@over] in
+  let c = (true : [%v: bool]) [@over] in
+  let height =
+    (v >= 0 &&
+      implies c (v + v == inv) &&
+      implies (not c) (v + v + 1 == inv)
+      : [%v: int]) [@over]
+  in
+  (* the height is the number of black nodes *)
+  (numblack v height &&
+    noredred v &&
+    fun (u : [%forall: int]) ->
+   (* parent is red; the hdcolor cannot be red *)
+   (c && not (hdcolor v true)) ||
+   (* parent is black; the hdcolor can be any color *)
+   ((not c) &&
+    implies (height == 0) (hdcolor v true))
+    : [%v: int rbtree]) [@under]
+\end{lstlisting}
 
-\section{Course Topics}
-% A one-paragraph description of the course topics applied in the project
-This project, through Poirot, makes heavy use of the SMT solver Z3. The
-predicates of our type system are embedded in EUFA which is a decidable fragment
-of first order logic. The principles of safety specifications and coverage
-exploration share parallels with some topics covered like transition system
-safety properties and exhaustive state space exploration.
+\subsection{Timeouts}
 
-% and a one-paragraph description (if applicable) of any topics that would have
-% been useful but weren't covered in the course.
-Program synthesis was a planned topic for this course but unfortunately not
-covered due to time constraints. In particular, the subtopics of Component-Based
-Synthesis and Deductive Synthesis would have been particularly relevant. For
-example, covering Synquid or related Haskell synthesis projects. This course
-could have gone further in discussing refinement types as a type-theoretic
-approach to a decidable fragment of first order logic.
-
-\begin{acks}
-  Christopher Nolan for making Inception for who's main character this tool is
-  named after.
-  Ashish Mishra who originally proposed the idea of a bottom-up synthesizer
-  for coverage types and for allowing Patrick to sit in on his
-  under-approximate synthesis meetings and under-approximate reading group.
-  Zhe Zhou for the Poirot type checker and showing much patience in answering
-  our questions about Poirot's implementation and Coverage Types in general.
-\end{acks}
-
-%%
-%% The next two lines define the bibliography style to be used, and
-%% the bibliography file.
-\bibliographystyle{ACM-Reference-Format}
-\bibliography{cobb}
 
 \end{document}
 \endinput
