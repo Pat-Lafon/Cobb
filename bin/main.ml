@@ -39,7 +39,7 @@ let benchmarks =
         "underapproximation_type/data/benchmark/quickchick/sizedlist/prog.ml";
       refine_file =
         "underapproximation_type/data/benchmark/quickchick/sizedlist/_under.ml";
-      bound = 1;
+      bound = 2;
     };
     {
       name = "sortedlist";
