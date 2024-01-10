@@ -273,14 +273,14 @@ An example of the initial information that the user provides
 is shown below.
 
 \begin{align*}
-     & T := \textsf{bool} \mid \textsf{int} \mid \textsf{int list}                                                            \\
-     & \text{Seed} := \textsf{bool\_gen}() \mid 0 \mid 1 \mid \textsf{int\_gen()} \mid \textsf{nil} \mid \textsf{list\_gen()} \\
-     & \text{Component} :=                                                                                                    \\
-     & \  \mid +: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{int}                                              \\
-     & \  \mid -: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{int}                                              \\
-     & \  \mid \leq: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{bool}                                          \\
-     & \  \mid \textsf{cons}: \textsf{int} \rightarrow \textsf{int list}                                                      \\
-     & \dots
+   & T := \textsf{bool} \mid \textsf{int} \mid \textsf{int list}                                                            \\
+   & \text{Seed} := \textsf{bool\_gen}() \mid 0 \mid 1 \mid \textsf{int\_gen()} \mid \textsf{nil} \mid \textsf{list\_gen()} \\
+   & \text{Component} :=                                                                                                    \\
+   & \  \mid +: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{int}                                              \\
+   & \  \mid -: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{int}                                              \\
+   & \  \mid \leq: \textsf{int} \rightarrow \textsf{int} \rightarrow \textsf{bool}                                          \\
+   & \  \mid \textsf{cons}: \textsf{int} \rightarrow \textsf{int list}                                                      \\
+   & \dots
 \end{align*}
 The types that should be used in the synthesis are
 booleans, integers and lists of integers.
@@ -307,8 +307,8 @@ where at least one argument is structurally decreasing are formed.
 Once seeds, components, and self-application with structurally decreasing
 arguments is setup, the synthesis algorithm begins by enumerating
 all terms up to a target level\footnote{The level of a node is what would
-    be commonly referred to as height in the tree. But since
-    we are constructing trees bottom-up we prefer the term level} specified by the user.
+  be commonly referred to as height in the tree. But since
+  we are constructing trees bottom-up we prefer the term level} specified by the user.
 \begin{lstlisting}[language=Python, basicstyle=\small\ttfamily, mathescape, numbers=left, numbersep=3pt]
 def synth(seeds, components, tgt_sign, tgt_l):
  blocks = seeds
@@ -381,10 +381,10 @@ satisfy the unmet precondition.
 We create the term \lstinline[language=caml, basicstyle=\small\ttfamily, mathescape]|if $(b: \textsf{bool})$ then f x else Exn|
 where $b$ can be \emph{any} block where the base type is \textsf{bool}
 and check if that leads to well-typed term\footnote{
-    As a potential optimization we could try only boolean blocks where
-    variables appearing in the over-approximate signature appear however
-    that complicates implementation and could reduce completeness of the
-    enumeration.}.
+  As a potential optimization we could try only boolean blocks where
+  variables appearing in the over-approximate signature appear however
+  that complicates implementation and could reduce completeness of the
+  enumeration.}.
 We considered the alternative of treating conditionals as components
 $\textsf{if}_\textsf{T} \rightarrow \textsf{bool} \rightarrow \textsf{T} \rightarrow \textsf{T}$
 however we've found that the increase in search space size
@@ -629,7 +629,7 @@ let rec sorted_list_gen (size : int) (x : int)
   else
     let (y : int) = int_gen () in
     let (size2 : int) = size - 1 in
-    let (l : int list) = sorted_list_gen size2 y in
+    let (l:int list) = sorted_list_gen size2 y in
     let (l2 : int list) = x :: l in
     l2
 \end{lstlisting}
@@ -805,7 +805,8 @@ let rbtree_gen =
     fun (u : [%forall: int]) ->
    (* parent is red; the hdcolor cannot be red *)
    (c && not (hdcolor v true)) ||
-   (* parent is black; the hdcolor can be any color *)
+   (* parent is black; the hdcolor
+    * can be any color *)
    ((not c) &&
     implies (height == 0) (hdcolor v true))
     : [%v: int rbtree]) [@under]
@@ -831,6 +832,28 @@ to lower this value dramatically, to around .1-1 seconds(exact value to be
 determined). This is a trade-off, the lower this timeout threshold, the more
 terms we will reject because their checks take too long. The higher the
 threshold, the longer the synthesis process will take.
+
+\subsection{Coverage Equivalence}
+Inductive synthesizers rely on observational equivalence to limit the number of
+terms that are generated. Similarly, we can use what we dub ``coverage
+equivalence'' to reject terms that do not improve our coverage. This can be done
+by doing a subtyping check in both directions and declaring equivalence when
+both checks return true.
+
+In general, this equivalence check is being performed for each term that is
+synthesized against some number of other terms, and then when it comes time to
+choose the find program from a set of terms. I've established a rough order in
+which a newly synthesized term should be checked against other terms for
+equivalence to attempt to lower the total number of checks needed for terms that
+are coverage equivalent(for a term that is unique, you necessarily would need to
+check it against all the other synthesized terms). The first check is against
+the immediate sub terms or arguments to the term. This helps catch terms which
+don't improve coverage like \lstinline|0 + x| is just \lstinline|x|. The second
+check is against other terms created in the same generation. This catches terms
+which might use commutative operations or observe some convergence. Finally, one
+can check against the rest of the terms to ensure that new coverage is
+achieved... especially over constant values, for example, many boolean terms can
+be found to have the same coverage as just true, false, or \lstinline|bool_gen()|.
 
 \end{document}
 \endinput
