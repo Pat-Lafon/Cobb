@@ -135,41 +135,6 @@ let run_benchmark source_file refine_file bound =
 
   (* todo Add argument variables to seeds *)
 
-  (* Example below shows how to build a term and call inference on it *)
-  (* let example_term () =
-       let int_gen = List.nth libs 2 in
-
-       let t_int_gen : id NL.typed =
-         { x = fst int_gen; ty = (None, Underty.T.erase (snd int_gen)) }
-       in
-
-       let four = NL.V { x = NL.Lit (NL.ConstI 4); ty = (None, Ty_int) } in
-       let _, prog =
-         Pieces.mk_ctor
-           { x = "tt"; ty = (None, Ty_unit) }
-           []
-           (fun v ->
-             {
-               x =
-                 Pieces.mk_app t_int_gen [ v ] (fun v ->
-                     NL.value_to_term (NL.id_to_value v))
-                 |> snd;
-               ty = (None, Ty_int);
-             })
-       in
-       let res =
-         Typecheck.Undercheck.term_type_infer
-           { nctx; ctx = Typectx.empty; libctx }
-           { x = prog; ty = (None, Ty_int) }
-       in
-     (*
-       print_endline "Typed int_gen example";
-       dbg res;
-       dbg_sexp (NL.sexp_of_term prog); *)
-       ()
-
-     let _ = example_term () *)
-
   (* Asserting that there is only one program to synthesize*)
   let () = assert (List.length refinements == 1) in
   let refinement = List.hd refinements in

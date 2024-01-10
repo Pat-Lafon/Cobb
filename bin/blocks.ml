@@ -10,7 +10,7 @@ open Sugar
 open Languages.StrucNA
 open Pieces
 
-(** Produces a list from 0..n-1*)
+(** Produces a list from 0..n-1 *)
 let range n = List.init n (fun x -> x)
 
 (** Computes a powerset from a list of elements
@@ -126,14 +126,14 @@ end = struct
   type block = id NNtyped.typed * MMT.t * MustMayTypectx.ctx
 
   (* bool -> var1, true
-     int -> 0, 1, ...*)
+     int -> 0, 1, ... *)
   type block_map = (base_type * block list) list
 
   (* Blocks are added to the `new_blocks` field *)
   (* `new_blocks` get shifted over to `old_blocks` when we increment to a new, larger set of blocks *)
   type block_collection = { new_blocks : block_map; old_blocks : block_map }
 
-  (** Enforces uniqueness of the inner block list*)
+  (** Enforces uniqueness of the inner block list *)
   let rec block_list_add (lst : block list) (term : block) : block list =
     match lst with
     | [] -> [ term ]
@@ -146,7 +146,7 @@ end = struct
   let block_list_any (lst : block list) (f : block -> bool) : bool =
     List.find_opt f lst |> Option.is_some
 
-  (** Add the (type, term pair to the map)*)
+  (** Add the (type, term pair to the map) *)
   let rec block_map_add (map : block_map) (term : block) (ty : base_type) :
       block_map =
     match map with
@@ -251,7 +251,8 @@ end = struct
              { new_blocks = rest; old_blocks = remaining_old_blocks }
 
   (** Given a collection, we want to construct a new set of blocks using some set of operations
-    * Operations should not be valid seeds (i.e. must be operations that take arguments)*)
+    * Operations should not be valid seeds (i.e. must be operations that take
+      arguments) *)
   let block_collection_increment (collection : block_collection)
       (operations : (Pieces.component * (base_type list * base_type)) list)
       (uctx : uctx) : block_collection =
@@ -325,8 +326,8 @@ end = struct
                   match new_ut with
                   | UnderTy_base { prop = Lit (ACbool false); _ } ->
                       (* The block does not type check most likely because one of
-                         the arguments does not meet the precondition for the componenet
-                      *)
+                         the arguments does not meet the precondition for the
+                         component *)
                       None
                   | _ ->
                       if
@@ -462,7 +463,7 @@ module Synthesis = struct
       else None
     in
 
-    (* actually do some joining of blocks*)
+    (* actually do some joining of blocks *)
     if List.length sub_type_list > 1 then
       (* it is worth trying to *)
       failwith "todo"
@@ -483,10 +484,10 @@ module Synthesis = struct
     match max_depth with
     | 0 ->
         Blocks.block_collection_print collection;
-        (* Join blocks together into programs*)
+        (* Join blocks together into programs *)
         under_blocks_join uctx collection target_type
     | depth ->
-        (* If not, increment the collection and try again*)
+        (* If not, increment the collection and try again *)
         synthesis_helper (depth - 1) target_type uctx
           (Blocks.block_collection_increment collection operations uctx)
           operations
