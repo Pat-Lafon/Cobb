@@ -159,6 +159,19 @@ module Pieces = struct
     in
     (resid, aterm, term)
 
+  let mk_var (a : id NNtyped.typed) : (id * NL.term NNtyped.typed) * ty =
+    let name = Rename.name () in
+    print_endline ("mk_var: " ^ a.x);
+    print_endline ("mk_var: " ^ name);
+    let ty = a.ty in
+
+    let term = Termlang.Var a.x in
+    let aterm =
+      Trans.to_anormal_with_name name false { x = term; ty = Some ty }
+    in
+    Hashtbl.add asts name term;
+    ((name, aterm), snd ty)
+
   let mk_if (cond : id NNtyped.typed) (true_branch : id NNtyped.typed)
       (false_branch : id NNtyped.typed) : NL.term =
     let cond = NL.id_to_value cond in
@@ -167,9 +180,9 @@ module Pieces = struct
     NL.Ite { cond; e_t; e_f }
 
   (* A special case for the moment when we want to create if's where the second
-  branch is an exception *)
+     branch is an exception *)
   (* I don't want to bind Exn to an id because then it gets executed after the
-  condition no? *)
+     condition no? *)
   let mk_one_sided_if (cond : id NNtyped.typed) (true_branch : id NNtyped.typed)
       : NL.term =
     let cond = NL.id_to_value cond in
@@ -177,7 +190,8 @@ module Pieces = struct
     let exn = { x = NL.Exn; ty = true_branch.ty } |> NL.value_to_term in
     NL.Ite { cond; e_t; e_f = exn }
 
-  let apply (comp : component) (args : id NNtyped.typed list) : id NNtyped.typed * NL.term =
+  let apply (comp : component) (args : id NNtyped.typed list) :
+      id NNtyped.typed * NL.term =
     let resid, aterm, term =
       match comp with
       | Fun f -> mk_app f args (fun x -> NL.value_to_term (NL.id_to_value x))

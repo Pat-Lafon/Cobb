@@ -81,6 +81,24 @@ let benchmarks =
     };
   ]
 
+(* Assumes argument is a fixpoint value *)
+let unfold_fix_helper (fix : NL.value) :
+    id NNtyped.typed * id NNtyped.typed list * NL.term NNtyped.typed =
+  (* Unwrap the function into a recursive call *)
+  let[@warning "-8"] (NL.Fix { fixname; fstarg; lambody }) =
+    (fix [@warning "+8"])
+  in
+  (* Handle any other arguments *)
+  let rec aux (n : NL.term NNtyped.typed) =
+    match n.x with
+    | NL.V { x = NL.Lam { lamarg; lambody }; _ } ->
+        let other_args, body = aux lambody in
+        (lamarg :: other_args, body)
+    | _ -> ([], n)
+  in
+  let other_args, body = aux lambody in
+  (fixname, fstarg :: other_args, body)
+
 (* todo can we get rid of the source_file here?*)
 let run_benchmark source_file refine_file bound =
   (* This sets up global variables pointing to the information in meta-config.json *)
@@ -148,19 +166,23 @@ let run_benchmark source_file refine_file bound =
     match body.x with NL.V x -> x | _ -> failwith "unimplemented"
   in
 
-  (* passing off to value_type_check *)
-  (* Unwrap the function into a recursive call *)
-  let[@warning "-8"] (NL.Fix { fixname; fstarg; lambody }) =
-    (body.NL.x [@warning "+8"])
+  let fixname, args, body = unfold_fix_helper body.x in
+
+  (* For other programs that use more than one arg, adjust *)
+  let _ = assert (List.length args == 1) in
+
+  let fstarg = List.hd args in
+
+  (* Creating our first argument here *)
+  let decreasing_arg : id NNtyped.typed =
+    { x = Pieces.known_var (Rename.unique fstarg.x); ty = fstarg.ty }
   in
-  (* and unwrap the type signature *)
+
+  (* Unwraps the type signature, basically the first argument is always an overapproximate type(atleast so far)*)
   let[@warning "-8"] (UnderTy_over_arrow { argname; argty; retty }) =
     (synth_type [@warning "+8"])
   in
 
-  let decreasing_arg =
-    NL.{ x = Pieces.known_var (Rename.unique fstarg.x); ty = fstarg.ty }
-  in
   let prop =
     Typecheck.Undercheck.make_order_constraint decreasing_arg.x argname
       (snd fstarg.ty)
@@ -169,6 +191,7 @@ let run_benchmark source_file refine_file bound =
   print_string "What is prop: ";
   P.to_string prop |> print_endline;
 
+  (* What I believe are some checks about arg types and the synthesis type *)
   let _ =
     Typecheck.Undercheck.erase_check_mk_id __FILE__ __LINE__ decreasing_arg
       (ot_to_ut argty)
@@ -177,16 +200,16 @@ let run_benchmark source_file refine_file bound =
   let f =
     Typecheck.Undercheck.erase_check_mk_id __FILE__ __LINE__ fixname synth_type
   in
-  let f =
-    UL.
-      {
-        x = f.x;
-        ty =
-          UT.modify_retty
-            (fun _ prop' ->
-              P.conjunct_tope_uprop __FILE__ __LINE__ [ prop; prop' ])
-            f.ty;
-      }
+
+  let f : id UL.typed =
+    {
+      x = f.x;
+      ty =
+        UT.modify_retty
+          (fun _ prop' ->
+            P.conjunct_tope_uprop __FILE__ __LINE__ [ prop; prop' ])
+          f.ty;
+    }
   in
 
   print_endline ("What is decreasing_arg: " ^ decreasing_arg.x);
@@ -196,6 +219,10 @@ let run_benchmark source_file refine_file bound =
   let ctx'' =
     Typectx.ut_force_add_to_right ctx' (Pieces.known_var f.x, UtNormal f.ty)
   in
+
+  let args = decreasing_arg :: List.tl args in
+
+  let seeds = List.append seeds (List.map Pieces.mk_var args) in
 
   (* let () = print_endline "What is in our contexts" in
      let () = print_endline "nctx : " in
