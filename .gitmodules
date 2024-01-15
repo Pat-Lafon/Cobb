@@ -10,7 +10,7 @@
 	branch = patch-1
 [submodule "utils"]
 	path = utils
-	url = https://github.com/zhezhouzz/utils.git
+	url = https://github.com/Pat-Lafon/utils.git
 [submodule "zzdatatype"]
 	path = zzdatatype
-	url = https://github.com/zhezhouzz/zzdatatype.git
+	url = https://github.com/Pat-Lafon/zzdatatype.git

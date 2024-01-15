@@ -2,24 +2,24 @@
 opam-version: "2.0"
 synopsis: "A short synopsis"
 description: "A longer description"
-maintainer: ["Maintainer Name"]
-authors: ["Author Name"]
+maintainer: ["Patrick LaFontaine"]
+authors: ["Patrick LaFontaine"]
 license: "LICENSE"
 tags: ["topics" "to describe" "your" "project"]
 homepage: "https://github.com/Pat-Lafon/Cobb"
 doc: "https://url/to/documentation"
 bug-reports: "https://github.com/Pat-Lafon/Cobb/issues"
 depends: [
-  "dune" {>= "3.9"}
-  "ocaml" {= "4.14.0"}
-  "core" {<= "v0.16.1"}
+  "dune" {>= "3.12"}
+  "ocaml" {= "5.1.0"}
+  "core" {<= "v0.16.2"}
   "core_unix" {<= "v0.16.0"}
   "dolog" {<= "6.0.0"}
   "ocolor" {<= "1.3.1"}
-  "qcheck" {<= "0.21.2"}
-  "z3" {<= "4.12.2-1"}
+  "qcheck" {<= "0.21.3"}
+  "z3" {<= "4.12.4"}
   "ocamlformat" {dev & <= "0.26.1"}
-  "ocaml-lsp-server" {dev & <= "1.16.2"}
+  "ocaml-lsp-server" {dev & <= "1.17"}
   "odoc" {with-doc}
 ]
 build: [
