@@ -1,4 +1,5 @@
 [submodule "underapproximation_type"]
+	branch = main
 	path = underapproximation_type
 	url = https://github.com/Pat-Lafon/underapproximation_type.git
 [submodule "normalty"]
