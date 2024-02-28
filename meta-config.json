@@ -7,7 +7,7 @@
         "show_queries": false,
         "show_solving": false,
         "show_stat": false,
-        "show_info": false
+        "show_others": false
     },
     "logfile": ".log",
     "resfile": ".result",

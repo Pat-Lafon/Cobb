@@ -11,6 +11,8 @@ val minus : int -> int -> int
 val nil : 'a list
 val cons : 'a -> 'a list -> 'a list
 val tt : unit
+(* val unil : 'a ulist *)
+(* val ucons : 'a -> 'a ulist -> 'a ulist *)
 (* val _ret_two_value : int -> int *)
 (* val int_range : int -> int -> int *)
 (* val int_range_inc : int -> int -> int *)
