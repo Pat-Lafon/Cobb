@@ -39,7 +39,7 @@ let benchmarks =
         "underapproximation_type/data/benchmark/quickchick/sizedlist/prog.ml";
       refine_file =
         "underapproximation_type/data/benchmark/quickchick/sizedlist/_under.ml";
-      bound = 2;
+      bound = 1;
     };
     {
       name = "sortedlist";
@@ -104,6 +104,15 @@ let run_benchmark source_file refine_file bound =
   (* This sets up global variables pointing to the information in meta-config.json *)
   let meta_config_file = "meta-config.json" in
   let () = Env.load_meta meta_config_file in
+  let () = Config.load_normal () in
+  let () = print_endline "Params" in
+  let () =
+    Z3.Params.mk_params Autov.ctx |> Z3.Params.to_string |> print_endline
+  in
+  let () = Z3.Params.update_param_value Autov.ctx "timeout" "999" in
+  let () =
+    Z3.Params.mk_params Autov.ctx |> Z3.Params.to_string |> print_endline
+  in
 
   (* prim.ml:init sets up global maps of the stuff that is loaded from the config *)
   let () = Config.load refine_file in

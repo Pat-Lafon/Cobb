@@ -39,10 +39,11 @@ module Pieces = struct
     | _ -> Either.right (Fun { x = name; ty = (None, nty) }, (argtys, resty))
 
   let maybe_op_seed ((op, t) : Op.t * ty) =
-    (* Todo substitute further if needed *)
+    (* Todo As opposed to being generic, just cast 'a' to int *)
+    (* TODO maybe others needed*)
     let concrete = Ty.subst t ("a", Ty_int) in
     match (op, concrete) with
-    | _, Ty_unit -> None
+    | _, Ty_unit -> None (* TODO, check if this is needed *)
     | DtConstructor "nil", Ty_list Ty_int ->
         Some (Either.left (Termlang.Var "nil", concrete))
     | PrimOp op, (Ty_arrow _ as concrete) ->
