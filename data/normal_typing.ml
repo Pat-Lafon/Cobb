@@ -33,7 +33,6 @@ val dummy : unit
 (* others *)
 val len : 'a list -> int -> bool
 val lenF : 'a list -> int
-
 val consF : 'a -> 'a list -> 'a list
 val emp : 'a list -> bool
 val hd : 'a list -> 'a -> bool
