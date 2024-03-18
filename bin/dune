@@ -3,14 +3,16 @@
  (name main)
  (modules main)
  (libraries
-  Cobb
+  core_unix.command_unix
   utils
   blocks
   pieces
   localization
   underapproximation_type.typing
   underapproximation_type.preprocessing
-  underapproximation_type.commands))
+  underapproximation_type.commands)
+  (preprocess
+   (pps ppx_jane)))
 
 (library
  (name blocks)

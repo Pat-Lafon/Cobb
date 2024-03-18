@@ -13,69 +13,6 @@ open Rty
 open Cty
 open Tracking
 
-type synth_input = {
-  name : string;
-  source_file : string;
-  meta_config_file : string;
-  bound : int;
-}
-
-let benchmarks =
-  [
-    {
-      name = "sizedlist1";
-      source_file = "data/benchmark/sizedlist/prog1.ml";
-      meta_config_file = "data/benchmark/sizedlist/meta-config.json";
-      bound = 0;
-    };
-    {
-      name = "sizedlist2";
-      source_file = "data/benchmark/sizedlist/prog2.ml";
-      meta_config_file = "data/benchmark/sizedlist/meta-config.json";
-      bound = 1;
-    };
-    {
-      name = "sizedlist3";
-      source_file = "data/benchmark/sizedlist/prog3.ml";
-      meta_config_file = "data/benchmark/sizedlist/meta-config.json";
-      bound = 1;
-    };
-    {
-      name = "sortedlist";
-      source_file =
-        "underapproximation_type/data/benchmark/quickchick/sortedlist/prog.ml";
-      meta_config_file = "meta-config.json";
-      bound = 3;
-    };
-    {
-      name = "sizedtree";
-      source_file =
-        "underapproximation_type/data/benchmark/quickchick/sizedtree/prog.ml";
-      meta_config_file = "meta-config.json";
-      bound = 3;
-    };
-    {
-      name = "uniquel";
-      source_file = "underapproximation_type/data/benchmark/uniquel/prog.ml";
-      meta_config_file = "meta-config.json";
-      bound = 3;
-    };
-    {
-      name = "sizedtree";
-      source_file =
-        "underapproximation_type/data/benchmark/quickchick/sizedtree/prog.ml";
-      meta_config_file = "meta-config.json";
-      bound = 3;
-    };
-    {
-      name = "rbtree";
-      source_file =
-        "underapproximation_type/data/benchmark/quickchick/rbtree/prog.ml";
-      meta_config_file = "meta-config.json";
-      bound = 3;
-    };
-  ]
-
 (* Assumes argument is a fixpoint value *)
 let unfold_fix_helper (fix : _ value) : _ * _ list * _ typed =
   (* Unwrap the function into a recursive call *)
@@ -145,7 +82,7 @@ let run_benchmark source_file meta_config_file bound =
   let () = Env.load_meta meta_config_file in
 
   (*   Env.sexp_of_meta_config (!Env.meta_config |> Option.value_exn) |> dbg_sexp; *)
-  let () = Z3.Params.update_param_value Backend.Smtquery.ctx "timeout" "4999" in
+  let () = Z3.Params.update_param_value Backend.Smtquery.ctx "timeout" "9999" in
   let processed_file =
     Commands.Cre.preproress meta_config_file source_file ()
   in
@@ -174,6 +111,8 @@ let run_benchmark source_file meta_config_file bound =
   Pp.printf "\nAxioms:\n%s\n" (List.split_by "\n" layout_prop axioms);
 
   let uctx : uctx = { builtin_ctx; local_ctx = Typectx.emp; axioms } in
+
+  failwith "stop here";
 
   let synth_name, synth_type =
     List.find_map
@@ -298,15 +237,55 @@ let run_benchmark source_file meta_config_file bound =
   let result = Synthesis.synthesis uctx retty bound seeds components in
   print_endline "Finished Synthesis"
 
+(* let benchmark_name =
+     if Int.equal (Array.length (Sys.get_argv ())) 1 then "sizedlist1"
+     else (Sys.get_argv ()).(1)
+
+   let benchmark_to_run =
+     List.find __FILE__ (fun x -> String.equal x.name benchmark_name) benchmarks
+*)
+
 (** Benchmarks can be provided as a command line argument
   * Default is "sizedlist" *)
-let benchmark_name =
-  if Int.equal (Array.length (Sys.get_argv ())) 1 then "sizedlist1"
-  else (Sys.get_argv ()).(1)
+(* let regular_file =
+   Command.Arg_type.create (fun filename ->
+       match Sys_unix.is_file filename with
+       | `Yes -> filename
+       | `No -> failwith "Not a regular file"
+       | `Unknown -> failwith "Could not determine if this was a regular file") *)
 
-let benchmark_to_run =
-  List.find __FILE__ (fun x -> String.equal x.name benchmark_name) benchmarks
+let regular_directory =
+  Command.Arg_type.create (fun directory ->
+      match Sys_unix.is_directory directory with
+      | `Yes -> directory
+      | `No -> failwith "Not a regular directory"
+      | `Unknown ->
+          failwith "Could not determine if this was a regular directory")
 
-let () =
-  run_benchmark benchmark_to_run.source_file benchmark_to_run.meta_config_file
-    benchmark_to_run.bound
+let bound =
+  Command.Arg_type.create (fun x ->
+      match Int.of_string_opt x with
+      | Some x -> x
+      | None -> failwith "Could not parse bound")
+
+let cobb_synth =
+  Command.basic ~summary:"TODO"
+    Command.Let_syntax.(
+      let%map_open benchmark_dir = anon ("benchmark_dir" %: regular_directory)
+      and program_name =
+        anon ("program_name" %: Command.Arg_type.create (fun x -> x))
+      and bound = anon ("bound" %: bound) in
+      fun () ->
+        let source_file = Core.Filename.concat benchmark_dir program_name in
+        let meta_config_file =
+          Core.Filename.concat benchmark_dir "meta-config.json"
+        in
+        let _ = run_benchmark source_file meta_config_file bound in
+        ())
+
+let prog = Command.group ~summary:"Cobb" [ ("synthesis", cobb_synth) ]
+let () = Command_unix.run prog
+
+(* let () =
+   run_benchmark benchmark_to_run.source_file benchmark_to_run.meta_config_file
+     benchmark_to_run.bound *)

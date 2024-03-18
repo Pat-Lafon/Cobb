@@ -17,7 +17,7 @@
         "normal_typing": "underapproximation_type/data/predefined/normal_typing.ml",
         "axioms_of_predicates": "underapproximation_type/data/predefined/axioms.ml",
         "axioms_of_query_encoding": "underapproximation_type/data/predefined/axioms_of_query_encoding.ml",
-        "builtin_coverage_typing": "data/benchmark/sizedlist/builtin_rty.ml",
+        "builtin_coverage_typing": "data/benchmark/sortedlist/builtin_rty.ml",
         "builtin_randomness_coverage_typing": "underapproximation_type/data/predefined/builtin_randomness_coverage_typing.ml",
         "builtin_datatype_coverage_typing": "underapproximation_type/data/predefined/builtin_datatype_coverage_typing",
         "rev_builtin_datatype_coverage_typing": "underapproximation_type/data/predefined/rev_builtin_datatype_coverage_typing"
