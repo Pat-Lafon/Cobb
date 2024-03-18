@@ -1,5 +1,10 @@
+.PHONY: all build test sync
+
+build:
+	dune build
+
 test:
-	dune runtest
+	dune runtest bin
 
 sync:
 	git submodule sync

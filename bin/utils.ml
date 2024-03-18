@@ -1,11 +1,5 @@
 type identifier = (Nt.t, string) Mtyped.typed
 
-let rec superset_helper = function
-  | [] -> [ [] ]
-  | x :: xs ->
-      let ps = superset_helper xs in
-      ps @ List.map (fun ss -> x :: ss) ps
-
 (*** Replace the element at pos of l with a *)
 let replace l pos a = List.mapi (fun i x -> if i = pos then a else x) l
 let dbg_sexp sexp = print_endline (Core.Sexp.to_string_hum sexp)

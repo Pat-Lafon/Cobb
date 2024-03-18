@@ -5,15 +5,13 @@ open Nt
 open Rty
 open Typing.Termcheck
 open Language.FrontendTyped
-open Subtyping.Subrty
 open Utils
 open Cty
-open Assertion
-open Sugar
 open Pieces
 open Frontend_opt.To_typectx
 open Zzdatatype.Datatype
 open Timeout
+open Tracking
 
 module rec Relations : sig
   type relation = Equiv | ImpliesTarget | ImpliedByTarget | None | Timeout
@@ -196,8 +194,7 @@ end = struct
   (* For a given type, check if any of the elements satisfy the function f *)
   let block_collection_any ({ new_blocks; old_blocks } : block_collection)
       (ty : base_type) (f : block -> bool) : bool =
-    block_list_any (block_map_get new_blocks ty) f
-    || block_list_any (block_map_get old_blocks ty) f
+    block_map_any new_blocks ty f || block_map_any old_blocks ty f
 
   let block_collection_add ({ new_blocks; old_blocks } : block_collection)
       (term : block) (ty : base_type) : block_collection =
@@ -315,7 +312,7 @@ end = struct
                             in
                             Relations.is_equiv_or_timeout relation_result)
                           (arg_names
-                          |> List.map (fun ({ x; ty } : identifier) -> x))
+                          |> List.map (fun ({ x; _ } : identifier) -> x))
                       then
                         (* let () =
                              Printf.printf
@@ -410,14 +407,17 @@ module Synthesis = struct
         groups
     in
     let super_type_list =
-      snd
-        (List.find_opt (fun (g, es) -> g == Relations.ImpliesTarget) groups
-        |> Option.get)
+      List.find_map
+        (fun (g, es) -> if g == Relations.ImpliesTarget then Some es else None)
+        groups
+      |> Option.get
     in
     let sub_type_list =
-      snd
-        (List.find_opt (fun (g, es) -> g == Relations.ImpliedByTarget) groups
-        |> Option.get)
+      List.find_map
+        (fun (g, es) ->
+          if g == Relations.ImpliedByTarget then Some es else None)
+        groups
+      |> Option.get
     in
 
     let potential_program =

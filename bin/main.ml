@@ -1,7 +1,5 @@
 open Typing
 open Core
-open Assertion
-open Sugar
 open Term
 open Pieces
 open Blocks
@@ -13,6 +11,7 @@ open Zzdatatype.Datatype
 open Mtyped
 open Rty
 open Cty
+open Tracking
 
 type synth_input = {
   name : string;
@@ -100,7 +99,7 @@ let rec unfold_rty_helper rty : _ typed list * _ rty =
   | RtyBaseArr { argcty : 't cty; arg : (string[@bound]); retty : 't rty } ->
       let other_args, retty = unfold_rty_helper retty in
       ((arg #: (RtyBase { ou = true; cty = argcty })) :: other_args, retty)
-  | RtyBase { ou : bool; cty : 't cty } -> ([], rty)
+  | RtyBase _ -> ([], rty)
   | _ -> failwith "unimplemented"
 
 (* Largely taken straight from value_type_check::VFix *)
@@ -109,7 +108,7 @@ let handle_first_arg (a : (t, t value) typed) (rty : t rty) =
      Pp.printf "\nReturn Type: %s\n" (layout_rty rty); *)
   assert (Nt.eq a.ty (Rty.erase_rty rty));
   match (a.x, rty) with
-  | VFix { fixname; fixarg; body }, RtyBaseArr { argcty; arg; retty } ->
+  | VFix { fixname; fixarg; _ }, RtyBaseArr { argcty; arg; retty } ->
       assert (String.equal fixarg.x arg);
       let a = { x = Rename.unique fixarg.x; ty = fixarg.ty } in
       let _ : identifier = NameTracking.known_var a in
@@ -170,8 +169,7 @@ let run_benchmark source_file meta_config_file bound =
 
   (* Pp.printf "\nLemmas:\n%s\n" (layout_structure lemmas); *)
   let axioms =
-    Typing.Itemcheck.gather_axioms lemmas
-    |> List.map (fun ({ x; ty } : _ typed) -> ty)
+    Typing.Itemcheck.gather_axioms lemmas |> List.map Mtyped._get_ty
   in
   Pp.printf "\nAxioms:\n%s\n" (List.split_by "\n" layout_prop axioms);
 
@@ -222,8 +220,6 @@ let run_benchmark source_file meta_config_file bound =
     Core.List.for_all2_exn args argtyps ~f:(fun arg argty ->
         Nt.eq arg.ty (Rty.erase_rty argty.ty) && String.equal arg.x argty.x));
 
-  (* let retty = subst_rty_instance fstarg.x (Lit.AVar decreasing_arg) retty in
-     Pp.printf "\nSubstituted Return Type: %s\n" (layout_rty retty); *)
   let first_arg, rec_fix = handle_first_arg code synth_type in
   Pp.printf "\nFirst Arg: %s\n" (layout_id_rty first_arg);
   Pp.printf "\nRec Fix: %s\n" (layout_id_rty rec_fix);

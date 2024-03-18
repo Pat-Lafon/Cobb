@@ -1,5 +1,4 @@
 open Rty
-open Nt
 open Language.FrontendTyped
 
 module Timeout = struct

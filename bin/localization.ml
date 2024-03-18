@@ -1,4 +1,3 @@
-open Typing
 open Term
 open Mtyped
 open Nt
@@ -8,14 +7,6 @@ open Language.FrontendTyped
 open Subtyping.Subrty
 open Utils
 open Cty
-open Pieces
-open Timeout
-
-let my_pprint_typectx_infer ctx (e, (r : t rty)) =
-  let () = Pp.printf "@{<bold>Type Infer:@}\n" in
-  pprint_typectx ctx;
-  Pp.printf "⊢ @{<hi_magenta>%s@} ⇨ " e;
-  Pp.printf "@{<cyan>%s@}\n\n" @@ layout_rty r
 
 type 'a exn_variations = { full_exn : 'a; other : 'a list }
 
@@ -45,12 +36,14 @@ let is_base_top (t : _ Mtyped.typed) : bool =
   match t.x with
   | CLetE
       {
-        lhs;
+        lhs = _;
         rhs = { x = CVal { x = VVar { x = "TT"; _ }; _ }; _ };
-        body = { x = CLetE { body = { x = CVal { x = VVar x; _ }; _ }; _ }; _ };
+        body = { x = CLetE { body = { x = CVal { x = VVar _; _ }; _ }; _ }; _ };
       } ->
       true
-  | CApp { appf = { x = VVar { x = "hidden_list_gen"; _ }; _ }; apparg } -> true
+  | CApp { appf = { x = VVar { x; _ }; _ }; _ }
+    when List.split type_to_generator_mapping |> snd |> List.mem x ->
+      true
   | _ -> false
 
 let not_map_base f t = if is_base_bot t || is_base_top t then t else f t
@@ -76,12 +69,11 @@ let exn_map_list (f : 'a list -> 'b) (v : 'a exn_variations list) :
 let rec term_exnify body : _ exn_variations =
   match body.x with
   | CErr -> { full_exn = term_bot body.ty; other = [ term_top body.ty ] }
-  | CVal { x; ty } ->
+  | CVal { ty; _ } ->
       assert (body.ty = ty);
       { full_exn = term_bot ty; other = [ term_top ty ] }
   | CApp _ -> failwith ("unimplemented CApp: " ^ layout_typed_term body)
-  | CAppOp { op; appopargs } ->
-      { full_exn = term_bot body.ty; other = [ term_top body.ty ] }
+  | CAppOp _ -> { full_exn = term_bot body.ty; other = [ term_top body.ty ] }
   (* | LetApp { ret; f; args; body } ->
          term_exnify body
          |> exn_map (fun x ->
@@ -164,7 +156,7 @@ module Localization = struct
 
     inferred_program_types
     |> List.iter (fun (x, y) ->
-           my_pprint_typectx_infer uctx.local_ctx (layout_typed_term x, y.ty));
+           pprint_typectx_infer uctx.local_ctx (layout_typed_term x, y.ty));
     ();
 
     print_string "\nInitial subtyping check: ";
@@ -174,7 +166,7 @@ module Localization = struct
       List.split inferred_program_types
       |> snd
       |> List.map (fun x -> x.ty |> assume_base_rty |> snd)
-      |> List.map (fun (Cty { nty; phi }) -> Prop.Not phi)
+      |> List.map (fun (Cty { phi; _ }) -> Prop.Not phi)
     in
 
     (* Check that on it's own, the inferred type is no sufficient *)
