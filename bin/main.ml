@@ -182,42 +182,14 @@ let run_benchmark source_file meta_config_file bound =
 
   pprint_typectx_subtyping uctx.local_ctx (typed_code.ty, retty);
 
-  (*
-  assert (Subtyping.Subrty.sub_rty_bool uctx (typed_code.ty, retty)); *)
-  let path_props = Localization.localization uctx body retty in
-
-  (* let seeds, components = Pieces.seeds_and_components libs in *)
-
-  (*
-     let args = decreasing_arg :: List.tl args in
-
-     let seeds = List.append seeds (List.map Pieces.mk_var args) in *)
-
-  (*
-
-     let seeds =
-       List.map
-         (fun ((id, term), ty) : (Blocks.block * ty) ->
-           let ut = Typecheck.Undercheck.term_type_infer uctx term in
-           let mmt = MMT.UtNormal ut in
-           let seed_utx = Typectx.ut_force_add_to_right ctx'' (id, mmt) in
-           let term_ty = term.ty in
-           (({ x = id; ty = term_ty }, Ut mmt, seed_utx), ty))
-         seeds
-     in
-  *)
-  (* todo Add argument variables to seeds *)
-
-  (* Add Recursive Componenet*)
-  (* let nty = UT.erase f.ty in
-     let argtys, resty = NT.destruct_arrow_tp nty in
-     let recursive_piece : Pieces.component = Fun { x = f.x; ty = (None, nty) } in
-     let components = (recursive_piece, (argtys, resty)) :: components in
-  *)
   Pp.printf "\nBuiltinTypingContext Before Synthesis:\n%s\n"
     (layout_typectx layout_rty uctx.builtin_ctx);
   Pp.printf "\nLocalTypingContext Before Synthesis:\n%s\n"
     (layout_typectx layout_rty uctx.local_ctx);
+
+  (*
+  assert (Subtyping.Subrty.sub_rty_bool uctx (typed_code.ty, retty)); *)
+  let _path_props = Localization.localization uctx body retty in
 
   let ( (seeds : (Blocks.block * t) list),
         (components : (Pieces.component * (t list * t)) list) ) =
@@ -234,16 +206,8 @@ let run_benchmark source_file meta_config_file bound =
   Pp.printf "\nComponents:\n%s\n"
     (List.split_by "\n" (fun (c, _) -> Pieces.layout_component c) components);
 
-  let result = Synthesis.synthesis uctx retty bound seeds components in
+  let _result = Synthesis.synthesis uctx retty bound seeds components in
   print_endline "Finished Synthesis"
-
-(* let benchmark_name =
-     if Int.equal (Array.length (Sys.get_argv ())) 1 then "sizedlist1"
-     else (Sys.get_argv ()).(1)
-
-   let benchmark_to_run =
-     List.find __FILE__ (fun x -> String.equal x.name benchmark_name) benchmarks
-*)
 
 (** Benchmarks can be provided as a command line argument
   * Default is "sizedlist" *)
