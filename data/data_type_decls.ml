@@ -1,6 +1,9 @@
 (* The datatype constructor should use the lower case instead of the first char
 *)
-(*
+
+type unit = TT
+type bool = True | False
+type 'a list = Nil | Cons of 'a * 'a list
 type 'a pairinghp = Phpleaf | Phpnode of 'a * 'a pairinghp list
 type 'a tree = Leaf | Node of 'a * 'a tree * 'a tree
 type 'a heap = Hempty | Hnode of 'a * 'a heap * 'a heap
@@ -30,4 +33,3 @@ type stlc_term =
   | Stlc_abs of stlc_ty * stlc_term
 
 type stlc_tyctx = Stlc_tyctx_nil | Stlc_tyctx_cons of stlc_ty * stlc_tyctx
-*)

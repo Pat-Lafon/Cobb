@@ -2,16 +2,6 @@
 	branch = main
 	path = underapproximation_type
 	url = https://github.com/Pat-Lafon/underapproximation_type.git
-[submodule "normalty"]
-	path = normalty
-	url = https://github.com/Pat-Lafon/normalty.git
-[submodule "ocaml_parser"]
-	path = ocaml_parser
-	url = https://github.com/Pat-Lafon/ocaml_parser.git
-	branch = patch-1
-[submodule "utils"]
-	path = utils
-	url = https://github.com/Pat-Lafon/utils.git
-[submodule "zzdatatype"]
-	path = zzdatatype
-	url = https://github.com/Pat-Lafon/zzdatatype.git
+[submodule "language_utils"]
+	path = language_utils
+	url = https://github.com/zhezhouzz/language_utils.git

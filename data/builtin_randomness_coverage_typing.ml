@@ -15,6 +15,10 @@ let[@library] int_gen =
   let _ = (true : [%v: unit]) [@over] in
   (true : [%v: int]) [@under]
 
+let[@library] hidden_list_gen =
+  let _ = (true : [%v: unit]) [@over] in
+  (true : [%v: int list]) [@under]
+
 (*
 let[@library] nat_gen =
   let _ = (true : [%v: unit]) [@over] in
@@ -33,7 +37,7 @@ let[@library] int_range_inex =
 let[@library] increment =
   let n = (true : [%v: int]) [@over] in
   (v == n + 1 : [%v: int]) [@under]
-
+*)
 let[@library] decrement =
   let n = (true : [%v: int]) [@over] in
   (v == n - 1 : [%v: int]) [@under]
@@ -41,12 +45,13 @@ let[@library] decrement =
 let[@library] lt_eq_one =
   let s = (true : [%v: int]) [@over] in
   (iff v (s <= 1) && iff (not v) (s > 1) : [%v: bool]) [@under]
-
+(*
 (* uniquel  *)
 
 let[@library] gt_eq_int_gen =
   let x = (true : [%v: int]) [@over] in
   (true : [%v: int]) [@under]
+*)
 
 let[@library] sizecheck =
   let x = (true : [%v: int]) [@over] in
@@ -55,6 +60,3 @@ let[@library] sizecheck =
 let[@library] subs =
   let s = (true : [%v: int]) [@over] in
   (v == s - 1 : [%v: int]) [@under]
-
-let[@library] dummy = (true : [%v: unit]) [@under]
-*)

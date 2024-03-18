@@ -7,21 +7,47 @@
   utils
   blocks
   pieces
-  underapproximation_type.typecheck
-  underapproximation_type.driver))
+  localization
+  underapproximation_type.typing
+  underapproximation_type.preprocessing
+  underapproximation_type.commands))
 
 (library
  (name blocks)
- (libraries underapproximation_type.typecheck underapproximation_type.driver pieces)
+ (libraries underapproximation_type.typing timeout pieces)
  (modules blocks)
- (preprocess (pps ppx_optcomp ppx_compare ppx_sexp_conv)))
+ (preprocess
+  (pps ppx_optcomp ppx_compare ppx_sexp_conv)))
 
 (library
  (name pieces)
- (libraries underapproximation_type.typecheck underapproximation_type.driver)
+ (libraries underapproximation_type.typing utils)
  (modules pieces))
+
+(library
+ (name timeout)
+ (libraries underapproximation_type.typing utils)
+ (modules timeout))
+
+(library
+ (name localization)
+ (libraries
+  underapproximation_type.typing
+  underapproximation_type.syntax
+  pieces
+  timeout
+  utils)
+ (modules localization)
+ (inline_tests)
+ (preprocess
+  (pps ppx_inline_test)))
+
+(library
+ (name utils)
+ (modules utils)
+ (libraries core underapproximation_type.typing))
 
 (env
  (dev
   (flags
-   (:standard -w -32-33-69-27-26-34))))
+   (:standard -w -32-33-69-27-26-34-21))))

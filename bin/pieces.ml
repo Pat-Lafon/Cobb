@@ -1,178 +1,276 @@
-open Typecheck
-open Underctx
-open Languages
-open Underty.T
-open Normalty.Ast.NT
-open Autov.Prop
-open Config
+open Typing
 open Assertion
 open Sugar
-open Languages.StrucNA
+open Term
+open Rty
+open Cty
+open Language.FrontendTyped
+open Mtyped
+open Utils
+open Term
+open Mtyped
 
-let dbg_sexp sexp = print_endline (Core.Sexp.to_string_hum sexp)
+module NameTracking = struct
+  let asts : (identifier, _ typed) Hashtbl.t = Hashtbl.create 128
+  let known : (identifier, unit) Hashtbl.t = Hashtbl.create 128
+  let is_known (name : identifier) = Hashtbl.mem known name
+
+  let known_var (a : identifier) =
+    Hashtbl.add known a ();
+    Hashtbl.add asts a (a |> id_to_term);
+    a
+
+  let add_ast (a : identifier) (term : (t, t term) typed) =
+    Hashtbl.add asts a term
+
+  let get_ast (a : identifier) = Hashtbl.find_opt asts a
+
+  let ctx_subst (ctx : t rty Typectx.ctx) (ht : (string, string) Hashtbl.t) :
+      t rty Typectx.ctx =
+    Typectx.map_ctx_typed
+      (fun ({ x; ty } : (t rty, string) typed) : (t rty, string) typed ->
+        (* foldLeft ( takes the old type, and the id, substitute if id is in old type, return the new type ) (the unsubstituted type) (the var space ) *)
+        let renamed_ty =
+          List.fold_left
+            (fun t name ->
+              if is_known name then t
+              else
+                let new_name = Hashtbl.find ht name.x in
+                subst_rty_instance name.x (AVar new_name #: (erase_rty t)) t)
+            (* let new_name = Hashtbl.find ht name.x in
+               subst_rty_instance name.x (AVar new_name #: (erase_rty t)) t *)
+            ty (fv_rty ty)
+        in
+        let new_name = Hashtbl.find ht x in
+        new_name #: renamed_ty)
+      ctx
+
+  let freshen (Typectx lst : t rty Typectx.ctx) =
+    let ctx = Typectx.Typectx lst in
+    let ht : (string, string) Hashtbl.t = Hashtbl.create (List.length lst) in
+
+    let maybe_freshen_one (name_rty : (t rty, string) typed) :
+        (t rty, string) typed =
+      let name = name_rty #=> erase_rty in
+      if is_known name then (
+        Hashtbl.add ht name.x name.x;
+        name_rty)
+      else
+        let new_name = (Rename.unique name.x) #: name.ty in
+        let () =
+          match Hashtbl.find_opt asts name with
+          | None -> failwith name.x
+          | Some x -> Hashtbl.add asts new_name x
+        in
+        (* TODO: remove this since context addition checks this already ?*)
+        if Hashtbl.mem ht name.x then failwith "duplicate key";
+        Hashtbl.add ht name.x new_name.x;
+        new_name.x #: name_rty.ty
+    in
+    let _ = Typectx.map_ctx_typed maybe_freshen_one ctx in
+
+    let res = ctx_subst ctx ht in
+    (res, ht)
+end
 
 module Pieces = struct
-  let asts : (id, Termlang.term) Hashtbl.t = Hashtbl.create 128
+  let mk_let_app_const ?(record = false) (f : identifier)
+      (arg : Constant.constant) : identifier * (Nt.t, Nt.t term) typed =
+    let ret : identifier =
+      (Rename.name ()) #: (snd @@ Nt.destruct_arr_tp f.ty)
+    in
+    let app = mk_app (f |> id_to_value) (arg |> constant_to_value) in
+    if record then NameTracking.add_ast ret app else ();
+    (ret, mk_lete ret app (ret |> id_to_term))
 
-  let ast_to_string ?(erased = false) (id : id) =
-    let term = Termlang.make_untyped (Hashtbl.find asts id) in
-    let tterm = if erased then Termlang.erase_type term else term in
-    Frontend.Expr.layout tterm
+  let mk_let_app ?(record = false) (f : identifier) (arg : identifier) :
+      identifier * (Nt.t, Nt.t term) typed =
+    let ret : identifier =
+      (Rename.name ()) #: (snd @@ Nt.destruct_arr_tp f.ty)
+    in
+    let app = mk_app (f |> id_to_value) (arg |> id_to_value) in
+    if record then NameTracking.add_ast ret app else ();
+    (ret, mk_lete ret app (ret |> id_to_term))
 
-  type component =
-    | Fun of id NNtyped.typed
-    | Op of Op.op
-    | Ctor of id NNtyped.typed
+  let mk_let_appops ~(record : bool) (f : (t, Op.op) typed)
+      (args : identifier list) : identifier * (Nt.t, Nt.t term) typed =
+    let ret : identifier =
+      (Rename.name ()) #: (snd @@ Nt.destruct_arr_tp f.ty)
+    in
+    let app = mk_appop f (List.map id_to_value args) in
+    if record then NameTracking.add_ast ret app else ();
+    (ret, mk_lete ret app (ret |> id_to_term))
 
-  let libseed_or_function (ctx : (id * ty) list) (name : id) (t : UT.t) =
-    let nty = UT.erase t in
-    let argtys, resty = NT.destruct_arrow_tp nty in
-    match argtys with
-    | [ Ty_unit ] ->
-        let f = Termlang.Var name in
-        let unit = Termlang.App ({ ty = None; x = Termlang.Var "tt" }, []) in
-        let app =
-          Termlang.App ({ ty = None; x = f }, [ { ty = None; x = unit } ])
-        in
-        let tapp = Termcheck.check ctx { ty = None; x = app } in
-        Either.left (tapp.x, snd (Option.get tapp.ty))
-    | _ -> Either.right (Fun { x = name; ty = (None, nty) }, (argtys, resty))
+  let mk_let ~(record : bool) (f : identifier) =
+    let ret = (Rename.name ()) #: f.ty in
+    let rhs = f |> id_to_term in
+    if record then NameTracking.add_ast ret rhs else ();
+    (ret, mk_lete ret rhs (ret |> id_to_term))
 
-  let maybe_op_seed ((op, t) : Op.t * ty) =
+  let ast_to_string ?(erased = false) (id : identifier) : string =
+    let term = NameTracking.get_ast id |> Option.get in
+    let tterm = if erased then (* Termlang.erase_type  *) term else term in
+    layout_typed_term tterm
+
+  let asts_lookup (a : identifier) =
+    let expr = NameTracking.get_ast a in
+    Option.value expr ~default:(a |> id_to_term)
+
+  type component = Fun of identifier | Op of (Nt.t, Op.op) typed
+
+  let layout_component (c : component) : string =
+    match c with
+    | Fun f -> f.x
+    | Op op -> op.x |> Op.sexp_of_op |> Core.Sexp.to_string_hum
+
+  let string_to_component (s : identifier) : component =
+    if Op.is_builtin_op s.x then Op (Op.PrimOp s.x) #: s.ty
+    else if Op.is_dt_op s.x then Op (Op.DtConstructor s.x) #: s.ty
+    else Fun s
+
+  let mk_app (f_id : identifier) (args : identifier list) _ :
+      identifier * (t, t term) typed =
+    assert (List.length args = 1);
+    let arg = List.hd args in
+    let aterm = mk_let_app ~record:true f_id arg in
+    aterm
+
+  let mk_op (ctor : (Nt.t, Op.op) typed) (args : identifier list) k :
+      identifier * (t, t term) typed =
+    let aterm = mk_let_appops ~record:true ctor args in
+    aterm
+
+  let apply (comp : component) (args : identifier list) : identifier * _ typed =
+    let resid, aterm =
+      match comp with
+      | Fun f -> mk_app f args id_to_term
+      | Op op -> mk_op op args id_to_term
+    in
+    (*  let () = Hashtbl.add asts resid term in *)
+    (resid, aterm)
+
+  let ut_subst (ut : t rty) (ht : (string, string) Hashtbl.t) : t rty =
+    let renamed_ty =
+      List.fold_left
+        (fun t { x = name; ty } ->
+          if NameTracking.is_known name #: ty then t
+          else
+            let new_name = Hashtbl.find ht name in
+            Rty.subst_rty_instance name (AVar new_name #: ty) t)
+          (* let new_name = Hashtbl.find ht name in
+             Rty.subst_rty_instance name (AVar new_name #: ty) t) *)
+        ut (Rty.fv_rty ut)
+    in
+    renamed_ty
+
+  (* let libseed_or_function (ctx : (string * _) list) (name : string)
+       (t : Nt.t rty) =
+     let nty = Rty.erase_rty t in
+     let argtys, resty = Nt.destruct_arr_tp nty in
+     match argtys with
+     | [ Ty_unit ] ->
+         let appf = name #: nty |> id_to_value in
+         let unit = "TT" #: Nt.Ty_unit |> id_to_value in
+         let app = Term.CApp { appf; apparg = unit } in
+         let tapp = { ty = resty; x = app } in
+         Either.left (tapp.x, tapp.ty)
+     | _ -> Either.right (Fun { x = name; ty = nty }, (argtys, resty)) *)
+
+  type new_seed = (identifier * t rty * t rty Typectx.ctx) * t
+
+  let selfification (x : string) (nt : t) =
+    let new_name = (Rename.name ()) #: nt in
+    NameTracking.add_ast new_name (id_to_term (NameTracking.known_var x #: nt));
+    let new_rty_type =
+      Rty.RtyBase
+        {
+          ou = false;
+          cty =
+            Cty
+              {
+                nty = nt;
+                phi =
+                  Prop.Lit
+                    (Lit.AAppOp
+                       ( "=" #: (Nt.Ty_arrow (nt, Nt.Ty_arrow (nt, Nt.Ty_bool))),
+                         [
+                           (Lit.AVar "v" #: nt) #: nt; (Lit.AVar x #: nt) #: nt;
+                         ] ))
+                    #: nt;
+              };
+        }
+    in
+    let new_seed : new_seed =
+      ((new_name, new_rty_type, Typectx [ new_name.x #: new_rty_type ]), nt)
+    in
+    new_seed
+
+  let seeds_from_args (Typectx ctx_list : t rty Typectx.ctx) : new_seed list =
+    List.filter_map
+      (fun { x; ty } ->
+        match ty with
+        | RtyBase _ -> Some (selfification x (erase_rty ty))
+        | _ -> None)
+      ctx_list
+
+  let seeds_and_components (Typectx ctx_list : t rty Typectx.ctx) :
+      ((identifier * t rty * t rty Typectx.ctx) * t) list
+      * (component * (t list * t)) list =
+    List.fold_left
+      (fun (seeds, components) { x; ty } ->
+        let nt = erase_rty ty in
+        match ty with
+        | RtyBase _ ->
+            let name, _ = mk_let ~record:true x #: nt in
+            let new_seed : new_seed =
+              ((name, ty, Typectx [ name.x #: ty ]), nt)
+            in
+            (new_seed :: seeds, components)
+        | RtyBaseArr
+            {
+              argcty = Cty { nty = Nt.Ty_unit; phi };
+              arg;
+              retty = RtyBase _ as retty;
+            } ->
+            assert (
+              phi = Prop.Lit { x = Lit.AC (Constant.B true); ty = Nt.Ty_bool });
+            let nt_ty = erase_rty retty in
+            let name, _ = mk_let_app_const ~record:true x #: nt Constant.U in
+            let new_seed : new_seed =
+              ((name, retty, Typectx [ name.x #: retty ]), nt_ty)
+            in
+            (new_seed :: seeds, components)
+        | RtyBaseArr _ ->
+            let new_component : component * (t list * t) =
+              (string_to_component x #: nt, nt |> Nt.destruct_arr_tp)
+            in
+            (seeds, new_component :: components)
+        | RtyArrArr _ -> failwith "unimplemented"
+        | RtyTuple _ -> failwith "unimplemented")
+      ([], []) ctx_list
+
+  (*
+  let maybe_op_seed ((op, t) : Op.op * Nt.t) =
     (* Todo As opposed to being generic, just cast 'a' to int *)
     (* TODO maybe others needed*)
-    let concrete = Ty.subst t ("a", Ty_int) in
+    let concrete = Nt.subst t ("a", Ty_int) in
     match (op, concrete) with
     | _, Ty_unit -> None (* TODO, check if this is needed *)
-    | DtConstructor "nil", Ty_list Ty_int ->
-        Some (Either.left (Termlang.Var "nil", concrete))
-    | PrimOp op, (Ty_arrow _ as concrete) ->
-        Some (Either.right (Op op, NT.destruct_arrow_tp concrete))
+    | DtConstructor "nil", t when t = ty_intlist ->
+        Some (Either.left (Term.VVar "nil" #: ty_intlist, concrete))
+    | PrimOp _, (Ty_arrow _ as concrete) ->
+        Some (Either.right (Op op #: t, Nt.destruct_arr_tp concrete))
     | DtConstructor name, (Ty_arrow _ as concrete) ->
         Some
           (Either.right
-             ( Ctor { x = name; ty = (None, concrete) },
-               NT.destruct_arrow_tp concrete ))
+             (Ctor { x = name; ty = concrete }, Nt.destruct_arr_tp concrete))
     | _ ->
         failwith
           (Printf.sprintf "Unknown operation `%s` of type `%s`"
-             (Core.Sexp.to_string_hum (Op.sexp_of_t op))
-             (Core.Sexp.to_string (Ty.sexp_of_t concrete)))
-
-  (* NOTE: the code below shows what operations are available according
-     to where the type checker looks *)
-  let ops () = Abstraction.Prim_map.get_normal_m ()
-
-  let prim_gathering_helper () =
-    List.partition_map
-      (fun a -> a)
-      (List.filter_map maybe_op_seed
-         (Abstraction.Prim_map.S.fold
-            (fun op arg tail -> (op, arg) :: tail)
-            (ops ()) []))
-
-  let library_gathering_helper (libs : (id * UT.t) list) =
-    List.partition_map
-      (fun (name, uty) ->
-        libseed_or_function
-          (List.map (fun (n, t) -> (n, UT.erase t)) libs)
-          name uty)
-      libs
-
-  let builtin_seeds =
-    [
-      (Termlang.Const (Termcheck.V.B false), Ty_bool);
-      (Termlang.Const (Termcheck.V.B true), Ty_bool);
-      (Termlang.Const (Termcheck.V.I 0), Ty_int);
-      (Termlang.Const (Termcheck.V.I 1), Ty_int);
-    ]
-
-  let mk_seed (x, y) =
-    let name = Rename.name () in
-    Hashtbl.add asts name x;
-    ((name, Trans.to_anormal_with_name name false { x; ty = Some (None, y) }), y)
-
-  let seeds_and_components (libs : (id * UT.t) list) =
-    (* I move this inside of a function becuase `Abstraction.Prim_map.get_normal_m` will call some global reference that hasn't been set yet *)
-    (* Main sets this ref, but this file gets built first *)
-    let prim_seeds, operations = prim_gathering_helper () in
-    let lib_seeds, funs = library_gathering_helper libs in
-    let seeds = prim_seeds @ lib_seeds @ builtin_seeds in
-    (List.map mk_seed seeds, operations @ funs)
-
-  let known : (id, unit) Hashtbl.t = Hashtbl.create 128
-
-  let known_var (a : id) =
-    Hashtbl.add known a ();
-    Hashtbl.add asts a (Termlang.Var a);
-    a
-
-  let asts_lookup (a : id NNtyped.typed) =
-    let expr = Option.map Termlang.make_untyped (Hashtbl.find_opt asts a.x) in
-    Option.value expr ~default:(Termlang.make_untyped (Termlang.Var a.x))
-
-  let mk_app (f_id : id NNtyped.typed) (args : id NNtyped.typed list) k :
-      id NNtyped.typed * NL.term * Termlang.term =
-    let name = Rename.name () in
-    let resty = snd (NT.destruct_arrow_tp (snd f_id.ty)) in
-    let resid : id NNtyped.typed = { x = name; ty = (None, resty) } in
-    let term =
-      Termlang.App
-        (Termlang.make_untyped (Termlang.Var f_id.x), List.map asts_lookup args)
-    in
-    let args = List.map NL.id_to_value args in
-    let aterm = NL.LetApp { ret = resid; f = f_id; args; body = k resid } in
-    (resid, aterm, term)
-
-  let mk_ctor (ctor : id NNtyped.typed) (args : id NNtyped.typed list) k :
-      id NNtyped.typed * NL.term * Termlang.term =
-    let name = Rename.name () in
-    let resty = snd (NT.destruct_arrow_tp (snd ctor.ty)) in
-    let resid : id NNtyped.typed = { x = name; ty = (None, resty) } in
-    let term =
-      Termlang.App
-        (Termlang.make_untyped (Termlang.Var ctor.x), List.map asts_lookup args)
-    in
-    let args = List.map NL.id_to_value args in
-    let aterm =
-      NL.LetDtConstructor { ret = resid; f = ctor; args; body = k resid }
-    in
-    (resid, aterm, term)
-
-  let mk_op (op_id : Op.op) (args : id NNtyped.typed list) :
-      id NNtyped.typed * NL.term * Termlang.term =
-    let op_ty =
-      Abstraction.Prim.get_primitive_normal_ty (Op.op_to_string op_id)
-    in
-    let name = Rename.name () in
-    let resty = snd (NT.destruct_arrow_tp op_ty) in
-    let resid : id NNtyped.typed = { x = name; ty = (None, resty) } in
-    let term = Termlang.Op (op_id, List.map asts_lookup args) in
-    let args = List.map NL.id_to_value args in
-    let aterm =
-      NL.LetOp
-        {
-          ret = resid;
-          op = op_id;
-          args;
-          body = NL.value_to_term (NL.id_to_value resid);
-        }
-    in
-    (resid, aterm, term)
-
-  let mk_var (a : id NNtyped.typed) : (id * NL.term NNtyped.typed) * ty =
-    let name = Rename.name () in
-    print_endline ("mk_var: " ^ a.x);
-    print_endline ("mk_var: " ^ name);
-    let ty = a.ty in
-
-    let term = Termlang.Var a.x in
-    let aterm =
-      Trans.to_anormal_with_name name false { x = term; ty = Some ty }
-    in
-    Hashtbl.add asts name term;
-    ((name, aterm), snd ty)
-
+             (Core.Sexp.to_string_hum (Op.sexp_of_op op))
+             (Core.Sexp.to_string (Nt.sexp_of_t concrete)))
+ *)
+  (*
   let mk_if (cond : id NNtyped.typed) (true_branch : id NNtyped.typed)
       (false_branch : id NNtyped.typed) : NL.term =
     let cond = NL.id_to_value cond in
@@ -190,20 +288,6 @@ module Pieces = struct
     let e_t = NL.id_to_value true_branch |> NL.value_to_term in
     let exn = { x = NL.Exn; ty = true_branch.ty } |> NL.value_to_term in
     NL.Ite { cond; e_t; e_f = exn }
-
-  let apply (comp : component) (args : id NNtyped.typed list) :
-      id NNtyped.typed * NL.term =
-    let resid, aterm, term =
-      match comp with
-      | Fun f -> mk_app f args (fun x -> NL.value_to_term (NL.id_to_value x))
-      | Op op -> mk_op op args
-      | Ctor ctor ->
-          mk_ctor ctor args (fun x -> NL.value_to_term (NL.id_to_value x))
-    in
-    let () = Hashtbl.add asts resid.x term in
-    (resid, aterm)
-
-  let map_fst f (l, r) = (f l, r)
 
   let mmt_subst_id a before after =
     let aux (t : Underty.MMT.ut_with_copy) before after =
@@ -238,41 +322,5 @@ module Pieces = struct
         mmt (MMT.fv mmt)
     in
     renamed_ty
-
-  let ctx_subst ctx (ht : (id, id) Hashtbl.t) =
-    List.map
-      (fun (name, ty) ->
-        (* foldLeft ( takes the old type, and the id, substitute if id is in old type, return the new type ) (the unsubstituted type) (the var space ) *)
-        let renamed_ty =
-          List.fold_left
-            (fun t name ->
-              let new_name = Hashtbl.find ht name in
-              mmt_subst_id t name new_name)
-            ty (Underty.MMT.fv ty)
-        in
-        let new_name = Hashtbl.find ht name in
-        (new_name, renamed_ty))
-      ctx
-
-  let freshen (ctx : Typectx.ctx) =
-    let ht = Hashtbl.create (List.length ctx) in
-    let maybe_freshen_one (name : id) =
-      if Hashtbl.mem known name then (
-        Hashtbl.add ht name name;
-        name)
-      else
-        let new_name = Rename.unique name in
-        let () =
-          match Hashtbl.find_opt asts name with
-          | None -> failwith name
-          | Some x -> Hashtbl.add asts new_name x
-        in
-        (* TODO: remove this since context addition checks this already ?*)
-        if Hashtbl.mem ht name then failwith "duplicate key";
-        Hashtbl.add ht name new_name;
-        new_name
-    in
-    let _ = List.map (map_fst maybe_freshen_one) ctx in
-    let res = ctx_subst ctx ht in
-    (res, ht)
+ *)
 end
