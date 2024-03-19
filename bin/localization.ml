@@ -74,18 +74,6 @@ let rec term_exnify body : _ exn_variations =
       { full_exn = term_bot ty; other = [ term_top ty ] }
   | CApp _ -> failwith ("unimplemented CApp: " ^ layout_typed_term body)
   | CAppOp _ -> { full_exn = term_bot body.ty; other = [ term_top body.ty ] }
-  (* | LetApp { ret; f; args; body } ->
-         term_exnify body
-         |> exn_map (fun x ->
-                { x = LetApp { ret; f; args; body = x }; ty = body.ty })
-     | LetDtConstructor { ret; f; args; body } ->
-         term_exnify body
-         |> exn_map (fun x ->
-                { x = LetDtConstructor { ret; f; args; body = x }; ty = body.ty })
-     | LetOp { ret; op; args; body } ->
-         term_exnify body
-         |> exn_map (fun x ->
-                { x = LetOp { ret; op; args; body = x }; ty = body.ty }) *)
   | CLetE { lhs; rhs; body } ->
       term_exnify body
       |> exn_map (fun x -> { x = CLetE { lhs; rhs; body = x }; ty = body.ty })
@@ -93,17 +81,6 @@ let rec term_exnify body : _ exn_variations =
       term_exnify body
       |> exn_map (fun x ->
              { x = CLetDeTu { turhs; tulhs; body = x }; ty = body.ty })
-  (* | Ite { cond; e_t; e_f } ->
-      let exn_e_t = term_exnify e_t in
-      let exn_e_f = term_exnify e_f in
-      exn_map_list
-        (fun l : NL.term NNtyped.typed ->
-          assert (List.length l == 2);
-          {
-            x = Ite { cond; e_t = List.nth l 0; e_f = List.nth l 1 };
-            ty = body.ty;
-          })
-        [ exn_e_t; exn_e_f ] *)
   | CMatch { matched; match_cases } ->
       let exn_cases = List.map case_exnify match_cases in
       exn_map_list
@@ -145,7 +122,7 @@ module Localization = struct
     let program_variations = exnified.other in
 
     (* program_variations |> List.iter (fun x -> print_endline (NL.layout x));
-       (); *)
+    (); *)
     let inferred_program_types =
       List.map (term_type_infer uctx) program_variations
       |> List.map Option.get
