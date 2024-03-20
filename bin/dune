@@ -11,8 +11,8 @@
   underapproximation_type.typing
   underapproximation_type.preprocessing
   underapproximation_type.commands)
-  (preprocess
-   (pps ppx_jane)))
+ (preprocess
+  (pps ppx_jane)))
 
 (library
  (name blocks)
