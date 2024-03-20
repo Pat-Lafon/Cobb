@@ -221,8 +221,6 @@ let run_benchmark source_file meta_config_file =
   Pp.printf "\nComponents:\n%s\n"
     (List.split_by "\n" (fun (c, _) -> Pieces.layout_component c) components);
 
-  failwith "stop here";
-
   let _result = Synthesis.synthesis uctx retty bound seeds components in
   print_endline "Finished Synthesis"
 
