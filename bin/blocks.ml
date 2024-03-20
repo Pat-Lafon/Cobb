@@ -128,8 +128,7 @@ end = struct
     match lst with
     | [] -> [ term ]
     | hd :: tl ->
-        if (* hd = term *) false then
-          failwith "term is not unique in block list"
+        if hd = term then failwith "term is not unique in block list"
         else hd :: block_list_add tl term
 
   (** Checks if any element of the block list satisfies the function f
@@ -231,6 +230,7 @@ end = struct
   let block_collection_increment (collection : block_collection)
       (operations : (Pieces.component * (base_type list * base_type)) list)
       (uctx : uctx) : block_collection =
+    print_endline "Doing increment";
     (* We pull aside our current `new_blocks`, these are the largest blocks in the collection *)
     let new_blocks = collection.new_blocks in
     (* New and old blocks get merged together *)
@@ -474,6 +474,6 @@ module Synthesis = struct
         (Pieces.component * (Blocks.base_type list * Blocks.base_type)) list) :
       program option =
     let init_collection = Blocks.block_collection_init inital_seeds in
-    (*         Blocks.block_collection_print init_collection; *)
+    Blocks.block_collection_print init_collection;
     synthesis_helper max_depth target_type uctx init_collection operations
 end

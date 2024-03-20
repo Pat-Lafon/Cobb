@@ -11,7 +11,12 @@ open Cty
 type 'a exn_variations = { full_exn : 'a; other : 'a list }
 
 let type_to_generator_mapping : (Nt.t * string) list =
-  [ (Ty_int, "int_gen"); (ty_intlist, "hidden_list_gen") ]
+  [
+    (Ty_int, "int_gen");
+    (ty_intlist, "hidden_list_gen");
+    (ty_inttree, "hidden_tree_gen");
+    (ty_intrbtree, "hidden_rbtree_gen");
+  ]
 
 let term_bot base_ty : _ Mtyped.typed = Term.CErr #: base_ty
 
@@ -122,7 +127,7 @@ module Localization = struct
     let program_variations = exnified.other in
 
     (* program_variations |> List.iter (fun x -> print_endline (NL.layout x));
-    (); *)
+       (); *)
     let inferred_program_types =
       List.map (term_type_infer uctx) program_variations
       |> List.map Option.get

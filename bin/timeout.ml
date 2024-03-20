@@ -17,5 +17,7 @@ module Timeout = struct
       =
     (* pprint_typectx_subtyping ctx.local_ctx l; *)
     let r = Typing.Termcheck.sub_rty_bool ctx l in
-    if !Backend.Check.smt_timeout_flag then Timeout else Result r
+    (* Commented out because everything that is false timesout at the moment*)
+   Result r
+  (* if !Backend.Check.smt_timeout_flag then Timeout else Result r *)
 end

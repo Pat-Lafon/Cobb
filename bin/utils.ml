@@ -4,6 +4,8 @@ type identifier = (Nt.t, string) Mtyped.typed
 let replace l pos a = List.mapi (fun i x -> if i = pos then a else x) l
 let dbg_sexp sexp = print_endline (Core.Sexp.to_string_hum sexp)
 let ty_intlist = Nt.Ty_constructor ("list", [ Ty_int ])
+let ty_intrbtree = Nt.Ty_constructor ("rbtree", [ Ty_int ])
+let ty_inttree = Nt.Ty_constructor ("tree", [ Ty_int ])
 let map_fst f (l, r) = (f l, r)
 
 (** Produces a list from 0..n-1 *)

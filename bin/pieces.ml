@@ -90,24 +90,9 @@ module Pieces = struct
           else
             let new_name = Hashtbl.find ht name in
             Rty.subst_rty_instance name (AVar new_name #: ty) t)
-          (* let new_name = Hashtbl.find ht name in
-             Rty.subst_rty_instance name (AVar new_name #: ty) t) *)
         ut (Rty.fv_rty ut)
     in
     renamed_ty
-
-  (* let libseed_or_function (ctx : (string * _) list) (name : string)
-       (t : Nt.t rty) =
-     let nty = Rty.erase_rty t in
-     let argtys, resty = Nt.destruct_arr_tp nty in
-     match argtys with
-     | [ Ty_unit ] ->
-         let appf = name #: nty |> id_to_value in
-         let unit = "TT" #: Nt.Ty_unit |> id_to_value in
-         let app = Term.CApp { appf; apparg = unit } in
-         let tapp = { ty = resty; x = app } in
-         Either.left (tapp.x, tapp.ty)
-     | _ -> Either.right (Fun { x = name; ty = nty }, (argtys, resty)) *)
 
   type new_seed = (identifier * t rty * t rty Typectx.ctx) * t
 
@@ -125,7 +110,7 @@ module Pieces = struct
                 phi =
                   Prop.Lit
                     (Lit.AAppOp
-                       ( "=" #: (Nt.Ty_arrow (nt, Nt.Ty_arrow (nt, Nt.Ty_bool))),
+                       ( "==" #: (Nt.Ty_arrow (nt, Nt.Ty_arrow (nt, Nt.Ty_bool))),
                          [
                            (Lit.AVar "v" #: nt) #: nt; (Lit.AVar x #: nt) #: nt;
                          ] ))
@@ -146,40 +131,60 @@ module Pieces = struct
         | _ -> None)
       ctx_list
 
+  let components_from_args (Typectx ctx_list : t rty Typectx.ctx) :
+      (component * (t list * t)) list =
+    List.filter_map
+      (fun { x; ty } ->
+        let nt = erase_rty ty in
+        match ty with
+        | RtyBase _ -> None
+        | RtyBaseArr
+            { argcty = Cty { nty = Nt.Ty_unit; _ }; retty = RtyBase _; _ } ->
+            failwith "unimplemented"
+        | RtyBaseArr _ ->
+            let new_component : component * (t list * t) =
+              (string_to_component x #: nt, nt |> Nt.destruct_arr_tp)
+            in
+            Some new_component
+        | _ -> failwith "unimplemented")
+      ctx_list
+
   let seeds_and_components (Typectx ctx_list : t rty Typectx.ctx) :
       ((identifier * t rty * t rty Typectx.ctx) * t) list
       * (component * (t list * t)) list =
     List.fold_left
       (fun (seeds, components) { x; ty } ->
-        let nt = erase_rty ty in
-        match ty with
-        | RtyBase _ ->
-            let name, _ = mk_let ~record:true x #: nt in
-            let new_seed : new_seed =
-              ((name, ty, Typectx [ name.x #: ty ]), nt)
-            in
-            (new_seed :: seeds, components)
-        | RtyBaseArr
-            {
-              argcty = Cty { nty = Nt.Ty_unit; phi };
-              retty = RtyBase _ as retty;
-              _;
-            } ->
-            assert (
-              phi = Prop.Lit { x = Lit.AC (Constant.B true); ty = Nt.Ty_bool });
-            let nt_ty = erase_rty retty in
-            let name, _ = mk_let_app_const ~record:true x #: nt Constant.U in
-            let new_seed : new_seed =
-              ((name, retty, Typectx [ name.x #: retty ]), nt_ty)
-            in
-            (new_seed :: seeds, components)
-        | RtyBaseArr _ ->
-            let new_component : component * (t list * t) =
-              (string_to_component x #: nt, nt |> Nt.destruct_arr_tp)
-            in
-            (seeds, new_component :: components)
-        | RtyArrArr _ -> failwith "unimplemented"
-        | RtyTuple _ -> failwith "unimplemented")
+        if String.starts_with ~prefix:"hidden_" x then (seeds, components)
+        else
+          let nt = erase_rty ty in
+          match ty with
+          | RtyBase _ ->
+              let name, _ = mk_let ~record:true x #: nt in
+              let new_seed : new_seed =
+                ((name, ty, Typectx [ name.x #: ty ]), nt)
+              in
+              (new_seed :: seeds, components)
+          | RtyBaseArr
+              {
+                argcty = Cty { nty = Nt.Ty_unit; phi };
+                retty = RtyBase _ as retty;
+                _;
+              } ->
+              assert (
+                phi = Prop.Lit { x = Lit.AC (Constant.B true); ty = Nt.Ty_bool });
+              let nt_ty = erase_rty retty in
+              let name, _ = mk_let_app_const ~record:true x #: nt Constant.U in
+              let new_seed : new_seed =
+                ((name, retty, Typectx [ name.x #: retty ]), nt_ty)
+              in
+              (new_seed :: seeds, components)
+          | RtyBaseArr _ ->
+              let new_component : component * (t list * t) =
+                (string_to_component x #: nt, nt |> Nt.destruct_arr_tp)
+              in
+              (seeds, new_component :: components)
+          | RtyArrArr _ -> failwith "unimplemented"
+          | RtyTuple _ -> failwith "unimplemented")
       ([], []) ctx_list
 
   (*

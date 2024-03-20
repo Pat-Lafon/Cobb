@@ -77,18 +77,15 @@ let handle_first_arg (a : (t, t value) typed) (rty : t rty) =
       (binding, rec_fix)
   | _ -> failwith "Did not recieve a fixpoint value and a base arrow type"
 
-let run_benchmark source_file meta_config_file bound =
-  (* This sets up global variables pointing to the information in meta-config.json *)
-  let () = Env.load_meta meta_config_file in
+let get_synth_config_values meta_config_file =
+  let open Json in
+  let open Yojson.Basic.Util in
+  let metaj = load_json meta_config_file in
+  let bound = metaj |> member "synth_bound" |> to_int in
+  let timeout = metaj |> member "synth_timeout" |> to_string in
+  (bound, timeout)
 
-  (*   Env.sexp_of_meta_config (!Env.meta_config |> Option.value_exn) |> dbg_sexp; *)
-  let () = Z3.Params.update_param_value Backend.Smtquery.ctx "timeout" "9999" in
-  let processed_file =
-    Commands.Cre.preproress meta_config_file source_file ()
-  in
-
-  assert (List.length processed_file = 2);
-  Pp.printf "\nProcessed File:\n%s\n" (layout_structure processed_file);
+let build_initial_typing_context meta_config_file : uctx =
   let prim_path = Env.get_prim_path () in
 
   let predefine =
@@ -99,20 +96,26 @@ let run_benchmark source_file meta_config_file bound =
   let builtin_ctx = Typing.Itemcheck.gather_uctx predefine in
   Pp.printf "\nBuiltin Context:\n%s\n" (layout_typectx layout_rty builtin_ctx);
 
-  (let (Typectx x) = builtin_ctx in
-   assert (List.length predefine = List.length x));
+  assert (List.length predefine = List.length (Typectx.to_list builtin_ctx));
 
   let lemmas = Commands.Cre.preproress meta_config_file prim_path.lemmas () in
+
+  (* TODO Filter out unneeded axioms *)
 
   (* Pp.printf "\nLemmas:\n%s\n" (layout_structure lemmas); *)
   let axioms =
     Typing.Itemcheck.gather_axioms lemmas |> List.map Mtyped._get_ty
   in
   Pp.printf "\nAxioms:\n%s\n" (List.split_by "\n" layout_prop axioms);
+  { builtin_ctx; local_ctx = Typectx.emp; axioms }
 
-  let uctx : uctx = { builtin_ctx; local_ctx = Typectx.emp; axioms } in
+let get_args_rec_retty_body_from_source meta_config_file source_file =
+  let processed_file =
+    Commands.Cre.preproress meta_config_file source_file ()
+  in
 
-  failwith "stop here";
+  assert (List.length processed_file = 2);
+  Pp.printf "\nProcessed File:\n%s\n" (layout_structure processed_file);
 
   let synth_name, synth_type =
     List.find_map
@@ -143,18 +146,13 @@ let run_benchmark source_file meta_config_file bound =
     |> Option.value_exn
   in
 
-  (* let _ =
-       Typing.Termcheck.term_type_check uctx code synth_type |> Option.value_exn
-     in *)
-
-  (*   Pp.printf "\nCode:\n%s\n" (layout_typed_term code); *)
   let code =
     match code.x with CVal x -> x | _ -> failwith "Did not receive a value"
   in
 
   let _, args, body = unfold_fix_helper code.x in
+  Pp.printf "Body: %s\n" (layout_typed_term body);
   (* For other programs that use more than one arg, adjust *)
-  assert (List.length args = 1);
   assert (
     Core.List.for_all2_exn args argtyps ~f:(fun arg argty ->
         Nt.eq arg.ty (Rty.erase_rty argty.ty) && String.equal arg.x argty.x));
@@ -162,10 +160,26 @@ let run_benchmark source_file meta_config_file bound =
   let first_arg, rec_fix = handle_first_arg code synth_type in
   Pp.printf "\nFirst Arg: %s\n" (layout_id_rty first_arg);
   Pp.printf "\nRec Fix: %s\n" (layout_id_rty rec_fix);
+  let args = first_arg :: List.tl argtyps in
+  (args, rec_fix, retty, body)
 
-  let uctx = add_to_rights uctx [ first_arg; rec_fix ] in
+let run_benchmark source_file meta_config_file =
+  (* This sets up global variables pointing to the information in meta-config.json *)
+  let () = Env.load_meta meta_config_file in
+  let bound, timeout = get_synth_config_values meta_config_file in
 
-  Pp.printf "Body: %s\n" (layout_typed_term body);
+  (*   Env.sexp_of_meta_config (!Env.meta_config |> Option.value_exn) |> dbg_sexp; *)
+  let () =
+    Z3.Params.update_param_value Backend.Smtquery.ctx "timeout" timeout
+  in
+
+  let uctx = build_initial_typing_context meta_config_file in
+
+  let args, rec_fix, retty, body =
+    get_args_rec_retty_body_from_source meta_config_file source_file
+  in
+
+  let uctx = add_to_rights uctx (rec_fix :: args) in
 
   let typed_code =
     Typing.Termcheck.term_type_infer uctx body |> Option.value_exn
@@ -173,10 +187,9 @@ let run_benchmark source_file meta_config_file bound =
 
   Pp.printf "\nTyped Code:\n%s\n" (layout_rty typed_code.ty);
 
-  (* let res_term =
-       Typing.Termcheck.term_type_check uctx body retty |> Option.value_exn
-     in *)
-  Pp.printf "\nTyped Code:\n%s\n" (layout_rty typed_code.ty);
+  (match Typing.Termcheck.term_type_check uctx body retty with
+  | None -> ()
+  | Some _ -> failwith "Nothing to repair");
 
   pprint_simple_typectx_infer uctx ("res", typed_code.ty);
 
@@ -187,8 +200,6 @@ let run_benchmark source_file meta_config_file bound =
   Pp.printf "\nLocalTypingContext Before Synthesis:\n%s\n"
     (layout_typectx layout_rty uctx.local_ctx);
 
-  (*
-  assert (Subtyping.Subrty.sub_rty_bool uctx (typed_code.ty, retty)); *)
   let _path_props = Localization.localization uctx body retty in
 
   let ( (seeds : (Blocks.block * t) list),
@@ -198,6 +209,10 @@ let run_benchmark source_file meta_config_file bound =
 
   let seeds = List.concat [ seeds; Pieces.seeds_from_args uctx.local_ctx ] in
 
+  let components =
+    List.concat [ components; Pieces.components_from_args uctx.local_ctx ]
+  in
+
   Pp.printf "\nSeeds:\n%s\n"
     (List.split_by "\n"
        (fun (a, b) -> Blocks.layout_block a ^ " " ^ Nt.layout b)
@@ -205,6 +220,8 @@ let run_benchmark source_file meta_config_file bound =
 
   Pp.printf "\nComponents:\n%s\n"
     (List.split_by "\n" (fun (c, _) -> Pieces.layout_component c) components);
+
+  failwith "stop here";
 
   let _result = Synthesis.synthesis uctx retty bound seeds components in
   print_endline "Finished Synthesis"
@@ -226,25 +243,19 @@ let regular_directory =
       | `Unknown ->
           failwith "Could not determine if this was a regular directory")
 
-let bound =
-  Command.Arg_type.create (fun x ->
-      match Int.of_string_opt x with
-      | Some x -> x
-      | None -> failwith "Could not parse bound")
-
 let cobb_synth =
   Command.basic ~summary:"TODO"
     Command.Let_syntax.(
       let%map_open benchmark_dir = anon ("benchmark_dir" %: regular_directory)
       and program_name =
         anon ("program_name" %: Command.Arg_type.create (fun x -> x))
-      and bound = anon ("bound" %: bound) in
+      in
       fun () ->
         let source_file = Core.Filename.concat benchmark_dir program_name in
         let meta_config_file =
           Core.Filename.concat benchmark_dir "meta-config.json"
         in
-        let _ = run_benchmark source_file meta_config_file bound in
+        let _ = run_benchmark source_file meta_config_file in
         ())
 
 let prog = Command.group ~summary:"Cobb" [ ("synthesis", cobb_synth) ]
