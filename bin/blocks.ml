@@ -109,7 +109,13 @@ end = struct
     {
       uctx with
       local_ctx =
+        (* Typectx.add_to_rights *)
         Typectx
+          (* (List.fold_left
+             (fun acc x ->
+               if List.exists (fun y -> x == y) acc then acc else x :: acc)
+             (Typectx.to_list uctx.local_ctx)
+             (Typectx.to_list ctx)) *)
           (List.concat [ Typectx.to_list ctx; Typectx.to_list uctx.local_ctx ]);
     }
 
@@ -123,6 +129,15 @@ end = struct
   (* `new_blocks` get shifted over to `old_blocks` when we increment to a new, larger set of blocks *)
   type block_collection = { new_blocks : block_map; old_blocks : block_map }
 
+  let base_type_to_string (ty : base_type) : string = layout_ty ty
+
+  let layout_block ((name, ut, ctx) : block) : string =
+    Printf.sprintf "%s⊢ %s: %s : %s\n"
+      (layout_typectx layout_rty ctx ^ " ")
+      (Pieces.ast_to_string name)
+      (base_type_to_string name.ty)
+      (layout_rty ut)
+
   (** Enforces uniqueness of the inner block list *)
   let rec block_list_add (lst : block list) (term : block) : block list =
     match lst with
@@ -131,10 +146,17 @@ end = struct
         if hd = term then failwith "term is not unique in block list"
         else hd :: block_list_add tl term
 
+  let block_list_add_list (lst : block list) (term_list : block list) :
+      block list =
+    List.fold_left (fun acc x -> block_list_add acc x) term_list lst
+
   (** Checks if any element of the block list satisfies the function f
     * Like when checking that there is an equivalent block *)
   let block_list_any (lst : block list) (f : block -> bool) : bool =
     List.find_opt f lst |> Option.is_some
+
+  let block_list_print (lst : block list) : unit =
+    List.iter (fun t -> Printf.printf "\t%s\n" (layout_block t)) lst
 
   (** Add the (type, term pair to the map) *)
   let rec block_map_add (map : block_map) (term : block) (ty : base_type) :
@@ -145,11 +167,20 @@ end = struct
         if eq ty ty' then (ty, block_list_add terms term) :: rest
         else (ty', terms) :: block_map_add rest term ty
 
+  (** Add the (type, term pair to the map) *)
+  let rec block_map_add_list (map : block_map) (term_list : block list)
+      (ty : base_type) : block_map =
+    match map with
+    | [] -> [ (ty, term_list) ]
+    | (ty', terms) :: rest ->
+        if eq ty ty' then (ty, block_list_add_list terms term_list) :: rest
+        else (ty', terms) :: block_map_add_list rest term_list ty
+
   let block_map_get (map : block_map) (ty : base_type) : block list =
     List.assoc_opt ty map |> Option.value ~default:[]
 
-  let block_map_remove (map : block_map) (ty : base_type) : block_map =
-    List.remove_assoc ty map
+(*   let block_map_remove (map : block_map) (ty : base_type) : block_map =
+    List.remove_assoc ty map *)
 
   (* For a given type, check if any of the elements satisfy the function f *)
   let block_map_any (map : block_map) (ty : base_type) (f : block -> bool) :
@@ -160,19 +191,10 @@ end = struct
     let aux (b_map : block_map) (term, ty) = block_map_add b_map term ty in
     List.fold_left aux [] inital_seeds
 
-  let base_type_to_string (ty : base_type) : string = layout_ty ty
-
-  let layout_block ((name, ut, ctx) : block) : string =
-    Printf.sprintf "%s⊢ %s: %s : %s\n"
-      (layout_typectx layout_rty ctx ^ " ")
-      (Pieces.ast_to_string name)
-      (base_type_to_string name.ty)
-      (layout_rty ut)
-
   let block_map_print (map : block_map) : unit =
     let aux (ty, terms) =
       Printf.printf "Type: %s\n" (base_type_to_string ty);
-      List.iter (fun t -> Printf.printf "\t%s\n" (layout_block t)) terms
+      block_list_print terms
     in
     List.iter aux map
 
@@ -217,12 +239,18 @@ end = struct
     match new_blocks with
     | [] -> old_blocks
     | (ty, terms) :: rest ->
+        let rest =
+          block_collection_get_full_map { new_blocks = rest; old_blocks }
+        in
+        block_map_add_list rest terms ty
+
+        (* (*  block_map_add rest (ty, terms) ty *)
         let old_terms = block_map_get old_blocks ty in
         let remaining_old_blocks = block_map_remove old_blocks ty in
         let new_terms = List.rev_append old_terms terms in
         (ty, new_terms)
         :: block_collection_get_full_map
-             { new_blocks = rest; old_blocks = remaining_old_blocks }
+             { new_blocks = rest; old_blocks = remaining_old_blocks } *)
 
   (** Given a collection, we want to construct a new set of blocks using some set of operations
     * Operations should not be valid seeds (i.e. must be operations that take
