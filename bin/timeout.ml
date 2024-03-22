@@ -15,7 +15,6 @@ module Timeout = struct
 
   let sub_rty_bool_or_timeout (ctx : uctx) (l : t rty * t rty) : bool_or_timeout
       =
-    (* pprint_typectx_subtyping ctx.local_ctx l; *)
     let r = Typing.Termcheck.sub_rty_bool ctx l in
     (* Commented out because everything that is false timesout at the moment*)
     Result r
