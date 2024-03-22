@@ -73,7 +73,6 @@ let handle_first_arg (a : (t, t value) typed) (rty : t rty) =
           (Rty.sexp_of_rty Nt.sexp_of_t _retty)
           (Rty.sexp_of_rty Nt.sexp_of_t retty));
       let rec_fix = fixname.x #: rty_a in
-      (*       Pp.printf "\nRec Fix: %s\n" (layout_id_rty rec_fix); *)
       (binding, rec_fix)
   | _ -> failwith "Did not recieve a fixpoint value and a base arrow type"
 
@@ -219,7 +218,12 @@ let run_benchmark source_file meta_config_file =
        seeds);
 
   Pp.printf "\nComponents:\n%s\n"
-    (List.split_by "\n" (fun (c, _) -> Pieces.layout_component c) components);
+    (List.split_by "\n"
+       (fun (c, (args, ret)) ->
+         Pieces.layout_component c ^ " : "
+         ^ List.split_by "," Nt.layout args
+         ^ " -> " ^ Nt.layout ret)
+       components);
 
   let _result = Synthesis.synthesis uctx retty bound seeds components in
   print_endline "Finished Synthesis"
