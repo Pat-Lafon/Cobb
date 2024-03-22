@@ -47,6 +47,10 @@ let handle_first_arg (a : (t, t value) typed) (rty : t rty) =
   match (a.x, rty) with
   | VFix { fixname; fixarg; _ }, RtyBaseArr { argcty; arg; retty } ->
       assert (String.equal fixarg.x arg);
+      let () =
+        Termcheck.init_cur_rec_func_name
+          (fixname.x, Termcheck.apply_rec_arg fixarg)
+      in
       let a = { x = Rename.unique fixarg.x; ty = fixarg.ty } in
       let _ : identifier = NameTracking.known_var a in
       (*       Pp.printf "\nFirst Arg: %s\n" a.x; *)
@@ -99,13 +103,19 @@ let build_initial_typing_context meta_config_file : uctx =
 
   let lemmas = Commands.Cre.preproress meta_config_file prim_path.lemmas () in
 
-  (* TODO Filter out unneeded axioms *)
+  (* TODO: There is a slightly different handling of lemmas for usingn templates*)
 
   (* Pp.printf "\nLemmas:\n%s\n" (layout_structure lemmas); *)
   let axioms =
     Typing.Itemcheck.gather_axioms lemmas |> List.map Mtyped._get_ty
   in
   Pp.printf "\nAxioms:\n%s\n" (List.split_by "\n" layout_prop axioms);
+  let templates =
+    Commands.Cre.preproress meta_config_file prim_path.templates ()
+  in
+  let templates = Commands.Cre.handle_template templates in
+  let () = Inference.Feature.init_template templates in
+
   { builtin_ctx; local_ctx = Typectx.emp; axioms }
 
 let get_args_rec_retty_body_from_source meta_config_file source_file =

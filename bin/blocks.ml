@@ -407,53 +407,59 @@ end = struct
                   assert (term.ty = block_id.ty);
 
                   let new_ut =
-                    Termcheck.term_type_infer new_uctx
+                    Termcheck.term_type_infer_with_rec_check new_uctx
                       { x = term.x; ty = block_id.ty }
-                    |> Option.get
                   in
 
-                  match new_ut.ty with
-                  | RtyBase
-                      { cty = Cty { phi = Lit { x = AC (B false); _ }; _ }; _ }
-                    ->
-                      (* The block does not type check most likely because one of
-                         the arguments does not meet the precondition for the
-                         component *)
-                      None
-                  | _ ->
-                      if
-                        List.exists
-                          (fun (id : string) ->
-                            let joined_uctx =
-                              uctx_add_local_ctx uctx joined_ctx
+                  match new_ut with
+                  | None -> (* failed the new rec_check *)None
+                  | Some new_ut -> (
+                      match new_ut.ty with
+                      | RtyBase
+                          {
+                            cty = Cty { phi = Lit { x = AC (B false); _ }; _ };
+                            _;
+                          } ->
+                          (* The block does not type check most likely because one of
+                             the arguments does not meet the precondition for the
+                             component *)
+                          None
+                      | _ ->
+                          if
+                            List.exists
+                              (fun (id : string) ->
+                                let joined_uctx =
+                                  uctx_add_local_ctx uctx joined_ctx
+                                in
+                                let arg_t =
+                                  get_opt joined_uctx id |> Option.get
+                                in
+                                let relation_result =
+                                  Relations.rty_typing_relation joined_uctx
+                                    arg_t new_ut.ty
+                                in
+                                Relations.is_equiv_or_timeout relation_result)
+                              (arg_names
+                              |> List.map (fun ({ x; _ } : identifier) -> x))
+                          then
+                            (* let () =
+                                 Printf.printf
+                                   "Failed to add the following block \n %s\n"
+                                   (Pieces.ast_to_string block_id.x)
+                               in *)
+                            None
+                          else
+                            let new_ctx =
+                              Typectx.add_to_right joined_ctx
+                                { x = block_id.x; ty = new_ut.ty }
                             in
-                            let arg_t = get_opt joined_uctx id |> Option.get in
-                            let relation_result =
-                              Relations.rty_typing_relation joined_uctx arg_t
-                                new_ut.ty
-                            in
-                            Relations.is_equiv_or_timeout relation_result)
-                          (arg_names
-                          |> List.map (fun ({ x; _ } : identifier) -> x))
-                      then
-                        (* let () =
-                             Printf.printf
-                               "Failed to add the following block \n %s\n"
-                               (Pieces.ast_to_string block_id.x)
-                           in *)
-                        None
-                      else
-                        let new_ctx =
-                          Typectx.add_to_right joined_ctx
-                            { x = block_id.x; ty = new_ut.ty }
-                        in
 
-                        (*
+                            (*
                         Printf.printf "Added the following block \n %s\n %s\n"
                           (Pieces.ast_to_string block_id.x)
                           (u_type_to_string new_ut);
                         *)
-                        Some ((block_id, new_ut.ty, new_ctx), ret_type))
+                            Some ((block_id, new_ut.ty, new_ctx), ret_type)))
                 l)
             (range (List.length args) |> superset))
         operations
