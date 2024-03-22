@@ -12,6 +12,9 @@ open Frontend_opt.To_typectx
 open Zzdatatype.Datatype
 open Timeout
 open Tracking
+open Pomap
+
+let global_uctx : uctx option ref = ref None
 
 module rec Relations : sig
   type relation = Equiv | ImpliesTarget | ImpliedByTarget | None | Timeout
@@ -53,11 +56,22 @@ end = struct
 
   let block_typing_relation (uctx : uctx) (target_block : Blocks.block)
       (block : Blocks.block) =
+    print_endline "Checking block typing relation";
     let _, target_ty, target_ctx = target_block in
     let _, ty, ctx = block in
     if diff_base_type target_ty ty then None
     else
+      let () = print_endline "ctx" in
+      let () = layout_typectx layout_rty ctx |> print_endline in
       let combined_ctx, mapping = Blocks.local_ctx_union_r target_ctx ctx in
+      Hashtbl.iter
+        (fun k v ->
+          Printf.printf "Mapping %s -> %s\n" k v;
+          ())
+        mapping;
+      let () = print_endline "combined_ctx" in
+      layout_typectx layout_rty combined_ctx |> print_endline;
+
       let updated_ty = Pieces.ut_subst ty mapping in
 
       rty_typing_relation
@@ -65,11 +79,73 @@ end = struct
         target_ty updated_ty
 end
 
+and BlockPomap : sig
+  type t
+
+  val empty : t
+  val singleton : Blocks.block -> t
+  val add_block : Blocks.block -> t -> t
+  val union : t -> t -> t
+  val inter : t -> t -> t
+  val diff : t -> t -> t
+  val to_list : t -> Blocks.block list
+  val print : t -> unit
+end = struct
+  module P = Pomap_impl.Make (struct
+    type el = Blocks.block
+    type ord = Unknown | Lower | Equal | Greater
+
+    let relations_to_ord = function
+      | Relations.Equiv -> Equal
+      | Relations.ImpliesTarget -> Lower
+      | Relations.ImpliedByTarget -> Greater
+      | Relations.None -> Unknown
+      | Relations.Timeout -> Unknown
+
+    let compare (a : el) (b : el) =
+      let uctx = !global_uctx |> Option.get in
+      print_endline "Comparing";
+      layout_typectx layout_rty uctx.local_ctx |> print_endline;
+      Relations.block_typing_relation uctx a b |> relations_to_ord
+  end)
+
+  module D =
+    Display_hasse_impl.Make
+      (P)
+      (struct
+        include Display_hasse_impl.DefaultSpec
+
+        type el = unit
+        type 'a node = 'a P.node
+
+        let pp_node_attr (ppf : Format.formatter) (node : el node) : unit =
+          Format.fprintf ppf "label = \"%s\""
+            (P.get_key node |> Blocks.layout_block)
+
+        let rotation = 0.
+      end)
+
+  type t = unit P.pomap
+
+  let empty : t = P.empty
+  let singleton (x : Blocks.block) : t = P.singleton x ()
+  let add_block x (pm : t) : t = P.add x () pm
+  let union (l : t) (r : t) : t = P.union l r
+  let inter (l : t) (r : t) : t = P.inter l r
+  let diff (l : t) (r : t) : t = P.diff l r
+  let print (pm : t) : unit = D.printf pm
+
+  let to_list (pm : t) : Blocks.block list =
+    P.Store.fold (fun b acc -> P.get_key b :: acc) (P.get_nodes pm) []
+  (* P.to_list pm |> List.map (fun (x, _) -> x) *)
+end
+
 and Blocks : sig
   type base_type = t
   type local_ctx = base_type rty Typectx.ctx
   type block = identifier * t rty * local_ctx
-  type block_map = (base_type * block list) list
+  type block_set = BlockPomap.t
+  type block_map = (base_type * block_set) list
   type block_collection = { new_blocks : block_map; old_blocks : block_map }
 
   (* Combining to local contexts together for renaming *)
@@ -83,7 +159,7 @@ and Blocks : sig
   val block_collection_print : block_collection -> unit
 
   (* *)
-  val block_map_get : block_map -> base_type -> block list
+  val block_map_get : block_map -> base_type -> block_set
 
   (* Block Collection facilities *)
   val block_collection_init : (block * base_type) list -> block_collection
@@ -92,38 +168,16 @@ and Blocks : sig
   val block_collection_increment :
     block_collection ->
     (Pieces.component * (base_type list * base_type)) list ->
-    uctx ->
     block_collection
 end = struct
   type base_type = t
   type local_ctx = base_type rty Typectx.ctx
   type block = identifier * t rty * local_ctx
-
-  let local_ctx_union_r (Typectx l : local_ctx) (r : local_ctx) :
-      local_ctx * (string, string) Hashtbl.t =
-    map_fst
-      (fun (Typectx.Typectx res) -> Typectx.Typectx (l @ res))
-      (NameTracking.freshen r)
-
-  let uctx_add_local_ctx (uctx : uctx) (ctx : local_ctx) : uctx =
-    {
-      uctx with
-      local_ctx =
-        (* Typectx.add_to_rights *)
-        Typectx
-          (* (List.fold_left
-             (fun acc x ->
-               if List.exists (fun y -> x == y) acc then acc else x :: acc)
-             (Typectx.to_list uctx.local_ctx)
-             (Typectx.to_list ctx)) *)
-          (List.concat [ Typectx.to_list ctx; Typectx.to_list uctx.local_ctx ]);
-    }
-
-  (* For a given type, check if any of the elements satisfy the function f *)
+  type block_set = BlockPomap.t
 
   (* bool -> var1, true
      int -> 0, 1, ... *)
-  type block_map = (base_type * block list) list
+  type block_map = (base_type * block_set) list
 
   (* Blocks are added to the `new_blocks` field *)
   (* `new_blocks` get shifted over to `old_blocks` when we increment to a new, larger set of blocks *)
@@ -131,70 +185,93 @@ end = struct
 
   let base_type_to_string (ty : base_type) : string = layout_ty ty
 
+  let local_ctx_union_r (Typectx l : local_ctx) (r : local_ctx) :
+      local_ctx * (string, string) Hashtbl.t =
+    map_fst
+      (fun (Typectx.Typectx res) ->
+        (* TODO: Duplicates *)
+        Typectx.Typectx (l @ res))
+      (NameTracking.freshen r)
+
+  let uctx_add_local_ctx (uctx : uctx) (ctx : local_ctx) : uctx =
+    {
+      uctx with
+      local_ctx =
+        Typectx
+          (List.concat [ Typectx.to_list ctx; Typectx.to_list uctx.local_ctx ]);
+    }
+
   let layout_block ((name, ut, ctx) : block) : string =
-    Printf.sprintf "%s⊢ %s: %s : %s\n"
+    Printf.sprintf "%s\n⊢ %s: %s :\n%s\n"
       (layout_typectx layout_rty ctx ^ " ")
       (Pieces.ast_to_string name)
       (base_type_to_string name.ty)
       (layout_rty ut)
 
-  (** Enforces uniqueness of the inner block list *)
-  let rec block_list_add (lst : block list) (term : block) : block list =
-    match lst with
-    | [] -> [ term ]
-    | hd :: tl ->
-        if hd = term then failwith "term is not unique in block list"
-        else hd :: block_list_add tl term
+  let block_set_add (lst : block_set) (term : block) : block_set =
+    BlockPomap.add_block term lst
 
-  let block_list_add_list (lst : block list) (term_list : block list) :
-      block list =
-    List.fold_left (fun acc x -> block_list_add acc x) term_list lst
+  (* match lst with
+     | [] -> [ term ]
+     | hd :: tl ->
+         if hd = term then failwith "term is not unique in block_set"
+         else hd :: block_set_add tl term *)
 
-  (** Checks if any element of the block list satisfies the function f
+  let block_set_add_set (set : block_set) (term_set : block_set) : block_set =
+    BlockPomap.union set term_set
+  (*     List.fold_left (fun acc x -> block_set_add acc x) term_list lst *)
+
+  (* let block_set_any (lst : block_set) (f : block -> bool) : bool =
+     List.find_opt f lst |> Option.is_some
+  *)
+
+  (** Checks if any element of the block_set satisfies the function f
     * Like when checking that there is an equivalent block *)
-  let block_list_any (lst : block list) (f : block -> bool) : bool =
-    List.find_opt f lst |> Option.is_some
+  let block_set_print (set : block_set) : unit = BlockPomap.print set
 
-  let block_list_print (lst : block list) : unit =
-    List.iter (fun t -> Printf.printf "\t%s\n" (layout_block t)) lst
+  let block_set_uniq_set new_set old_set : block_set =
+    BlockPomap.diff new_set old_set
 
   (** Add the (type, term pair to the map) *)
   let rec block_map_add (map : block_map) (term : block) (ty : base_type) :
       block_map =
     match map with
-    | [] -> [ (ty, [ term ]) ]
+    | [] -> [ (ty, BlockPomap.singleton term) ]
     | (ty', terms) :: rest ->
-        if eq ty ty' then (ty, block_list_add terms term) :: rest
+        if eq ty ty' then (ty, block_set_add terms term) :: rest
         else (ty', terms) :: block_map_add rest term ty
 
   (** Add the (type, term pair to the map) *)
-  let rec block_map_add_list (map : block_map) (term_list : block list)
+  let rec block_map_add_list (map : block_map) (term_list : block_set)
       (ty : base_type) : block_map =
     match map with
     | [] -> [ (ty, term_list) ]
     | (ty', terms) :: rest ->
-        if eq ty ty' then (ty, block_list_add_list terms term_list) :: rest
+        if eq ty ty' then (ty, block_set_add_set terms term_list) :: rest
         else (ty', terms) :: block_map_add_list rest term_list ty
 
-  let block_map_get (map : block_map) (ty : base_type) : block list =
-    List.assoc_opt ty map |> Option.value ~default:[]
+  let block_map_get (map : block_map) (ty : base_type) : block_set =
+    List.assoc_opt ty map |> Option.value ~default:BlockPomap.empty
 
-(*   let block_map_remove (map : block_map) (ty : base_type) : block_map =
-    List.remove_assoc ty map *)
+  (* let block_map_remove (map : block_map) (ty : base_type) : block_map =
+     List.remove_assoc ty map *)
 
   (* For a given type, check if any of the elements satisfy the function f *)
-  let block_map_any (map : block_map) (ty : base_type) (f : block -> bool) :
-      bool =
-    block_list_any (block_map_get map ty) f
+  (* let block_map_any (map : block_map) (ty : base_type) (f : block -> bool) :
+       bool =
+     block_set_any (block_map_get map ty) f *)
 
   let block_map_init (inital_seeds : (block * base_type) list) : block_map =
-    let aux (b_map : block_map) (term, ty) = block_map_add b_map term ty in
+    let aux (b_map : block_map) (term, ty) =
+      layout_block term |> print_endline;
+      block_map_add b_map term ty
+    in
     List.fold_left aux [] inital_seeds
 
   let block_map_print (map : block_map) : unit =
     let aux (ty, terms) =
       Printf.printf "Type: %s\n" (base_type_to_string ty);
-      block_list_print terms
+      block_set_print terms
     in
     List.iter aux map
 
@@ -213,24 +290,36 @@ end = struct
     block_map_print old_blocks
 
   (* For a given type, check if any of the elements satisfy the function f *)
-  let block_collection_any ({ new_blocks; old_blocks } : block_collection)
-      (ty : base_type) (f : block -> bool) : bool =
-    block_map_any new_blocks ty f || block_map_any old_blocks ty f
+  (* let block_collection_any ({ new_blocks; old_blocks } : block_collection)
+       (ty : base_type) (f : block -> bool) : bool =
+     block_map_any new_blocks ty f || block_map_any old_blocks ty f *)
 
-  let block_collection_add ({ new_blocks; old_blocks } : block_collection)
-      (term : block) (ty : base_type) : block_collection =
-    let new_blocks = block_map_add new_blocks term ty in
-    { new_blocks; old_blocks }
+  (* let block_collection_add ({ new_blocks; old_blocks } : block_collection)
+       (term : block) (ty : base_type) : block_collection =
+     let new_blocks = block_map_add new_blocks term ty in
+     { new_blocks; old_blocks } *)
 
-  let block_collection_coverage_equiv_add (uctx : uctx)
-      (coll : block_collection) (term : block) (ty : base_type) :
-      block_collection =
-    if
-      block_collection_any coll ty (fun target_block ->
-          Relations.block_typing_relation uctx term target_block
-          |> Relations.is_equiv_or_timeout)
-    then coll
-    else block_collection_add coll term ty
+  (* let block_collection_coverage_equiv_add (uctx : uctx)
+       (coll : block_collection) (term : block) (ty : base_type) :
+       block_collection =
+     if
+       block_collection_any coll ty (fun target_block ->
+           Relations.block_typing_relation uctx term target_block
+           |> Relations.is_equiv_or_timeout)
+     then coll
+     else block_collection_add coll term ty *)
+
+  let rec block_collection_add_map_with_cov_checked coll (map : block_map) =
+    match map with
+    | [] -> coll
+    | (ty, set) :: rest ->
+        let { new_blocks; old_blocks } =
+          block_collection_add_map_with_cov_checked coll rest
+        in
+        assert (not (List.mem_assoc ty new_blocks));
+        let old_set = block_map_get old_blocks ty in
+        let new_set = block_set_uniq_set set old_set in
+        { new_blocks = (ty, new_set) :: new_blocks; old_blocks }
 
   (** For the block inference
     * Returns a mapping of all blocks, new and old *)
@@ -244,26 +333,28 @@ end = struct
         in
         block_map_add_list rest terms ty
 
-        (* (*  block_map_add rest (ty, terms) ty *)
-        let old_terms = block_map_get old_blocks ty in
-        let remaining_old_blocks = block_map_remove old_blocks ty in
-        let new_terms = List.rev_append old_terms terms in
-        (ty, new_terms)
-        :: block_collection_get_full_map
-             { new_blocks = rest; old_blocks = remaining_old_blocks } *)
+  (* (*  block_map_add rest (ty, terms) ty *)
+     let old_terms = block_map_get old_blocks ty in
+     let remaining_old_blocks = block_map_remove old_blocks ty in
+     let new_terms = List.rev_append old_terms terms in
+     (ty, new_terms)
+     :: block_collection_get_full_map
+          { new_blocks = rest; old_blocks = remaining_old_blocks } *)
 
   (** Given a collection, we want to construct a new set of blocks using some set of operations
     * Operations should not be valid seeds (i.e. must be operations that take
       arguments) *)
   let block_collection_increment (collection : block_collection)
-      (operations : (Pieces.component * (base_type list * base_type)) list)
-      (uctx : uctx) : block_collection =
+      (operations : (Pieces.component * (base_type list * base_type)) list) :
+      block_collection =
     print_endline "Doing increment";
     (* We pull aside our current `new_blocks`, these are the largest blocks in the collection *)
     let new_blocks = collection.new_blocks in
     (* New and old blocks get merged together *)
     (* These will make up the old blocks of the next collection *)
     let old_blocks = collection.old_blocks in
+
+    let uctx = !global_uctx |> Option.get in
 
     (* For each operation in the list, we are going to iterate though it's argument types and pull out blocks that match said types *)
     (* Atleast one arguement use to create each new block must be from `new_blocks`, the rest are from `old_blocks`(which can also have blocks from `new_blocks`). This guarantees that all created blocks are of `new_blocks[i].size + 1` *)
@@ -279,8 +370,9 @@ end = struct
               let l =
                 List.mapi
                   (fun j ty : block list ->
-                    if List.mem j new_set then block_map_get new_blocks ty
-                    else block_map_get old_blocks ty)
+                    if List.mem j new_set then
+                      block_map_get new_blocks ty |> BlockPomap.to_list
+                    else block_map_get old_blocks ty |> BlockPomap.to_list)
                   args
               in
               let l = n_cartesian_product l in
@@ -311,6 +403,8 @@ end = struct
                   let block_id, term = Pieces.apply component arg_names in
 
                   let new_uctx : uctx = uctx_add_local_ctx uctx joined_ctx in
+
+                  assert (term.ty = block_id.ty);
 
                   let new_ut =
                     Termcheck.term_type_infer new_uctx
@@ -365,121 +459,121 @@ end = struct
         operations
     in
 
+    print_endline "Adding new blocks";
+
     let new_map = block_map_init resulting_blocks in
 
-    let new_collection =
-      { new_blocks = []; old_blocks = block_collection_get_full_map collection }
-    in
+    print_endline "Get old blocks collection";
 
-    print_endline "Checking coverage Equivalence";
-    List.fold_left
-      (fun (coll : block_collection) (base_type, block_list) ->
-        List.fold_left
-          (fun coll block ->
-            layout_block block |> print_endline;
-            block_collection_coverage_equiv_add uctx coll block base_type)
-          coll block_list)
-      new_collection new_map
+    let old_map = block_collection_get_full_map collection in
+    let new_collection = { new_blocks = []; old_blocks = old_map } in
+
+    print_endline "done";
+
+    block_collection_add_map_with_cov_checked new_collection new_map
 end
 
 module Synthesis = struct
   type program = (t, t term) Mtyped.typed
 
   (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
-  let under_blocks_join (uctx : uctx) (collection : Blocks.block_collection)
+  let under_blocks_join (collection : Blocks.block_collection)
       (target_ty : t rty) : program option =
     (* Get all blocks from the collection*)
     let block_map = Blocks.block_collection_get_full_map collection in
     let base_type = erase_rty target_ty in
     let u_b_list = Blocks.block_map_get block_map base_type in
 
-    (* todo remove dubs from typeing contexts now that not all values are
-       freshened *)
+    BlockPomap.print u_b_list;
+
     (* How do we want to combine blocks together? *)
-    let groups =
-      group_by
-        (fun (id, ut, ctx) ->
-          Blocks.layout_block (id, ut, ctx) |> print_endline;
-          (* print_endline "\n\nNew candidate";
-             Blocks.mmt_type_to_string ut |> print_endline;
-             List.iter
-               (fun (id, mmt) ->
-                 print_string (id ^ ": ");
-                 print_endline (Blocks.mmt_type_to_string mmt);
-                 print_endline (Pieces.ast_to_string ~erased:true id))
-               ctx;
-             print_string ((id : id NNtyped.typed).x ^ ": ");
-             Pieces.ast_to_string ~erased:true (id : id NNtyped.typed).x
-             |> print_endline; *)
-          (* subtyping_check __FILE__ __LINE__ uctx
-             (MMT.UtNormal (UT.make_basic_bot (snd body.NL.ty)))
-             ty *)
-          let x = Blocks.uctx_add_local_ctx uctx ctx in
-          Relations.rty_typing_relation x target_ty ut)
-        u_b_list
-    in
+    (* let uctx = !global_uctx |> Option.get in *)
 
+    (* let groups =
+         group_by
+           (fun (_id, ut, ctx) ->
+             (* Blocks.layout_block (id, ut, ctx) |> print_endline; *)
+             (* print_endline "\n\nNew candidate";
+                Blocks.mmt_type_to_string ut |> print_endline;
+                List.iter
+                  (fun (id, mmt) ->
+                    print_string (id ^ ": ");
+                    print_endline (Blocks.mmt_type_to_string mmt);
+                    print_endline (Pieces.ast_to_string ~erased:true id))
+                  ctx;
+                print_string ((id : id NNtyped.typed).x ^ ": ");
+                Pieces.ast_to_string ~erased:true (id : id NNtyped.typed).x
+                |> print_endline; *)
+             (* subtyping_check __FILE__ __LINE__ uctx
+                (MMT.UtNormal (UT.make_basic_bot (snd body.NL.ty)))
+                ty *)
+             let x = Blocks.uctx_add_local_ctx uctx ctx in
+             Relations.rty_typing_relation x target_ty ut)
+           u_b_list
+       in *)
     print_endline "\n\n";
-    let _ =
-      List.iter
-        (fun ((g, es) : Relations.relation * Blocks.block list) ->
-          print_string "Group ";
-          print_endline (Core.Sexp.to_string_hum (Relations.sexp_of_relation g));
-          List.iter
-            (fun b ->
-              Blocks.layout_block b |> print_endline
-              (* Pp.printf "%s: %s : %s\n" id.x
-                 (Pieces.ast_to_string ~erased:true id)
-                 (layout_rty rty) *))
-            es)
-        groups
-    in
-    let super_type_list =
-      List.find_map
-        (fun (g, es) -> if g == Relations.ImpliesTarget then Some es else None)
-        groups
-      |> Option.get
-    in
-    let sub_type_list =
-      List.find_map
-        (fun (g, es) ->
-          if g == Relations.ImpliedByTarget then Some es else None)
-        groups
-      |> Option.get
-    in
 
-    let potential_program =
-      if List.length super_type_list > 0 then
-        let potential_program = List.hd super_type_list in
-        (* We will check all of the other super_types to see if there is a program
-           that is smaller but still works *)
-        let potential_program =
-          List.fold_left
-            (fun p e ->
-              let r = Relations.block_typing_relation uctx p e in
+    (* let _ =
+         List.iter
+           (fun ((g, es) : Relations.relation * Blocks.block_set) ->
+             print_string "Group ";
+             print_endline (Core.Sexp.to_string_hum (Relations.sexp_of_relation g));
+             List.iter
+               (fun b ->
+                 Blocks.layout_block b |> print_endline
+                 (* Pp.printf "%s: %s : %s\n" id.x
+                    (Pieces.ast_to_string ~erased:true id)
+                    (layout_rty rty) *))
+               es)
+           groups
+       in *)
+    (* let super_type_list =
+         List.find_map
+           (fun (g, es) -> if g == Relations.ImpliesTarget then Some es else None)
+           groups
+         |> Option.get
+       in
+       let sub_type_list =
+         List.find_map
+           (fun (g, es) ->
+             if g == Relations.ImpliedByTarget then Some es else None)
+           groups
+         |> Option.get
+       in *)
 
-              (* If the new block is smaller then use it *)
-              if r == Relations.ImpliedByTarget then e else p)
-            potential_program (List.tl super_type_list)
-        in
-        Some potential_program
-      else None
-    in
+    (* let potential_program =
+         if List.length super_type_list > 0 then
+           let potential_program = List.hd super_type_list in
+           (* We will check all of the other super_types to see if there is a program
+              that is smaller but still works *)
+           let potential_program =
+             List.fold_left
+               (fun p e ->
+                 let r = Relations.block_typing_relation uctx p e in
+
+                 (* If the new block is smaller then use it *)
+                 if r == Relations.ImpliedByTarget then e else p)
+               potential_program (List.tl super_type_list)
+           in
+           Some potential_program
+         else None
+       in *)
 
     (* actually do some joining of blocks *)
-    if List.length sub_type_list > 1 then
-      (* it is worth trying to *)
-      failwith "todo"
-    else (
-      print_endline "Potential Program:";
-      (match potential_program with
-      | Some (id, _, _) ->
-          Pieces.ast_to_string ~erased:true id |> print_endline;
-          ()
-      | None -> ());
-      failwith "todo")
+    (* if List.length sub_type_list > 1 then
+         (* it is worth trying to *)
+         failwith "todo"
+       else (
+         print_endline "Potential Program:";
+         (match potential_program with
+         | Some (id, _, _) ->
+             Pieces.ast_to_string ~erased:true id |> print_endline;
+             ()
+         | None -> ());
+         failwith "todo") *)
+    failwith "unimplemented"
 
-  let rec synthesis_helper (max_depth : int) (target_type : t rty) (uctx : uctx)
+  let rec synthesis_helper (max_depth : int) (target_type : t rty)
       (collection : Blocks.block_collection)
       (operations :
         (Pieces.component * (Blocks.base_type list * Blocks.base_type)) list) :
@@ -488,11 +582,23 @@ module Synthesis = struct
     | 0 ->
         Blocks.block_collection_print collection;
         (* Join blocks together into programs *)
-        under_blocks_join uctx collection target_type
+        under_blocks_join collection target_type
     | depth ->
+        let operations =
+          if depth == 1 then
+            let nty = erase_rty target_type in
+            List.filter
+              (fun (p, (_, ret_ty)) ->
+                let res = ret_ty = nty in
+                print_endline
+                  (Pieces.layout_component p ^ " " ^ string_of_bool res);
+                res)
+              operations
+          else operations
+        in
         (* If not, increment the collection and try again *)
-        synthesis_helper (depth - 1) target_type uctx
-          (Blocks.block_collection_increment collection operations uctx)
+        synthesis_helper (depth - 1) target_type
+          (Blocks.block_collection_increment collection operations)
           operations
 
   (** Given some initial setup, run the synthesis algorithm *)
@@ -501,7 +607,8 @@ module Synthesis = struct
       (operations :
         (Pieces.component * (Blocks.base_type list * Blocks.base_type)) list) :
       program option =
+    global_uctx := Some uctx;
     let init_collection = Blocks.block_collection_init inital_seeds in
     Blocks.block_collection_print init_collection;
-    synthesis_helper max_depth target_type uctx init_collection operations
+    synthesis_helper max_depth target_type init_collection operations
 end
