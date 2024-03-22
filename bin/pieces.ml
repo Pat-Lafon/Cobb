@@ -114,7 +114,7 @@ module Pieces = struct
                          [
                            (Lit.AVar "v" #: nt) #: nt; (Lit.AVar x #: nt) #: nt;
                          ] ))
-                    #: nt;
+                    #: Nt.Ty_bool;
               };
         }
     in
@@ -127,7 +127,12 @@ module Pieces = struct
     List.filter_map
       (fun { x; ty } ->
         match ty with
-        | RtyBase _ -> Some (selfification x (erase_rty ty))
+        | RtyBase _ ->
+            let nty = erase_rty ty in
+            let new_seed = selfification x nty in
+            let (x, _, _), _ = new_seed in
+            let _ : identifier = NameTracking.known_var x in
+            Some new_seed
         | _ -> None)
       ctx_list
 
@@ -187,27 +192,6 @@ module Pieces = struct
           | RtyTuple _ -> failwith "unimplemented")
       ([], []) ctx_list
 
-  (*
-  let maybe_op_seed ((op, t) : Op.op * Nt.t) =
-    (* Todo As opposed to being generic, just cast 'a' to int *)
-    (* TODO maybe others needed*)
-    let concrete = Nt.subst t ("a", Ty_int) in
-    match (op, concrete) with
-    | _, Ty_unit -> None (* TODO, check if this is needed *)
-    | DtConstructor "nil", t when t = ty_intlist ->
-        Some (Either.left (Term.VVar "nil" #: ty_intlist, concrete))
-    | PrimOp _, (Ty_arrow _ as concrete) ->
-        Some (Either.right (Op op #: t, Nt.destruct_arr_tp concrete))
-    | DtConstructor name, (Ty_arrow _ as concrete) ->
-        Some
-          (Either.right
-             (Ctor { x = name; ty = concrete }, Nt.destruct_arr_tp concrete))
-    | _ ->
-        failwith
-          (Printf.sprintf "Unknown operation `%s` of type `%s`"
-             (Core.Sexp.to_string_hum (Op.sexp_of_op op))
-             (Core.Sexp.to_string (Nt.sexp_of_t concrete)))
- *)
   (*
   let mk_if (cond : id NNtyped.typed) (true_branch : id NNtyped.typed)
       (false_branch : id NNtyped.typed) : NL.term =
