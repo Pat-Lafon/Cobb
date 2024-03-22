@@ -30,7 +30,7 @@ module NameTracking = struct
               if is_known name then t
               else
                 let new_name = Hashtbl.find ht name.x in
-                subst_rty_instance name.x (AVar new_name #: (erase_rty t)) t)
+                subst_rty_instance name.x (AVar new_name #: name.ty) t)
             (* let new_name = Hashtbl.find ht name.x in
                subst_rty_instance name.x (AVar new_name #: (erase_rty t)) t *)
             ty (fv_rty ty)
@@ -52,7 +52,7 @@ module NameTracking = struct
       else
         let new_name = (Rename.unique name.x) #: name.ty in
         let () =
-          match Hashtbl.find_opt asts name with
+          match get_ast name with
           | None -> failwith name.x
           | Some x -> Hashtbl.add asts new_name x
         in
