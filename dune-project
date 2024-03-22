@@ -23,6 +23,8 @@
   dune
   (ocaml
    (= "5.1.0"))
+  (pomap
+   (= "4.1.1"))
   (core
    (<= "v0.16.2"))
   (core_unix
