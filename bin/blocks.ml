@@ -16,16 +16,43 @@ open Pomap
 
 let global_uctx : uctx option ref = ref None
 
-module rec Relations : sig
+module rec RelationCache : sig
+  val add : identifier -> identifier -> Relations.relation -> unit
+  val check : identifier -> identifier -> Relations.relation option
+end = struct
+  type t = (string * string, Relations.relation) Hashtbl.t
+
+  let cache : t = Hashtbl.create 10000
+
+  let add (l : identifier) (r : identifier) (rel : Relations.relation) : unit =
+    Hashtbl.add cache (l.x, r.x) rel
+
+  let check (l : identifier) (r : identifier) : Relations.relation option =
+    match Hashtbl.find_opt cache (l.x, r.x) with
+    | Some r -> Some r
+    | None ->
+        Hashtbl.find_opt cache (r.x, l.x)
+        |> Option.map Relations.invert_relation
+end
+
+and Relations : sig
   type relation = Equiv | ImpliesTarget | ImpliedByTarget | None | Timeout
 
   val sexp_of_relation : relation -> Core.Sexp.t
   val is_equiv_or_timeout : relation -> bool
   val rty_typing_relation : uctx -> t rty -> t rty -> relation
   val block_typing_relation : uctx -> Blocks.block -> Blocks.block -> relation
+  val invert_relation : relation -> relation
 end = struct
   type relation = Equiv | ImpliesTarget | ImpliedByTarget | None | Timeout
   [@@deriving sexp]
+
+  let invert_relation = function
+    | Equiv -> Equiv
+    | ImpliesTarget -> ImpliedByTarget
+    | ImpliedByTarget -> ImpliesTarget
+    | None -> None
+    | Timeout -> Timeout
 
   let is_equiv_or_timeout (r : relation) : bool =
     match r with Equiv | Timeout -> true | _ -> false
@@ -56,27 +83,26 @@ end = struct
 
   let block_typing_relation (uctx : uctx) (target_block : Blocks.block)
       (block : Blocks.block) =
-    print_endline "Checking block typing relation";
-    let _, target_ty, target_ctx = target_block in
-    let _, ty, ctx = block in
-    if diff_base_type target_ty ty then None
-    else
-      let () = print_endline "ctx" in
-      let () = layout_typectx layout_rty ctx |> print_endline in
-      let combined_ctx, mapping = Blocks.local_ctx_union_r target_ctx ctx in
-      Hashtbl.iter
-        (fun k v ->
-          Printf.printf "Mapping %s -> %s\n" k v;
-          ())
-        mapping;
-      let () = print_endline "combined_ctx" in
-      layout_typectx layout_rty combined_ctx |> print_endline;
+    let target_id, target_ty, target_ctx = target_block in
+    let id, ty, ctx = block in
 
-      let updated_ty = Pieces.ut_subst ty mapping in
+    match RelationCache.check target_id id with
+    | Some r -> r
+    | None ->
+        let res =
+          if diff_base_type target_ty ty then None
+          else
+            let combined_ctx, mapping =
+              Blocks.local_ctx_union_r target_ctx ctx
+            in
+            let updated_ty = Pieces.ut_subst ty mapping in
 
-      rty_typing_relation
-        (Blocks.uctx_add_local_ctx uctx combined_ctx)
-        target_ty updated_ty
+            rty_typing_relation
+              (Blocks.uctx_add_local_ctx uctx combined_ctx)
+              target_ty updated_ty
+        in
+        RelationCache.add target_id id res;
+        res
 end
 
 and BlockPomap : sig
@@ -104,8 +130,6 @@ end = struct
 
     let compare (a : el) (b : el) =
       let uctx = !global_uctx |> Option.get in
-      print_endline "Comparing";
-      layout_typectx layout_rty uctx.local_ctx |> print_endline;
       Relations.block_typing_relation uctx a b |> relations_to_ord
   end)
 
@@ -201,6 +225,10 @@ end = struct
           (List.concat [ Typectx.to_list ctx; Typectx.to_list uctx.local_ctx ]);
     }
 
+  (* TODO: pretty print blocks as just expressions? *)
+(*   let pprint_block_as_exp ((_name, _ut, _ctx) : block) : string =
+    failwith "unimplemented" *)
+
   let layout_block ((name, ut, ctx) : block) : string =
     Printf.sprintf "%s\n⊢ %s: %s :\n%s\n"
       (layout_typectx layout_rty ctx ^ " ")
@@ -211,19 +239,8 @@ end = struct
   let block_set_add (lst : block_set) (term : block) : block_set =
     BlockPomap.add_block term lst
 
-  (* match lst with
-     | [] -> [ term ]
-     | hd :: tl ->
-         if hd = term then failwith "term is not unique in block_set"
-         else hd :: block_set_add tl term *)
-
   let block_set_add_set (set : block_set) (term_set : block_set) : block_set =
     BlockPomap.union set term_set
-  (*     List.fold_left (fun acc x -> block_set_add acc x) term_list lst *)
-
-  (* let block_set_any (lst : block_set) (f : block -> bool) : bool =
-     List.find_opt f lst |> Option.is_some
-  *)
 
   (** Checks if any element of the block_set satisfies the function f
     * Like when checking that there is an equivalent block *)
@@ -253,17 +270,9 @@ end = struct
   let block_map_get (map : block_map) (ty : base_type) : block_set =
     List.assoc_opt ty map |> Option.value ~default:BlockPomap.empty
 
-  (* let block_map_remove (map : block_map) (ty : base_type) : block_map =
-     List.remove_assoc ty map *)
-
-  (* For a given type, check if any of the elements satisfy the function f *)
-  (* let block_map_any (map : block_map) (ty : base_type) (f : block -> bool) :
-       bool =
-     block_set_any (block_map_get map ty) f *)
-
   let block_map_init (inital_seeds : (block * base_type) list) : block_map =
     let aux (b_map : block_map) (term, ty) =
-      layout_block term |> print_endline;
+      (* layout_block term |> print_endline; *)
       block_map_add b_map term ty
     in
     List.fold_left aux [] inital_seeds
@@ -289,26 +298,6 @@ end = struct
     Printf.printf "Old Blocks:\n";
     block_map_print old_blocks
 
-  (* For a given type, check if any of the elements satisfy the function f *)
-  (* let block_collection_any ({ new_blocks; old_blocks } : block_collection)
-       (ty : base_type) (f : block -> bool) : bool =
-     block_map_any new_blocks ty f || block_map_any old_blocks ty f *)
-
-  (* let block_collection_add ({ new_blocks; old_blocks } : block_collection)
-       (term : block) (ty : base_type) : block_collection =
-     let new_blocks = block_map_add new_blocks term ty in
-     { new_blocks; old_blocks } *)
-
-  (* let block_collection_coverage_equiv_add (uctx : uctx)
-       (coll : block_collection) (term : block) (ty : base_type) :
-       block_collection =
-     if
-       block_collection_any coll ty (fun target_block ->
-           Relations.block_typing_relation uctx term target_block
-           |> Relations.is_equiv_or_timeout)
-     then coll
-     else block_collection_add coll term ty *)
-
   let rec block_collection_add_map_with_cov_checked coll (map : block_map) =
     match map with
     | [] -> coll
@@ -332,14 +321,6 @@ end = struct
           block_collection_get_full_map { new_blocks = rest; old_blocks }
         in
         block_map_add_list rest terms ty
-
-  (* (*  block_map_add rest (ty, terms) ty *)
-     let old_terms = block_map_get old_blocks ty in
-     let remaining_old_blocks = block_map_remove old_blocks ty in
-     let new_terms = List.rev_append old_terms terms in
-     (ty, new_terms)
-     :: block_collection_get_full_map
-          { new_blocks = rest; old_blocks = remaining_old_blocks } *)
 
   (** Given a collection, we want to construct a new set of blocks using some set of operations
     * Operations should not be valid seeds (i.e. must be operations that take
@@ -412,7 +393,7 @@ end = struct
                   in
 
                   match new_ut with
-                  | None -> (* failed the new rec_check *)None
+                  | None -> (* failed the new rec_check *) None
                   | Some new_ut -> (
                       match new_ut.ty with
                       | RtyBase
@@ -427,20 +408,22 @@ end = struct
                       | _ ->
                           if
                             List.exists
-                              (fun (id : string) ->
+                              (fun ({ x; _ } as id : identifier) ->
                                 let joined_uctx =
                                   uctx_add_local_ctx uctx joined_ctx
                                 in
                                 let arg_t =
-                                  get_opt joined_uctx id |> Option.get
+                                  get_opt joined_uctx x |> Option.get
                                 in
                                 let relation_result =
                                   Relations.rty_typing_relation joined_uctx
                                     arg_t new_ut.ty
                                 in
+                                let () =
+                                  RelationCache.add id block_id relation_result
+                                in
                                 Relations.is_equiv_or_timeout relation_result)
-                              (arg_names
-                              |> List.map (fun ({ x; _ } : identifier) -> x))
+                              arg_names
                           then
                             (* let () =
                                  Printf.printf
