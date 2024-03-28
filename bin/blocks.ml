@@ -431,16 +431,15 @@ module BlockCollection = struct
         { new_blocks = (ty, new_set) :: new_blocks; old_blocks }
 end
 
-module Blocks = struct
-  type 'a synth_collection = {
-    general_coll : 'a;
-    path_specific : (local_ctx * 'a) list;
+module SynthesisCollection = struct
+  type t = {
+    general_coll : BlockCollection.t;
+    path_specific : (local_ctx * BlockCollection.t) list;
   }
   (** A set of block_collections, a general one and some path specific ones *)
 
-  let synth_collection_init (inital_seeds : BlockMap.t)
-      (path_specific_seeds : (local_ctx * BlockMap.t) list) :
-      BlockCollection.t synth_collection =
+  let init (inital_seeds : BlockMap.t)
+      (path_specific_seeds : (local_ctx * BlockMap.t) list) : t =
     let general_coll : BlockCollection.t =
       { new_blocks = inital_seeds; old_blocks = [] }
     in
@@ -452,9 +451,7 @@ module Blocks = struct
     in
     { general_coll; path_specific }
 
-  let synth_collection_print
-      ({ general_coll; path_specific } : BlockCollection.t synth_collection) :
-      unit =
+  let print ({ general_coll; path_specific } : t) : unit =
     Printf.printf "General Collection:\n";
     BlockCollection.print general_coll;
     Printf.printf "Path Specific Collection:\n";
@@ -477,10 +474,8 @@ module Blocks = struct
         | None -> (l, bc))
       path_specific
 
-  let synth_collection_increment
-      (collection : BlockCollection.t synth_collection)
-      (operations : (Pieces.component * (t list * t)) list) :
-      BlockCollection.t synth_collection =
+  let increment (collection : t)
+      (operations : (Pieces.component * (Nt.T.t list * Nt.T.t)) list) : t =
     (* We want to support the normal block_collection_increment as normal *)
     (* We want to be able to increment using new_seeds and old_seeds +
        old_general_seeds for path specific variations *)
@@ -551,8 +546,8 @@ module Synthesis = struct
   type program = (t, t term) Mtyped.typed
 
   (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
-  let under_blocks_join (collection : BlockCollection.t Blocks.synth_collection)
-      (target_ty : t rty) : program option =
+  let under_blocks_join (collection : SynthesisCollection.t) (target_ty : t rty)
+      : program option =
     (* Get all blocks from the collection *)
     Printf.printf "\n\n Generall collection we are interested in\n";
     BlockCollection.get_full_map collection.general_coll
@@ -661,11 +656,11 @@ module Synthesis = struct
     failwith "unimplemented"
 
   let rec synthesis_helper (max_depth : int) (target_type : t rty)
-      (collection : BlockCollection.t Blocks.synth_collection)
+      (collection : SynthesisCollection.t)
       (operations : (Pieces.component * (t list * t)) list) : program option =
     match max_depth with
     | 0 ->
-        Blocks.synth_collection_print collection;
+        SynthesisCollection.print collection;
         (* Join blocks together into programs *)
         under_blocks_join collection target_type
     | depth ->
@@ -683,13 +678,13 @@ module Synthesis = struct
         in
         (* If not, increment the collection and try again *)
         synthesis_helper (depth - 1) target_type
-          (Blocks.synth_collection_increment collection operations)
+          (SynthesisCollection.increment collection operations)
           operations
 
   (** Given some initial setup, run the synthesis algorithm *)
   let synthesis (target_type : t rty) (max_depth : int)
-      (inital_seeds : BlockCollection.t Blocks.synth_collection)
+      (inital_seeds : SynthesisCollection.t)
       (operations : (Pieces.component * (t list * t)) list) : program option =
-    Blocks.synth_collection_print inital_seeds;
+    SynthesisCollection.print inital_seeds;
     synthesis_helper max_depth target_type inital_seeds operations
 end

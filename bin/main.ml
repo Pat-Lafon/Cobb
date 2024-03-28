@@ -227,7 +227,7 @@ let run_benchmark source_file meta_config_file =
 
   let inital_map = BlockMap.init seeds in
 
-  let init_synth_col = Blocks.synth_collection_init inital_map path_maps in
+  let init_synth_col = SynthesisCollection.init inital_map path_maps in
 
   let _result = Synthesis.synthesis retty bound init_synth_col components in
   print_endline "Finished Synthesis"
