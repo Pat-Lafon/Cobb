@@ -549,121 +549,6 @@ module Blocks = struct
       (BlockMap.empty, [])
       (range (List.length args) |> superset)
 
-  (* (* For each operation in the list, we are going to iterate though it's argument types and pull out blocks that match said types *)
-     (* Atleast one arguement use to create each new block must be from `new_blocks`, the rest are from `old_blocks`(which can also have blocks from `new_blocks`). This guarantees that all created blocks are of `new_blocks[i].size + 1` *)
-     let resulting_blocks : (block * t) list =
-       (* Loop over each of the operations *)
-       List.concat_map
-         (fun (component, (args, ret_type)) : (block * t) list ->
-           (* Loop from 0 to args.len - 1 to choose an index for the `new_blocks`
-           *)
-           List.concat_map
-             (fun new_set ->
-               (* Loop over each of the arguments, getting a list of blocks for each one *)
-               let l =
-                 List.mapi
-                   (fun j ty : block list ->
-                     if List.mem j new_set then
-                       block_map_get new_blocks ty |> BlockPomap.to_list
-                     else block_map_get old_blocks ty |> BlockPomap.to_list)
-                   args
-               in
-               let l = n_cartesian_product l in
-
-               List.filter_map
-                 (fun (args : block list) : (block * t) option ->
-                   let arg_names = List.map (fun (id, _, _) -> id) args in
-                   let ctxs = List.map (fun (_, _, ctx) -> ctx) args in
-
-                   let unchanged_arg_name = List.hd arg_names in
-                   let unchanged_context = List.hd ctxs in
-
-                   (* Correct joining of contexts? *)
-                   let (arg_names : identifier list), (joined_ctx : local_ctx) =
-                     List.fold_left2
-                       (fun ((args : identifier list), (acc_context : local_ctx))
-                            (id : identifier) changed_ctx :
-                            (identifier list * local_ctx) ->
-                         let new_ctx, mapping =
-                           local_ctx_union_r acc_context changed_ctx
-                         in
-                         ( args @ [ (Hashtbl.find mapping id.x) #: id.ty ],
-                           new_ctx ))
-                       ([ unchanged_arg_name ], unchanged_context)
-                       (List.tl arg_names) (List.tl ctxs)
-                   in
-
-                   let block_id, term = Pieces.apply component arg_names in
-
-                   let new_uctx : uctx = uctx_add_local_ctx uctx joined_ctx in
-
-                   assert (term.ty = block_id.ty);
-
-                   let new_ut =
-                     Termcheck.term_type_infer_with_rec_check new_uctx
-                       { x = term.x; ty = block_id.ty }
-                   in
-
-                   match new_ut with
-                   | None -> (* failed the new rec_check *) None
-                   | Some new_ut -> (
-                       match new_ut.ty with
-                       | RtyBase
-                           {
-                             cty = Cty { phi = Lit { x = AC (B false); _ }; _ };
-                             _;
-                           } ->
-                           (* The block does not type check most likely because one of
-                              the arguments does not meet the precondition for the
-                              component *)
-                           None
-                       | _ ->
-                           if
-                             List.exists
-                               (fun ({ x; _ } as id : identifier) ->
-                                 let joined_uctx =
-                                   uctx_add_local_ctx uctx joined_ctx
-                                 in
-                                 let arg_t =
-                                   get_opt joined_uctx x |> Option.get
-                                 in
-                                 let relation_result =
-                                   Relations.rty_typing_relation joined_uctx
-                                     arg_t new_ut.ty
-                                 in
-                                 let () =
-                                   RelationCache.add id block_id relation_result
-                                 in
-                                 Relations.is_equiv_or_timeout relation_result)
-                               arg_names
-                           then
-                             (* let () =
-                                  Printf.printf
-                                    "Failed to add the following block \n %s\n"
-                                    (Pieces.ast_to_string block_id.x)
-                                in *)
-                             None
-                           else
-                             let new_ctx =
-                               Typectx.add_to_right joined_ctx
-                                 { x = block_id.x; ty = new_ut.ty }
-                             in
-
-                             (*
-                         Printf.printf "Added the following block \n %s\n %s\n"
-                           (Pieces.ast_to_string block_id.x)
-                           (u_type_to_string new_ut);
-                         *)
-                             Some ((block_id, new_ut.ty, new_ctx), ret_type)))
-                 l)
-             (range (List.length args) |> superset))
-         operations
-     in
-
-     print_endline "Adding new blocks";
-
-     let new_map = BlockMap.init resulting_blocks in *)
-
   let block_collection_make_new_old
       ({ new_blocks; old_blocks } : block_collection) : block_collection =
     { new_blocks = []; old_blocks = BlockMap.union new_blocks old_blocks }
@@ -759,9 +644,18 @@ module Synthesis = struct
       (collection : Blocks.block_collection Blocks.synth_collection)
       (target_ty : t rty) : program option =
     (* Get all blocks from the collection *)
+    Printf.printf "\n\n Generall collection we are interested in\n";
     Blocks.block_collection_get_full_map collection.general_coll
     |> (fun x -> BlockMap.get x ty_intlist)
     |> BlockSet.print;
+
+    Printf.printf "\n\n Path Specific collections we are interested in\n";
+    List.iter
+      (fun (ctx, coll) ->
+        Printf.printf "Path Specific Collection\n";
+        Blocks.block_collection_get_full_map coll |> fun x ->
+        BlockMap.get x ty_intlist |> BlockSet.print)
+      collection.path_specific;
 
     (* let block_map = Blocks.block_collection_get_full_map collection in
        let base_type = erase_rty target_ty in
