@@ -147,8 +147,9 @@ module Pieces = struct
             { argcty = Cty { nty = Nt.Ty_unit; _ }; retty = RtyBase _; _ } ->
             failwith "unimplemented"
         | RtyBaseArr _ ->
+            let id = x #: nt |> NameTracking.known_var in
             let new_component : component * (t list * t) =
-              (string_to_component x #: nt, nt |> Nt.destruct_arr_tp)
+              (string_to_component id, nt |> Nt.destruct_arr_tp)
             in
             Some new_component
         | _ -> failwith "unimplemented")
