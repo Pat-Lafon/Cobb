@@ -1,18 +1,15 @@
 open Typing
-open Term
-open Mtyped
 open Nt
-open Rty
 open Typing.Termcheck
 open Language.FrontendTyped
 open Utils
-open Cty
 open Pieces
 open Frontend_opt.To_typectx
 open Zzdatatype.Datatype
 open Timeout
 open Tracking
 open Pomap
+open Language
 
 let global_uctx : uctx option ref = ref None
 
@@ -75,7 +72,7 @@ let analyze_subtyping_result (new_rty : (t rty, t rty term) typed option) :
   | None -> NotSubset
 
 module Block = struct
-  type t = identifier * Nt.T.t rty * local_ctx
+  type t = identifier * Nt.t rty * local_ctx
 
   (* TODO: pretty print blocks as just expressions? *)
   (* let pprint_block_as_exp ((_name, _ut, _ctx) : block) : string =
@@ -236,7 +233,7 @@ end = struct
 end
 
 module BlockMap = struct
-  type t = (Nt.T.t * BlockSet.t) list
+  type t = (Nt.t * BlockSet.t) list
 
   let empty : t = []
 
@@ -244,7 +241,7 @@ module BlockMap = struct
     List.for_all (fun (_, set) -> BlockSet.is_empty set) map
 
   (** Add the (type, term pair to the map) *)
-  let rec add (map : t) (term : Block.t) (ty : Nt.T.t) : t =
+  let rec add (map : t) (term : Block.t) (ty : Nt.t) : t =
     match map with
     | [] -> [ (ty, BlockSet.singleton term) ]
     | (ty', terms) :: rest ->
@@ -252,22 +249,25 @@ module BlockMap = struct
         else (ty', terms) :: add rest term ty
 
   (** Add the (type, term pair to the map) *)
-  let rec add_list (map : t) (term_list : BlockSet.t) (ty : Nt.T.t) : t =
+  let rec add_list (map : t) (term_list : BlockSet.t) (ty : Nt.t) : t =
     match map with
     | [] -> [ (ty, term_list) ]
     | (ty', terms) :: rest ->
         if eq ty ty' then (ty, BlockSet.union terms term_list) :: rest
         else (ty', terms) :: add_list rest term_list ty
 
-  let init (inital_seeds : (Block.t * Nt.T.t) list) : t =
+  let init (inital_seeds : (Block.t * Nt.t) list) : t =
     let aux (b_map : t) (term, ty) =
       (* layout_block term |> print_endline; *)
       add b_map term ty
     in
     List.fold_left aux [] inital_seeds
 
-  let get (map : t) (ty : Nt.T.t) : BlockSet.t =
-    List.assoc_opt ty map |> Option.value ~default:BlockSet.empty
+  let get_opt (map : t) (ty : Nt.t) : BlockSet.t option = List.assoc_opt ty map
+
+  (** Gets the corresponding set or return  *)
+  let get (map : t) (ty : Nt.t) : BlockSet.t =
+    get_opt map ty |> Option.value ~default:BlockSet.empty
 
   let rec union (l_map : t) (r_map : t) : t =
     match l_map with
@@ -287,7 +287,7 @@ module BlockMap = struct
     List.exists
       (fun ({ x; _ } as id : identifier) ->
         (*                    let joined_uctx = uctx_add_local_ctx uctx joined_ctx in *)
-        let arg_t = get_opt uctx x |> Option.get in
+        let arg_t = FrontendTyped.get_opt uctx x |> Option.get in
         let relation_result =
           Relations.rty_typing_relation uctx arg_t new_ut.ty
         in
@@ -309,8 +309,7 @@ module BlockMap = struct
      those promoted to a new path *)
   (* Should we separate out the general and path specific cases? *)
   let increment (new_blocks : t) (old_blocks : t)
-      ((component, (args, ret_type)) :
-        Pieces.component * (Nt.T.t list * Nt.T.t))
+      ((component, (args, ret_type)) : Pieces.component * (Nt.t list * Nt.t))
       (promotable_paths : local_ctx list) : t * (local_ctx * t) list =
     let uctx = !global_uctx |> Option.get in
 
@@ -400,7 +399,7 @@ module BlockCollection = struct
 
   (** Initialize a block collection with the given seeds values
     * Seeds are initial blocks that are just variables, constants, or operations that take no arguments (or just unit) *)
-  let init (inital_seeds : (Block.t * Nt.T.t) list) : t =
+  let init (inital_seeds : (Block.t * Nt.t) list) : t =
     let new_blocks : BlockMap.t = BlockMap.init inital_seeds in
     { new_blocks; old_blocks = [] }
 
@@ -475,7 +474,7 @@ module SynthesisCollection = struct
       path_specific
 
   let increment (collection : t)
-      (operations : (Pieces.component * (Nt.T.t list * Nt.T.t)) list) : t =
+      (operations : (Pieces.component * (Nt.t list * Nt.t)) list) : t =
     (* We want to support the normal block_collection_increment as normal *)
     (* We want to be able to increment using new_seeds and old_seeds +
        old_general_seeds for path specific variations *)
@@ -548,19 +547,30 @@ module Synthesis = struct
   (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
   let under_blocks_join (collection : SynthesisCollection.t) (target_ty : t rty)
       : program option =
+    let target_nty = erase_rty target_ty in
+
+    let general_set =
+      BlockCollection.get_full_map collection.general_coll |> fun x ->
+      BlockMap.get x target_nty
+    in
     (* Get all blocks from the collection *)
     Printf.printf "\n\n Generall collection we are interested in\n";
-    BlockCollection.get_full_map collection.general_coll
-    |> (fun x -> BlockMap.get x ty_intlist)
-    |> BlockSet.print;
+    BlockSet.print general_set;
+
+    let path_specific_sets =
+      List.filter_map
+        (fun (lc, bc) ->
+          BlockCollection.get_full_map bc |> fun x ->
+          BlockMap.get_opt x target_nty |> Option.map (fun x -> (lc, x)))
+        collection.path_specific
+    in
 
     Printf.printf "\n\n Path Specific collections we are interested in\n";
     List.iter
-      (fun (ctx, coll) ->
+      (fun (ctx, set) ->
         Printf.printf "Path Specific Collection\n";
-        BlockCollection.get_full_map coll |> fun x ->
-        BlockMap.get x ty_intlist |> BlockSet.print)
-      collection.path_specific;
+        BlockSet.print set)
+      path_specific_sets;
 
     (* let block_map = Blocks.block_collection_get_full_map collection in
        let base_type = erase_rty target_ty in
