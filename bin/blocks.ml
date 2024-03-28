@@ -48,6 +48,18 @@ let combine_all_args args =
     ([ unchanged_arg_name ], unchanged_context)
     (List.tl arg_names) (List.tl ctxs)
 
+type subtypingres = NoOverlap | NotSubset | Res of (t rty, t rty term) typed
+
+let analyze_subtyping_result (new_rty : (t rty, t rty term) typed option) :
+    subtypingres =
+  match new_rty with
+  | Some new_rty -> (
+      match new_rty.ty with
+      | RtyBase { cty = Cty { phi = Lit { x = AC (B false); _ }; _ }; _ } ->
+          NoOverlap
+      | _ -> Res new_rty)
+  | None -> NotSubset
+
 module Block = struct
   type t = identifier * Nt.T.t rty * local_ctx
 
@@ -462,6 +474,18 @@ module Blocks = struct
         block_collection_print general_coll)
       path_specific
 
+  let check_coverage_with_args uctx block_id new_ut arg_names : bool =
+    List.exists
+      (fun ({ x; _ } as id : identifier) ->
+        (*                    let joined_uctx = uctx_add_local_ctx uctx joined_ctx in *)
+        let arg_t = get_opt uctx x |> Option.get in
+        let relation_result =
+          Relations.rty_typing_relation uctx arg_t new_ut.ty
+        in
+        let () = RelationCache.add id block_id relation_result in
+        Relations.is_equiv_or_timeout relation_result)
+      arg_names
+
   (* Promotable_paths should be empty if the new_blocks comes form a
      specific path *)
   (* Returns a block map for the new blocks... plus optionally a block map of
@@ -504,47 +528,35 @@ module Blocks = struct
                 { x = term.x; ty = block_id.ty }
             in
 
-            match new_ut with
-            | None ->
+            match analyze_subtyping_result new_ut with
+            | NoOverlap -> (new_map, path_specifc_list)
+            | NotSubset ->
                 (* failed the new rec_check *)
-                (* TODO When to add to path_specific_list*)
-                (new_map, path_specifc_list)
-            | Some new_ut -> (
-                match new_ut.ty with
-                | RtyBase
-                    { cty = Cty { phi = Lit { x = AC (B false); _ }; _ }; _ } ->
-                    (* The block does not type check most likely because one of
-                       the arguments does not meet the precondition for the
-                       component *)
-                    (* TODO When to add to path_specific_list*)
-                    (new_map, path_specifc_list)
-                | _ ->
-                    if
-                      List.exists
-                        (fun ({ x; _ } as id : identifier) ->
-                          let joined_uctx =
-                            uctx_add_local_ctx uctx joined_ctx
-                          in
-                          let arg_t = get_opt joined_uctx x |> Option.get in
-                          let relation_result =
-                            Relations.rty_typing_relation joined_uctx arg_t
-                              new_ut.ty
-                          in
-                          let () =
-                            RelationCache.add id block_id relation_result
-                          in
-                          Relations.is_equiv_or_timeout relation_result)
-                        arg_names
-                    then (new_map, path_specifc_list)
-                    else
-                      let new_ctx =
-                        Typectx.add_to_right joined_ctx
-                          { x = block_id.x; ty = new_ut.ty }
-                      in
-                      ( BlockMap.add new_map
-                          (block_id, new_ut.ty, new_ctx)
-                          ret_type,
-                        path_specifc_list )))
+                List.fold_left
+                  (fun acc x ->
+                    let new_path_uctx = failwith "unimplemented" in
+                    let new_path_ut =
+                      Termcheck.term_type_infer_with_rec_check new_path_uctx
+                        { x = term.x; ty = block_id.ty }
+                    in
+                    match analyze_subtyping_result new_path_ut with
+                    | Res new_ut -> failwith "unimplemented"
+                    | _ -> acc)
+                  (new_map, path_specifc_list)
+                  promotable_paths
+            | Res new_ut ->
+                (* Check if new term is coverage equivalent to one of it's
+                   arguments *)
+                if check_coverage_with_args new_uctx block_id new_ut arg_names
+                then (* Ignore term if so *)
+                  (new_map, path_specifc_list)
+                else
+                  let new_ctx =
+                    Typectx.add_to_right joined_ctx
+                      { x = block_id.x; ty = new_ut.ty }
+                  in
+                  ( BlockMap.add new_map (block_id, new_ut.ty, new_ctx) ret_type,
+                    path_specifc_list ))
           acc l)
       (BlockMap.empty, [])
       (range (List.length args) |> superset)
