@@ -4,7 +4,8 @@ open Term
 open Pieces
 open Blocks
 open Localization
-open Utils
+
+(* open Utils *)
 open Frontend_opt.To_typectx
 open Language.FrontendTyped
 open Zzdatatype.Datatype
@@ -12,21 +13,6 @@ open Mtyped
 open Rty
 open Cty
 open Tracking
-
-(* Assumes argument is a fixpoint value *)
-let unfold_fix_helper (fix : _ value) : _ * _ list * _ typed =
-  (* Unwrap the function into a recursive call *)
-  let[@warning "-8"] (VFix { fixname; fixarg; body }) = (fix [@warning "+8"]) in
-  (* Handle any other arguments *)
-  let rec aux (n : _ typed) =
-    match n.x with
-    | CVal { x = VLam { lamarg; body }; _ } ->
-        let other_args, body = aux body in
-        (lamarg :: other_args, body)
-    | _ -> ([], n)
-  in
-  let other_args, body = aux body in
-  (fixname, fixarg :: other_args, body)
 
 let rec unfold_rty_helper rty : _ typed list * _ rty =
   match rty with
@@ -39,28 +25,35 @@ let rec unfold_rty_helper rty : _ typed list * _ rty =
   | RtyBase _ -> ([], rty)
   | _ -> failwith "unimplemented"
 
+let rec strip_lam (t : (t, t term) typed) : (t, t term) typed =
+  match t.x with
+  | CVal { x = VLam { lamarg; body }; _ } -> strip_lam body
+  | _ -> t
+
 (* Largely taken straight from value_type_check::VFix *)
 let handle_first_arg (a : (t, t value) typed) (rty : t rty) =
-  (* Pp.printf "\nFirst Arg: %s\n" (layout_typed_value a);
-     Pp.printf "\nReturn Type: %s\n" (layout_rty rty); *)
   assert (Nt.eq a.ty (Rty.erase_rty rty));
   match (a.x, rty) with
-  | VFix { fixname; fixarg; _ }, RtyBaseArr { argcty; arg; retty } ->
+  | VFix { fixname; fixarg; body }, RtyBaseArr { argcty; arg; retty } ->
+      let retty = subst_rty_instance arg (AVar fixarg) retty in
+
       assert (String.equal fixarg.x arg);
+      let rec_constraint_cty = Termcheck.apply_rec_arg fixarg in
       let () =
-        Termcheck.init_cur_rec_func_name
-          (fixname.x, Termcheck.apply_rec_arg fixarg)
+        Termcheck.init_cur_rec_func_name (fixname.x, rec_constraint_cty)
       in
-      let a = { x = Rename.unique fixarg.x; ty = fixarg.ty } in
-      let _ : identifier = NameTracking.known_var a in
-      (*       Pp.printf "\nFirst Arg: %s\n" a.x; *)
-      let prop = Checkaux.make_order_constraint fixarg a in
-      (*       Pp.printf "\nProp: %s\n" (layout_prop prop); *)
-      let retty_a = subst_rty_instance arg (AVar a) retty in
+      let rty' =
+        let a = { x = Rename.unique fixarg.x; ty = fixarg.ty } in
+        RtyBaseArr
+          {
+            argcty = intersect_ctys [ argcty; rec_constraint_cty ];
+            arg = a.x;
+            retty =
+              subst_rty_instance arg (AVar (NameTracking.known_var a)) retty;
+          }
+      in
       (*       Pp.printf "\nSubstituted Return Type: %s\n" (layout_rty retty_a); *)
-      let rty_a = RtyBaseArr { argcty; arg = a.x; retty = retty_a } in
       (*       Pp.printf "\nRty A: %s\n" (layout_rty rty_a); *)
-      let rty_a = map_prop_in_retrty (smart_add_to prop) rty_a in
       (*       Pp.printf "\nRty A: %s\n" (layout_rty rty_a); *)
       let binding = fixarg.x #: (RtyBase { ou = true; cty = argcty }) in
       (*       Pp.printf "\nBinding: %s\n" (layout_id_rty binding); *)
@@ -76,8 +69,9 @@ let handle_first_arg (a : (t, t value) typed) (rty : t rty) =
         Sexp.( = )
           (Rty.sexp_of_rty Nt.sexp_of_t _retty)
           (Rty.sexp_of_rty Nt.sexp_of_t retty));
-      let rec_fix = fixname.x #: rty_a in
-      (binding, rec_fix)
+      let rec_fix = fixname.x #: rty' in
+
+      (binding, rec_fix, strip_lam body)
   | _ -> failwith "Did not recieve a fixpoint value and a base arrow type"
 
 let get_synth_config_values meta_config_file =
@@ -92,7 +86,7 @@ let build_initial_typing_context meta_config_file : uctx =
   let prim_path = Env.get_prim_path () in
 
   let predefine =
-    Commands.Cre.preproress meta_config_file prim_path.under_basicp ()
+    Commands.Cre.preproress meta_config_file prim_path.coverage_typing ()
   in
   Pp.printf "\nPredefined:\n%s\n" (layout_structure predefine);
 
@@ -101,7 +95,7 @@ let build_initial_typing_context meta_config_file : uctx =
 
   assert (List.length predefine = List.length (Typectx.to_list builtin_ctx));
 
-  let lemmas = Commands.Cre.preproress meta_config_file prim_path.lemmas () in
+  let lemmas = Commands.Cre.preproress meta_config_file prim_path.axioms () in
 
   (* TODO: There is a slightly different handling of lemmas for usingn templates*)
 
@@ -159,14 +153,8 @@ let get_args_rec_retty_body_from_source meta_config_file source_file =
     match code.x with CVal x -> x | _ -> failwith "Did not receive a value"
   in
 
-  let _, args, body = unfold_fix_helper code.x in
+  let first_arg, rec_fix, body = handle_first_arg code synth_type in
   Pp.printf "Body: %s\n" (layout_typed_term body);
-  (* For other programs that use more than one arg, adjust *)
-  assert (
-    Core.List.for_all2_exn args argtyps ~f:(fun arg argty ->
-        Nt.eq arg.ty (Rty.erase_rty argty.ty) && String.equal arg.x argty.x));
-
-  let first_arg, rec_fix = handle_first_arg code synth_type in
   Pp.printf "\nFirst Arg: %s\n" (layout_id_rty first_arg);
   Pp.printf "\nRec Fix: %s\n" (layout_id_rty rec_fix);
   let args = first_arg :: List.tl argtyps in
@@ -190,6 +178,8 @@ let run_benchmark source_file meta_config_file =
 
   let uctx = add_to_rights uctx (rec_fix :: args) in
 
+  global_uctx := Some uctx;
+
   let typed_code =
     Typing.Termcheck.term_type_infer uctx body |> Option.value_exn
   in
@@ -209,9 +199,9 @@ let run_benchmark source_file meta_config_file =
   Pp.printf "\nLocalTypingContext Before Synthesis:\n%s\n"
     (layout_typectx layout_rty uctx.local_ctx);
 
-  let _path_props = Localization.localization uctx body retty in
+  let path_maps = Localization.localization uctx body retty in
 
-  let ( (seeds : (Blocks.block * t) list),
+  let ( (seeds : (Block.t * t) list),
         (components : (Pieces.component * (t list * t)) list) ) =
     Pieces.seeds_and_components uctx.builtin_ctx
   in
@@ -224,7 +214,7 @@ let run_benchmark source_file meta_config_file =
 
   Pp.printf "\nSeeds:\n%s\n"
     (List.split_by "\n"
-       (fun (a, b) -> Blocks.layout_block a ^ " " ^ Nt.layout b)
+       (fun (a, b) -> Block.layout a ^ " " ^ Nt.layout b)
        seeds);
 
   Pp.printf "\nComponents:\n%s\n"
@@ -235,7 +225,11 @@ let run_benchmark source_file meta_config_file =
          ^ " -> " ^ Nt.layout ret)
        components);
 
-  let _result = Synthesis.synthesis uctx retty bound seeds components in
+  let inital_map = BlockMap.init seeds in
+
+  let init_synth_col = Blocks.synth_collection_init inital_map path_maps in
+
+  let _result = Synthesis.synthesis retty bound init_synth_col components in
   print_endline "Finished Synthesis"
 
 (** Benchmarks can be provided as a command line argument

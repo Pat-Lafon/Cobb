@@ -42,6 +42,8 @@
   underapproximation_type.typing
   underapproximation_type.syntax
   pieces
+  blocks
+  tracking
   timeout
   utils)
  (modules localization)
@@ -57,4 +59,4 @@
 (env
  (dev
   (flags
-   (:standard -w -21))))
+   (:standard -w -32-26-34-69-27-21))))

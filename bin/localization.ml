@@ -7,8 +7,13 @@ open Language.FrontendTyped
 open Subtyping.Subrty
 open Utils
 open Cty
+open Blocks
+open Tracking
 
-type 'a exn_variations = { full_exn : 'a; other : 'a list }
+type 'a exn_variations = {
+  full_exn : 'a;
+  other : ('a * (t rty, string) typed list) list;
+}
 
 let type_to_generator_mapping : (Nt.t * string) list =
   [
@@ -18,7 +23,7 @@ let type_to_generator_mapping : (Nt.t * string) list =
     (ty_intrbtree, "hidden_rbtree_gen");
   ]
 
-let term_bot base_ty : _ Mtyped.typed = Term.CErr #: base_ty
+let term_bot (base_ty : Nt.t) : _ Mtyped.typed = Term.CErr #: base_ty
 
 let term_top (base_ty : Nt.t) : _ Mtyped.typed =
   (*   let ret = (Rename.name ()) #: base_ty in *)
@@ -53,39 +58,62 @@ let is_base_top (t : _ Mtyped.typed) : bool =
 
 let not_map_base f t = if is_base_bot t || is_base_top t then t else f t
 
-let exn_map (f : _ -> _) (v : _ exn_variations) : _ exn_variations =
+let not_map_base_pair f (t, b) =
+  if is_base_bot t || is_base_top t then (t, []) else (f t, b)
+
+(** if the thing is not top/bot, then apply f and add local_vars, else return
+  top/bot and no vars *)
+let exn_map (f : _ -> _) (local_vars : _ list) (v : _ exn_variations) :
+    _ exn_variations =
   assert (v.other != []);
   {
     full_exn = not_map_base f v.full_exn;
-    other = List.map (not_map_base f) v.other;
+    other =
+      List.map (fun (a, b) -> (a, local_vars @ b)) v.other
+      |> List.map (not_map_base_pair f);
   }
 
+(** Applies multiple exn_variations as a arguments to f *)
 let exn_map_list (f : 'a list -> 'b) (v : 'a exn_variations list) :
     'b exn_variations =
   let exn_list = List.map (fun x -> x.full_exn) v in
   let other =
     List.mapi
-      (fun idx x -> List.map (fun y -> f (replace exn_list idx y)) x.other)
+      (fun idx x ->
+        List.map (fun (y, vars) -> (f (replace exn_list idx y), vars)) x.other)
       v
     |> List.concat
   in
   { full_exn = f exn_list; other }
 
-let rec term_exnify body : _ exn_variations =
+let promote_true_rty (x : (t, string) typed) : (t rty, string) typed =
+  x #=> (fun nty ->
+  RtyBase
+    {
+      ou = false;
+      cty = Cty { nty; phi = Prop.Lit (Lit.AC (B true)) #: Ty_bool };
+    })
+
+let rec term_exnify (body : (t, t term) typed) : (t, _) typed exn_variations =
   match body.x with
-  | CErr -> { full_exn = term_bot body.ty; other = [ term_top body.ty ] }
+  | CErr -> { full_exn = term_bot body.ty; other = [ (term_top body.ty, []) ] }
   | CVal { ty; _ } ->
       assert (body.ty = ty);
-      { full_exn = term_bot ty; other = [ term_top ty ] }
-  | CApp _ -> failwith ("unimplemented CApp: " ^ layout_typed_term body)
-  | CAppOp _ -> { full_exn = term_bot body.ty; other = [ term_top body.ty ] }
+      { full_exn = term_bot body.ty; other = [ (term_top body.ty, []) ] }
+  | CApp _ -> failwith "unimplemented CApp: "
+  | CAppOp _ ->
+      { full_exn = term_bot body.ty; other = [ (term_top body.ty, []) ] }
   | CLetE { lhs; rhs; body } ->
       term_exnify body
-      |> exn_map (fun x -> { x = CLetE { lhs; rhs; body = x }; ty = body.ty })
+      |> exn_map
+           (fun (x : (t, t term) typed) : (t, t term) typed ->
+             (CLetE { lhs; rhs; body = x }) #: body.ty)
+           [ promote_true_rty lhs ]
   | CLetDeTu { turhs; tulhs; body } ->
       term_exnify body
-      |> exn_map (fun x ->
-             { x = CLetDeTu { turhs; tulhs; body = x }; ty = body.ty })
+      |> exn_map
+           (fun x -> (CLetDeTu { turhs; tulhs; body = x }) #: body.ty)
+           (List.map promote_true_rty tulhs)
   | CMatch { matched; match_cases } ->
       let exn_cases = List.map case_exnify match_cases in
       exn_map_list
@@ -98,17 +126,53 @@ and case_exnify (CMatchcase { constructor; args; exp } : _ match_case) :
     _ match_case exn_variations =
   let { full_exn; other } = term_exnify exp in
   let f x = CMatchcase { constructor; args; exp = x } in
-  { full_exn = f full_exn; other = List.map f other }
+  { full_exn = f full_exn; other = List.map (fun (a, b) -> (f a, b)) other }
+
+let mk_path_var (phi : _ Prop.prop) : (t rty, string) typed =
+  let path_name = (Rename.unique "path_cond") #: Ty_unit in
+  (path_name |> NameTracking.known_var) #=> (fun l ->
+  RtyBase { ou = false; cty = Cty { nty = Nt.Ty_unit; phi } })
+
+let remove_local_vars_from_prop (phi : _ Prop.prop) (local_vars : _ list) :
+    _ Prop.prop =
+  let local_var_names = List.map (fun x -> x.x) local_vars in
+  let rec remove_local_vars_from_prop' (phi : _ Prop.prop) : _ Prop.prop =
+    match phi with
+    | Prop.Lit _ -> phi
+    | Prop.Not p -> Prop.Not (remove_local_vars_from_prop' p)
+    | Prop.And ps -> Prop.And (List.map remove_local_vars_from_prop' ps)
+    | Prop.Or ps -> Prop.Or (List.map remove_local_vars_from_prop' ps)
+    | Prop.Implies (p1, p2) ->
+        Prop.Implies
+          (remove_local_vars_from_prop' p1, remove_local_vars_from_prop' p2)
+    | Prop.Iff (p1, p2) ->
+        Prop.Iff
+          (remove_local_vars_from_prop' p1, remove_local_vars_from_prop' p2)
+    | Prop.Forall { qv; body } ->
+        if List.mem qv.x local_var_names then remove_local_vars_from_prop' body
+        else Prop.Forall { qv; body = remove_local_vars_from_prop' body }
+    | Prop.Exists { qv; body } ->
+        if List.mem qv.x local_var_names then remove_local_vars_from_prop' body
+        else Prop.Exists { qv; body = remove_local_vars_from_prop' body }
+    | Prop.Ite (p1, p2, p3) ->
+        Prop.Ite
+          ( remove_local_vars_from_prop' p1,
+            remove_local_vars_from_prop' p2,
+            remove_local_vars_from_prop' p3 )
+  in
+  remove_local_vars_from_prop' phi
 
 module Localization = struct
-  let add_props_to_base (base : _ rty) (props : _ Prop.prop list) : _ rty =
+  let add_props_to_base (base : _ rty) (props : (_ Prop.prop * _) list) : _ rty
+      =
+    let props = List.map fst props in
     match base with
     | RtyBase { ou; cty = Cty { nty; phi } } ->
         RtyBase { ou; cty = Cty { nty; phi = smart_and (phi :: props) } }
     | _ -> failwith "unimplemented"
 
   let localization (uctx : uctx) (body : (Nt.t, Nt.t Term.term) Mtyped.typed)
-      (target_ty : Nt.t rty) : _ list =
+      (target_ty : Nt.t rty) : (local_ctx * BlockMap.t) list =
     print_endline "LOCALIZATION";
 
     pprint_simple_typectx_judge uctx (layout_typed_term body, target_ty);
@@ -129,15 +193,20 @@ module Localization = struct
     (* program_variations |> List.iter (fun x -> print_endline (NL.layout x));
        (); *)
     let inferred_program_types =
-      List.map (term_type_infer uctx) program_variations
-      |> List.map Option.get
+      List.map
+        (fun (a, b) ->
+          ( term_type_infer uctx a |> Option.get,
+            (* Filter out bool local_vars because those are just variables used in
+               conditions and nothing more *)
+            List.filter (fun x -> erase_rty x.ty <> Ty_bool) b ))
+        program_variations
       |> List.combine program_variations
     in
 
     print_endline "\nInferred path conditions";
 
     inferred_program_types
-    |> List.iter (fun (x, y) ->
+    |> List.iter (fun ((x, v), (y, v2)) ->
            pprint_typectx_infer uctx.local_ctx (layout_typed_term x, y.ty));
     ();
 
@@ -147,8 +216,9 @@ module Localization = struct
     let possible_props =
       List.split inferred_program_types
       |> snd
-      |> List.map (fun x -> x.ty |> assume_base_rty |> snd)
-      |> List.map (fun (Cty { phi; _ }) -> Prop.Not phi)
+      |> List.map (fun (x, local_vs) ->
+             (x.ty |> assume_base_rty |> snd, local_vs))
+      |> List.map (fun (Cty { phi; _ }, local_vs) -> (Prop.Not phi, local_vs))
     in
 
     (* Check that on it's own, the inferred type is no sufficient *)
@@ -165,7 +235,8 @@ module Localization = struct
           let ps = Core.List.drop possible_props idx in
           let current_prop = List.hd ps in
           let rest_props = List.tl ps in
-          Zzdatatype.Datatype.List.split_by_comma layout_prop ps
+          List.map fst ps
+          |> Zzdatatype.Datatype.List.split_by_comma layout_prop
           |> print_endline;
 
           (* Does the check work without this prop?*)
@@ -188,17 +259,43 @@ module Localization = struct
     *)
     let remove_negations_in_props =
       List.map
-        (fun x ->
-          match x with Prop.Not p -> p | _ -> failwith (layout_prop x))
+        (fun (x, local_vs) ->
+          match x with
+          | Prop.Not p -> (p, local_vs)
+          | _ -> failwith (layout_prop x))
         useful_props
     in
 
-    print_string "\nUseful path props: ";
-    Zzdatatype.Datatype.List.split_by_comma layout_prop
-      remove_negations_in_props
+    print_string "\nUseful path props and local vars: ";
+    remove_negations_in_props
+    |> Zzdatatype.Datatype.List.split_by_comma (fun (x, vs) ->
+           layout_prop x ^ " : "
+           ^ Zzdatatype.Datatype.List.split_by_comma layout_id_rty vs)
     |> print_endline;
 
     remove_negations_in_props
+    |> List.map (fun (x, local_vs) ->
+           let local_ctx : local_ctx =
+             Typectx [ mk_path_var (remove_local_vars_from_prop x local_vs) ]
+           in
+           (* todo: refactor this to use block_map_init*)
+           let block_map =
+             List.fold_left
+               (fun (acc : BlockMap.t) local_v ->
+                 let nty = erase_rty local_v.ty in
+                 let block : Block.t =
+                   ( local_v.x #: nty,
+                     local_v.ty,
+                     (* We intentionally want to add the variables before the
+                        current local_ctx as we want them available ot fill holes
+                        from remove_local_vars_from_prop *)
+                     Typectx (local_v :: Typectx.to_list local_ctx) )
+                 in
+                 let block_map = BlockMap.add acc block nty in
+                 block_map)
+               [] local_vs
+           in
+           (local_ctx, block_map))
 end
 
 let%test "bot_int" =
