@@ -169,7 +169,7 @@ module Localization = struct
     match base with
     | RtyBase { ou; cty = Cty { nty; phi } } ->
         RtyBase { ou; cty = Cty { nty; phi = smart_and (phi :: props) } }
-    | _ -> failwith "unimplemented"
+    | _ -> failwith "add_props_to_base::unimplemented"
 
   let localization (uctx : uctx) (body : (Nt.t, Nt.t Term.term) Mtyped.typed)
       (target_ty : Nt.t rty) : (local_ctx * BlockMap.t) list =
@@ -229,27 +229,54 @@ module Localization = struct
      assert (sub_rty_bool uctx (inferred_body.ty, modified_target_ty));
      assert (not (sub_rty_bool uctx (modified_target_ty, inferred_body.ty))));
 
+    (* Lets try and exclude all paths with local variables and see if it still
+       checks out
+       TODO: If so, we can drop all of those paths... otherwise we need to
+       conservatively keep all paths with local variables
+       Hypothetically, we could do grouping here but not worth yet. Maybe add
+       benchmarks for this *)
+    let possible_props =
+      let local_free_subset =
+        List.filter (fun (x, local_vs) -> List.is_empty local_vs) possible_props
+      in
+
+      (* todo, maybe refactor this out since it is used twice *)
+      let modified_target_ty = add_props_to_base target_ty local_free_subset in
+      (* TODO: Not worried about timeout here I think? *)
+      let subtyping_res =
+        sub_rty_bool uctx (inferred_body.ty, modified_target_ty)
+      in
+
+      if subtyping_res then local_free_subset else possible_props
+    in
+
     let useful_props =
       List.fold_left
         (fun acc idx ->
           let ps = Core.List.drop possible_props idx in
           let current_prop = List.hd ps in
-          let rest_props = List.tl ps in
-          List.map fst ps
-          |> Zzdatatype.Datatype.List.split_by_comma layout_prop
-          |> print_endline;
+          (* Local variables are hard to reason about in terms of which paths
+             with local variables are useful.
+             So probably just not try to drop them*)
+          if current_prop |> snd |> List.is_empty |> not then
+            current_prop :: acc
+          else
+            let rest_props = List.tl ps in
+            List.map fst ps
+            |> Zzdatatype.Datatype.List.split_by_comma layout_prop
+            |> print_endline;
 
-          (* Does the check work without this prop?*)
-          let modified_target_ty =
-            add_props_to_base target_ty (List.concat [ acc; rest_props ])
-          in
-          (* TODO: Not worried about timeout here I think? *)
-          let subtyping_res =
-            sub_rty_bool uctx (inferred_body.ty, modified_target_ty)
-          in
+            (* Does the check work without this prop?*)
+            let modified_target_ty =
+              add_props_to_base target_ty (List.concat [ acc; rest_props ])
+            in
+            (* TODO: Not worried about timeout here I think? *)
+            let subtyping_res =
+              sub_rty_bool uctx (inferred_body.ty, modified_target_ty)
+            in
 
-          subtyping_res |> string_of_bool |> print_endline;
-          if subtyping_res then acc else current_prop :: acc)
+            subtyping_res |> string_of_bool |> print_endline;
+            if subtyping_res then acc else current_prop :: acc)
         []
         (range (List.length possible_props))
     in
