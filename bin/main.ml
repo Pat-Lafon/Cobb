@@ -23,7 +23,7 @@ let rec unfold_rty_helper rty : _ typed list * _ rty =
       let other_args, retty = unfold_rty_helper retty in
       ((arg #: (RtyBase { ou = true; cty = argcty })) :: other_args, retty)
   | RtyBase _ -> ([], rty)
-  | _ -> failwith "unimplemented"
+  | _ -> failwith "unfold_rty_helper::unimplemented"
 
 let rec strip_lam (t : (t, t term) typed) : (t, t term) typed =
   match t.x with
@@ -161,8 +161,12 @@ let get_args_rec_retty_body_from_source meta_config_file source_file =
   (args, rec_fix, retty, body)
 
 let run_benchmark source_file meta_config_file =
-  (* This sets up global variables pointing to the information in meta-config.json *)
-  let () = Env.load_meta meta_config_file in
+  let missing_coverage =
+    Commands.Cre.type_infer_inner meta_config_file source_file ()
+  in
+
+  Printf.printf "Missing Coverage: %s\n" (layout_rty missing_coverage);
+
   let bound, timeout = get_synth_config_values meta_config_file in
 
   (*   Env.sexp_of_meta_config (!Env.meta_config |> Option.value_exn) |> dbg_sexp; *)
@@ -199,7 +203,15 @@ let run_benchmark source_file meta_config_file =
   Pp.printf "\nLocalTypingContext Before Synthesis:\n%s\n"
     (layout_typectx layout_rty uctx.local_ctx);
 
-  let path_maps = Localization.localization uctx body retty in
+  assert (
+    not (Typing.Termcheck.term_type_check uctx body retty |> Option.is_some));
+  assert (Subtyping.Subrty.sub_rty_bool uctx (retty, missing_coverage));
+
+  let path_maps = Localization.localization uctx body missing_coverage in
+
+  Printf.printf "Missing Coverage: %s\n" (layout_rty missing_coverage);
+
+  failwith "stop here";
 
   let ( (seeds : (Block.t * t) list),
         (components : (Pieces.component * (t list * t)) list) ) =
@@ -229,7 +241,9 @@ let run_benchmark source_file meta_config_file =
 
   let init_synth_col = SynthesisCollection.init inital_map path_maps in
 
-  let _result = Synthesis.synthesis retty bound init_synth_col components in
+  let _result =
+    Synthesis.synthesis missing_coverage bound init_synth_col components
+  in
   print_endline "Finished Synthesis"
 
 (** Benchmarks can be provided as a command line argument
