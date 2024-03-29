@@ -32,6 +32,9 @@ let uctx_add_local_ctx (uctx : uctx) (ctx : local_ctx) : uctx =
         (List.concat [ Typectx.to_list ctx; Typectx.to_list uctx.local_ctx ]);
   }
 
+let promote_ctx_to_path local_ctx ~promote_ctx =
+  Typectx.Typectx (Typectx.to_list local_ctx @ Typectx.to_list promote_ctx)
+
 let combine_all_args args =
   let arg_names = List.map (fun (id, _, _) -> id) args in
   let ctxs = List.map (fun (_, _, ctx) -> ctx) args in
@@ -76,7 +79,7 @@ module Block = struct
 
   (* TODO: pretty print blocks as just expressions? *)
   (* let pprint_block_as_exp ((_name, _ut, _ctx) : block) : string =
-     failwith "unimplemented" *)
+     failwith "pretty_print_blocks::unimplemented" *)
 
   let layout ((name, ut, ctx) : t) : string =
     Printf.sprintf "%s\n⊢ %s: %s :\n%s\n"
@@ -184,6 +187,7 @@ module BlockSet : sig
   val to_list : t -> Block.t list
   val print : t -> unit
   val is_empty : t -> bool
+  val extract : t -> Block.t -> Block.t option * Ptset.t * Ptset.t
 end = struct
   module P = Pomap_impl.Make (struct
     type el = Block.t
@@ -227,9 +231,26 @@ end = struct
   let diff (l : t) (r : t) : t = P.diff l r
   let print (pm : t) : unit = D.printf pm
 
-  let to_list (pm : t) : Block.t list =
+  let to_list (pm : t) : P.key list =
     P.Store.fold (fun b acc -> P.get_key b :: acc) (P.get_nodes pm) []
-  (* P.to_list pm |> List.map (fun (x, _) -> x) *)
+
+  let extract (pm : t) (b : P.key) =
+    let equal_block, n, pm =
+      match P.add_find b () pm with
+      | Found (_, n) ->
+          print_endline "found";
+          (Some (P.get_key n), n, pm)
+      | Added (_, n, new_pm) ->
+          print_endline "added";
+          (None, n, new_pm)
+    in
+
+    print_endline "extracting for pm";
+    print pm;
+
+    let pred_blocks = P.get_prds n in
+    let succ_blocks = P.get_sucs n in
+    (equal_block, pred_blocks, succ_blocks)
 end
 
 module BlockMap = struct
@@ -351,10 +372,9 @@ module BlockMap = struct
                   (List.fold_left
                      (fun path_specific_list x ->
                        let new_path_ctx =
-                         Typectx.Typectx
-                           (Typectx.to_list new_uctx.local_ctx
-                           @ Typectx.to_list x)
+                         promote_ctx_to_path new_uctx.local_ctx ~promote_ctx:x
                        in
+
                        let new_path_uctx =
                          { new_uctx with local_ctx = new_path_ctx }
                        in
@@ -548,7 +568,16 @@ module Synthesis = struct
   let under_blocks_join (collection : SynthesisCollection.t) (target_ty : t rty)
       : program option =
     let target_nty = erase_rty target_ty in
+    let uctx = !global_uctx |> Option.get in
 
+    (* Create a target block that we are missing *)
+    let target_block : Block.t =
+      ( (Rename.unique "missing") #: target_nty |> NameTracking.known_var,
+        target_ty,
+        uctx.local_ctx )
+    in
+
+    (* Get all blocks from the collection *)
     let general_set =
       BlockCollection.get_full_map collection.general_coll |> fun x ->
       BlockMap.get x target_nty
@@ -572,14 +601,66 @@ module Synthesis = struct
         BlockSet.print set)
       path_specific_sets;
 
-    (* let block_map = Blocks.block_collection_get_full_map collection in
-       let base_type = erase_rty target_ty in
-       let u_b_list = Blocks.block_map_get block_map base_type in
+    let block_options_generally = BlockSet.extract general_set target_block in
 
-       BlockPomap.print u_b_list; *)
+    let block_options_in_each_path =
+      List.map
+        (fun (lc, bs) -> (lc, BlockSet.extract bs target_block))
+        path_specific_sets
+    in
 
-    (* How do we want to combine blocks together? *)
-    (* let uctx = !global_uctx |> Option.get in *)
+
+    (* Do we care about pred blocks from general?
+       Pred blocks have less coverage than the target
+       Hmmm, maybe starting from smallest and going up?
+       Except when you already have no coverage from paths... then skip straight
+       to the succ_blocks since you need all the coverage
+        Not true because you can join small blocks together
+       *)
+    let (equal_block, _pred_blocks, succ_blocks) = block_options_generally in
+    match equal_block with
+    | Some (b) ->
+        print_endline (Block.layout b);
+        failwith "Can we just short circuit the general case and finish?"
+    | _ -> ();
+
+
+    (match
+       List.find_opt
+         (fun (_, (eq, _, _)) -> Option.is_some eq)
+         block_options_in_each_path
+     with
+    | Some (lc, (Some b, _, _)) ->
+        print_endline (layout_typectx layout_rty lc);
+        print_endline (Block.layout b);
+        failwith "Can we just short circuit and finish in this case?"
+    | _ -> ());
+
+    if List.is_empty block_options_in_each_path then
+      failwith "todo"
+    else failwith "continue"
+
+    (* Need to existentialized : exists_rtys_to_rty *)
+    (* Need to union together : union_rtys *)
+
+    (* What are we interested in here? *)
+    (* We have general terms and path specific terms *)
+    (* General terms can be promoted to be path specific *)
+    (* let new_path_ctx =
+                       promote_ctx_to_path new_uctx.local_ctx ~promote_ctx:x
+                     in *)
+    (* When does this promotion need to happen? *)
+    (* We want need the actual target_ty, the missing coverage, not the overall
+       spec *)
+    (* What do we need for that? Ideally incorporate Zhe's work... especially
+       since it is now apparently fast *)
+    (* I want to factor out the promote block to path logic from incrememnt *)
+    (* I want to look for three things, types that imply my target, types that
+       equal my target and are implied by my target *)
+    (* Equal terms might mean we are done... though some will need to be
+       promoted *)
+    (* When does repair happen? Now? Or do I extract this out? *)
+    (* We want to run one final check over the completed program *)
 
     (* let groups =
          group_by
@@ -603,7 +684,6 @@ module Synthesis = struct
              Relations.rty_typing_relation x target_ty ut)
            u_b_list
        in *)
-    print_endline "\n\n";
 
     (* let _ =
          List.iter
@@ -651,20 +731,6 @@ module Synthesis = struct
          else None
        in *)
 
-    (* actually do some joining of blocks *)
-    (* if List.length sub_type_list > 1 then
-         (* it is worth trying to *)
-         failwith "todo"
-       else (
-         print_endline "Potential Program:";
-         (match potential_program with
-         | Some (id, _, _) ->
-             Pieces.ast_to_string ~erased:true id |> print_endline;
-             ()
-         | None -> ());
-         failwith "todo") *)
-    failwith "unimplemented"
-
   let rec synthesis_helper (max_depth : int) (target_type : t rty)
       (collection : SynthesisCollection.t)
       (operations : (Pieces.component * (t list * t)) list) : program option =
@@ -698,3 +764,8 @@ module Synthesis = struct
     SynthesisCollection.print inital_seeds;
     synthesis_helper max_depth target_type inital_seeds operations
 end
+
+(* let%test "bot_int" =
+  let ty = Ty_int in
+  let t = term_bot ty in
+  is_base_bot t *)
