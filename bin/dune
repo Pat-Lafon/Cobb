@@ -8,6 +8,7 @@
   blocks
   pieces
   localization
+  underapproximation_type.translate
   underapproximation_type.typing
   underapproximation_type.preprocessing
   underapproximation_type.commands)
