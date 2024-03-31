@@ -19,13 +19,37 @@ module NameTracking = struct
 
   let get_ast (a : identifier) = Hashtbl.find_opt asts a
 
-  let get_term (a : identifier) =
-    match get_ast a with
-    | Some { x = CVal _; ty } -> failwith "get_term::unimplemented"
-    | Some { x = CLetE _; ty } -> failwith "get_term::unimplemented"
-    | Some { x = CLetDeTu _; ty } -> failwith "get_term::unimplemented"
-    | Some { x = CApp _; ty } -> failwith "get_term::unimplemented"
-    | Some { x = CAppOp _; ty } -> failwith "get_term::unimplemented"
+  let ast_to_string ?(erased = false) (id : identifier) : string =
+    let term = get_ast id |> Option.get in
+    let tterm = if erased then (* Termlang.erase_type  *) term else term in
+    layout_typed_term tterm
+
+  let asts_lookup (a : identifier) =
+    let expr = get_ast a in
+    Option.value expr ~default:(a |> id_to_term)
+
+  let rec get_term (a : identifier) : (t, t term) typed =
+    let t = get_ast a in
+    match t with
+    | Some ({ x = CVal _; ty } as t) -> t
+    | Some { x = CLetE _; ty } -> failwith "get_term::unimplemented::CLetE"
+    | Some { x = CLetDeTu _; ty } ->
+        failwith "get_term::unimplemented::CLetDeTu"
+    | Some ({ x = CApp { appf; apparg = { x = VVar id; _ } }; ty } as t) ->
+        mk_lete a (get_term id) t
+    | Some ({ x = CApp { appf; apparg = { x = VConst U; _ } }; ty } as t) -> t
+    | Some { x = CApp { appf; apparg }; ty } ->
+        failwith "get_term::unimplemented::CApp"
+    | Some ({ x = CAppOp { op; appopargs }; ty } as t) ->
+        let args =
+          List.map
+            (fun x ->
+              match x.x with
+              | VVar id -> (id, get_term id)
+              | _ -> failwith "get_term::unimplemented::CAppOp")
+            appopargs
+        in
+        List.fold_left (fun acc (id, rhs) -> mk_lete id rhs acc) t args
     | Some { x = CErr; _ } | Some { x = CMatch _; _ } | None ->
         print_endline ("get_term: " ^ a.x);
         Hashtbl.iter

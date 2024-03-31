@@ -63,15 +63,6 @@ module Pieces = struct
     in
     mk_lete ret app body
 
-  let ast_to_string ?(erased = false) (id : identifier) : string =
-    let term = NameTracking.get_ast id |> Option.get in
-    let tterm = if erased then (* Termlang.erase_type  *) term else term in
-    layout_typed_term tterm
-
-  let asts_lookup (a : identifier) =
-    let expr = NameTracking.get_ast a in
-    Option.value expr ~default:(a |> id_to_term)
-
   type component = Fun of identifier | Op of (Nt.t, Op.op) typed
 
   let layout_component (c : component) : string =

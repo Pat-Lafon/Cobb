@@ -77,14 +77,14 @@ let analyze_subtyping_result (new_rty : (t rty, t rty term) typed option) :
 module Block = struct
   type t = identifier * Nt.t rty * local_ctx
 
-  (* TODO: pretty print blocks as just expressions? *)
-  (* let pprint_block_as_exp ((_name, _ut, _ctx) : block) : string =
-     failwith "pretty_print_blocks::unimplemented" *)
+  let to_typed_term ((name, ut, ctx) : t) : (Nt.t, Nt.t term) typed =
+    NameTracking.get_term name
 
   let layout ((name, ut, ctx) : t) : string =
-    Printf.sprintf "%s\n⊢ %s: %s :\n%s\n"
-      (layout_typectx layout_rty ctx ^ " ")
-      (Pieces.ast_to_string name)
+    Printf.sprintf "%s⊢ %s: %s :\n%s\n"
+      (layout_typectx layout_rty ctx
+      ^ if List.is_empty (Typectx.to_list ctx) then "" else " \n")
+      (NameTracking.get_term name |> layout_typed_erased_term)
       (layout_ty name.ty) (layout_rty ut)
 end
 
@@ -200,6 +200,7 @@ module BlockSet : sig
   val is_empty : t -> bool
   val fold : ('a -> Block.t -> 'a) -> 'a -> t -> 'a
   val extract : t -> Block.t -> Block.t option * Ptset.t * Ptset.t
+  val existentialize : t -> t
 end = struct
   module P = Pomap_impl.Make (struct
     type el = Block.t
@@ -266,6 +267,17 @@ end = struct
     let pred_blocks = P.get_prds n in
     let succ_blocks = P.get_sucs n in
     (equal_block, pred_blocks, succ_blocks)
+
+  let existentialize (pm : t) : t =
+    P.fold
+      (fun n acc ->
+        let id, rty, (local_ctx : local_ctx) = P.get_key n in
+        let local_ctx =
+          Typectx.to_list local_ctx |> List.filter (fun { x; _ } -> x <> id.x)
+        in
+        let ext_rty = exists_rtys_to_rty local_ctx rty in
+        add_block acc (id, ext_rty, Typectx.emp))
+      pm P.empty
 end
 
 module BlockMap = struct
@@ -576,12 +588,76 @@ module SynthesisCollection = struct
     }
 end
 
-module Synthesis = struct
-  type program = (t, t term) Mtyped.typed
+module Extraction = struct
+  (* https://codereview.stackexchange.com/questions/40366/combinations-of-size-k-from-a-list-in-ocaml
+    *)
+  let rec combnk k lst =
+    if k = 0 then [ [] ]
+    else
+      let rec inner = function
+        | [] -> []
+        | x :: xs -> List.map (fun z -> x :: z) (combnk (k - 1) xs) :: inner xs
+      in
+      List.concat (inner lst)
+
+  (* Helper function to get the current rty of terms under consideration *)
+  let unioned_rty_type (l : (local_ctx * (identifier * t rty) * Ptset.t) list) :
+      t rty =
+    List.map (fun (_, (_, rt), _) -> rt) l |> union_rtys
+
+  (* Try to find the largest block that can be removed *)
+  let minimize_once (x : (local_ctx * (identifier * t rty) * Ptset.t) list)
+      (target_ty : t rty) : (local_ctx * (identifier * t rty) * Ptset.t) list =
+    if List.length x = 1 then x
+    else
+      let () = assert (List.length x > 1) in
+
+      let current_min = unioned_rty_type x in
+
+      (* Assert that current min passes subtyping check *)
+      let () = assert true in
+
+      let uctx = !global_uctx |> Option.get in
+      List.fold_left
+        (fun (current_min, current_list) proposed_list ->
+          let proposed_min = unioned_rty_type proposed_list in
+          if
+            (* The proposed min implies the target*)
+            sub_rty_bool uctx (proposed_min, target_ty)
+            && (* And it is implied by the current min*)
+            sub_rty_bool uctx (current_min, proposed_min)
+          then (proposed_min, proposed_list)
+          else (current_min, current_list))
+        (current_min, x)
+        (combnk (List.length x - 1) x)
+      |> snd
+
+  (* Repeat trying to reduce the number of blocks until minimum is found *)
+  let minimize_num (x : (local_ctx * (identifier * t rty) * Ptset.t) list)
+      (target_ty : t rty) : (local_ctx * (identifier * t rty) * Ptset.t) list =
+    let rec aux (x : (local_ctx * (identifier * t rty) * Ptset.t) list) =
+      let new_x = minimize_once x target_ty in
+      if List.length new_x < List.length x then aux new_x else x
+    in
+    aux x
+
+  (* Try to reduce coverage of a specific term*)
+  let minimize_type (x : (local_ctx * (identifier * t rty) * Ptset.t) list)
+      (target_ty : t rty) : (local_ctx * (identifier * t rty) * Ptset.t) list =
+    failwith "unimplemented"
+
+  (* Try to increase the coverage of a specific term to satisfy
+     the target type *)
+  let maximize_type (x : (local_ctx * (identifier * t rty) * Ptset.t) list)
+      (target_ty : t rty) : (local_ctx * (identifier * t rty) * Ptset.t) list =
+    let uctx = !global_uctx |> Option.get in
+    (* this should fail*)
+    assert (sub_rty_bool uctx (unioned_rty_type x, target_ty));
+    failwith "unimplemented"
 
   (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
-  let under_blocks_join (collection : SynthesisCollection.t) (target_ty : t rty)
-      : (local_ctx * _ list) list =
+  let extract_blocks (collection : SynthesisCollection.t) (target_ty : t rty) :
+      (local_ctx * _ list) list =
     let target_nty = erase_rty target_ty in
     let uctx = !global_uctx |> Option.get in
 
@@ -589,13 +665,13 @@ module Synthesis = struct
     let target_block : Block.t =
       ( (Rename.unique "missing") #: target_nty |> NameTracking.known_var,
         target_ty,
-        uctx.local_ctx )
+        Typectx.emp )
     in
 
     (* Get all blocks from the general collection *)
     let general_set =
       BlockCollection.get_full_map collection.general_coll |> fun x ->
-      BlockMap.get x target_nty
+      BlockMap.get x target_nty |> BlockSet.existentialize
     in
     Printf.printf "\n\n Generall collection we are interested in\n";
     BlockSet.print general_set;
@@ -603,6 +679,8 @@ module Synthesis = struct
     let equal_block, _pred_blocks, _succ_blocks =
       BlockSet.extract general_set target_block
     in
+
+    failwith "stop here for now";
 
     (* Do we care about pred blocks from general?
        Pred blocks have less coverage than the target
@@ -619,6 +697,7 @@ module Synthesis = struct
 
     assert (List.length collection.path_specific > 0);
 
+    (* Get the sets for each path *)
     let path_specific_sets =
       List.map
         (fun (lc, bc) ->
@@ -628,8 +707,9 @@ module Synthesis = struct
         collection.path_specific
     in
 
-    assert (List.length path_specific_sets > 0);
-
+    (* We are going to do some normalization setup *)
+    (* All General terms are going to get pushed into paths *)
+    (* TODO: Existentialize each of the types here : exists_rtys_to_rty  *)
     let path_specific_sets =
       List.map
         (fun (lc, bs) ->
@@ -674,69 +754,8 @@ module Synthesis = struct
         failwith "Can we just short circuit and finish in this case?"
     | _ -> ());
 
-    (* https://codereview.stackexchange.com/questions/40366/combinations-of-size-k-from-a-list-in-ocaml
-    *)
-    let rec combnk k lst =
-      if k = 0 then [ [] ]
-      else
-        let rec inner = function
-          | [] -> []
-          | x :: xs ->
-              List.map (fun z -> x :: z) (combnk (k - 1) xs) :: inner xs
-        in
-        List.concat (inner lst)
-    in
-
-    (* First step, go through and increase coverage if current largest minimum
-       isn't enough *)
-    let unioned_rty_type (l : (local_ctx * (identifier * t rty) * Ptset.t) list)
-        : t rty =
-      List.map (fun (_, (_, rt), _) -> rt) l |> union_rtys
-    in
-
-    (* Then alternate between trying to minimize number *)
-    (* And minimizing coverage by trying to swap out children*)
-    let minimize_once (x : (local_ctx * (identifier * t rty) * Ptset.t) list) :
-        (local_ctx * (identifier * t rty) * Ptset.t) list =
-      if List.length x = 1 then x
-      else
-        let () = assert (List.length x > 1) in
-
-        let current_min = unioned_rty_type x in
-
-        (* Assert that current min passes subtyping check *)
-        let () = assert true in
-
-        let uctx = !global_uctx |> Option.get in
-        List.fold_left
-          (fun (current_min, current_list) proposed_list ->
-            let proposed_min = unioned_rty_type proposed_list in
-            if
-              (* The proposed min implies the target*)
-              sub_rty_bool uctx (proposed_min, target_ty)
-              && (* And it is implied by the current min*)
-              sub_rty_bool uctx (current_min, proposed_min)
-            then (proposed_min, proposed_list)
-            else (current_min, current_list))
-          (current_min, x)
-          (combnk (List.length x - 1) x)
-        |> snd
-    in
-
-    let minimize_types (x : (local_ctx * (identifier * t rty) * Ptset.t) list) :
-        (local_ctx * (identifier * t rty) * Ptset.t) list =
-      let rec aux (x : (local_ctx * (identifier * t rty) * Ptset.t) list) =
-        let new_x = minimize_once x in
-        if List.length new_x < List.length x then aux new_x else x
-      in
-      aux x
-    in
-
-    let (_ : _) = failwith "unimplemented" in
+    (* Eventually use a Block.to_typed_term *)
     failwith "unimplemented"
-
-  (* Need to existentialized : exists_rtys_to_rty *)
-  (* Need to union together : union_rtys *)
 
   (* let new_path_ctx =
                      promote_ctx_to_path new_uctx.local_ctx ~promote_ctx:x
@@ -749,77 +768,9 @@ module Synthesis = struct
   (* Equal terms might mean we are done... though some will need to be
      promoted *)
   (* When does repair happen? Now? Or do I extract this out? *)
-  (* We want to run one final check over the completed program *)
+end
 
-  (* let groups =
-       group_by
-         (fun (_id, ut, ctx) ->
-           (* Blocks.layout_block (id, ut, ctx) |> print_endline; *)
-           (* print_endline "\n\nNew candidate";
-              Blocks.mmt_type_to_string ut |> print_endline;
-              List.iter
-                (fun (id, mmt) ->
-                  print_string (id ^ ": ");
-                  print_endline (Blocks.mmt_type_to_string mmt);
-                  print_endline (Pieces.ast_to_string ~erased:true id))
-                ctx;
-              print_string ((id : id NNtyped.typed).x ^ ": ");
-              Pieces.ast_to_string ~erased:true (id : id NNtyped.typed).x
-              |> print_endline; *)
-           (* subtyping_check __FILE__ __LINE__ uctx
-              (MMT.UtNormal (UT.make_basic_bot (snd body.NL.ty)))
-              ty *)
-           let x = Blocks.uctx_add_local_ctx uctx ctx in
-           Relations.rty_typing_relation x target_ty ut)
-         u_b_list
-     in *)
-
-  (* let _ =
-       List.iter
-         (fun ((g, es) : Relations.relation * Blocks.block_set) ->
-           print_string "Group ";
-           print_endline (Core.Sexp.to_string_hum (Relations.sexp_of_relation g));
-           List.iter
-             (fun b ->
-               Blocks.layout_block b |> print_endline
-               (* Pp.printf "%s: %s : %s\n" id.x
-                  (Pieces.ast_to_string ~erased:true id)
-                  (layout_rty rty) *))
-             es)
-         groups
-     in *)
-  (* let super_type_list =
-       List.find_map
-         (fun (g, es) -> if g == Relations.ImpliesTarget then Some es else None)
-         groups
-       |> Option.get
-     in
-     let sub_type_list =
-       List.find_map
-         (fun (g, es) ->
-           if g == Relations.ImpliedByTarget then Some es else None)
-         groups
-       |> Option.get
-     in *)
-
-  (* let potential_program =
-       if List.length super_type_list > 0 then
-         let potential_program = List.hd super_type_list in
-         (* We will check all of the other super_types to see if there is a program
-            that is smaller but still works *)
-         let potential_program =
-           List.fold_left
-             (fun p e ->
-               let r = Relations.block_typing_relation uctx p e in
-
-               (* If the new block is smaller then use it *)
-               if r == Relations.ImpliedByTarget then e else p)
-             potential_program (List.tl super_type_list)
-         in
-         Some potential_program
-       else None
-     in *)
-
+module Synthesis = struct
   let rec synthesis_helper (max_depth : int) (target_type : t rty)
       (collection : SynthesisCollection.t)
       (operations : (Pieces.component * (t list * t)) list) :
@@ -828,7 +779,7 @@ module Synthesis = struct
     | 0 ->
         SynthesisCollection.print collection;
         (* Join blocks together into programs *)
-        under_blocks_join collection target_type
+        Extraction.extract_blocks collection target_type
     | depth ->
         let operations =
           if depth == 1 then
