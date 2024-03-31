@@ -112,6 +112,25 @@ let build_initial_typing_context meta_config_file : uctx =
 
   { builtin_ctx; local_ctx = Typectx.emp; axioms }
 
+let rec swap_in_body (code : (Nt.t, Nt.t value) typed) :
+    (t, t term) typed -> (Nt.t, Nt.t value) typed =
+  match code.x with
+  | VFix { fixname; fixarg; body = { x = CVal body; ty } } ->
+      fun x ->
+        let b : _ -> (Nt.t, Nt.t value) typed = swap_in_body body in
+        (VFix { fixname; fixarg; body = b x |> value_to_term }) #: code.ty
+  | VFix { fixname; fixarg; body } -> (
+      fun x : (Nt.t, Nt.t value) typed ->
+        (VFix { fixname; fixarg; body = x }) #: code.ty)
+  | VLam { lamarg; body = { x = CVal body; ty } } ->
+      fun x ->
+        let b : _ -> (Nt.t, Nt.t value) typed = swap_in_body body in
+        (VLam { lamarg; body = b x |> value_to_term }) #: code.ty
+  | VLam { lamarg; body } -> (
+      fun x : (Nt.t, Nt.t value) typed -> (VLam { lamarg; body = x }) #: code.ty
+      )
+  | _ -> failwith "Not implemented"
+
 let get_args_rec_retty_body_from_source meta_config_file source_file =
   let processed_file =
     Commands.Cre.preproress meta_config_file source_file ()
@@ -153,12 +172,85 @@ let get_args_rec_retty_body_from_source meta_config_file source_file =
     match code.x with CVal x -> x | _ -> failwith "Did not receive a value"
   in
 
+  let reconstruct_code_with_new_body x =
+    let b = swap_in_body code in
+    (* TODO how to find the correct type here?*)
+    (* Do I even care? *)
+    Item.MFuncImp
+      {
+        name = synth_name #: Nt.Ty_unit;
+        if_rec = true;
+        body = b x |> value_to_term;
+      }
+  in
+
   let first_arg, rec_fix, body = handle_first_arg code synth_type in
   Pp.printf "Body: %s\n" (layout_typed_term body);
   Pp.printf "\nFirst Arg: %s\n" (layout_id_rty first_arg);
   Pp.printf "\nRec Fix: %s\n" (layout_id_rty rec_fix);
   let args = first_arg :: List.tl argtyps in
-  (args, rec_fix, retty, body)
+  (args, rec_fix, retty, body, reconstruct_code_with_new_body)
+
+(** Take the body of the function, a lambda to convert the body into full code,
+  and output it somewhere after some cleanup.  *)
+let output_to_something (reconstruct_code_with_new_body : _ -> _) new_body :
+    unit =
+  let rec remove_excess_holes_aux t =
+    match t.x with
+    | CErr | CApp _ | CAppOp _ | CVal _ -> t
+    | CLetE
+        {
+          lhs;
+          rhs = { x = CApp { appf; apparg = { x = VConst U; _ } }; _ };
+          body =
+            {
+              x =
+                CMatch
+                  {
+                    matched = { x = VVar v; _ };
+                    match_cases =
+                      [
+                        CMatchcase
+                          { constructor = { x = "True"; _ }; args = []; exp };
+                        CMatchcase
+                          {
+                            constructor = { x = "False"; _ };
+                            args = [];
+                            exp = { x = CVal { x = VVar f; _ }; _ };
+                          };
+                      ];
+                  };
+              _;
+            };
+        }
+      when Core.String.(lhs.x = v.x && is_prefix f.x ~prefix:"Hole") ->
+        let _ = layout_typed_term t |> print_endline in
+        let _ = f.x |> print_endline in
+        remove_excess_holes_aux exp
+    | CLetE { lhs; rhs; body } ->
+        (CLetE { lhs; rhs; body = remove_excess_holes_aux body }) #: t.ty
+    | CLetDeTu { turhs; tulhs; body } ->
+        (CLetDeTu { turhs; tulhs; body = remove_excess_holes_aux body }) #: t.ty
+    | CMatch { matched; match_cases } ->
+        (CMatch
+           {
+             matched;
+             match_cases =
+               List.map
+                 (fun (CMatchcase { constructor; args; exp }) ->
+                   CMatchcase
+                     { constructor; args; exp = remove_excess_holes_aux exp })
+                 match_cases;
+           })
+        #: t.ty
+  in
+
+  let new_frontend_prog =
+    new_body |> remove_excess_holes_aux |> reconstruct_code_with_new_body
+    |> Item.map_item (fun x -> None)
+  in
+
+  Frontend_opt.To_item.layout_item new_frontend_prog |> print_endline
 
 let run_benchmark source_file meta_config_file =
   let missing_coverage =
@@ -176,7 +268,7 @@ let run_benchmark source_file meta_config_file =
 
   let uctx = build_initial_typing_context meta_config_file in
 
-  let args, rec_fix, retty, body =
+  let args, rec_fix, retty, body, reconstruct_code_with_new_body =
     get_args_rec_retty_body_from_source meta_config_file source_file
   in
 
@@ -207,11 +299,16 @@ let run_benchmark source_file meta_config_file =
     not (Typing.Termcheck.term_type_check uctx body retty |> Option.is_some));
   assert (Subtyping.Subrty.sub_rty_bool uctx (retty, missing_coverage));
 
-  let path_maps = Localization.localization uctx body missing_coverage in
+  let path_maps, new_body =
+    Localization.localization uctx body missing_coverage
+  in
+
+  let context_maps = List.map (fun (a, b, _) -> (a, b)) path_maps in
+  let substitution_maps = List.map (fun (a, _, c) -> (a, c)) path_maps in
+
+  let raw_body = Anf_to_raw_term.typed_term_to_typed_raw_term new_body in
 
   Printf.printf "Missing Coverage: %s\n" (layout_rty missing_coverage);
-
-  failwith "stop here";
 
   let ( (seeds : (Block.t * t) list),
         (components : (Pieces.component * (t list * t)) list) ) =
@@ -239,11 +336,26 @@ let run_benchmark source_file meta_config_file =
 
   let inital_map = BlockMap.init seeds in
 
-  let init_synth_col = SynthesisCollection.init inital_map path_maps in
+  let init_synth_col = SynthesisCollection.init inital_map context_maps in
 
   let _result =
     Synthesis.synthesis missing_coverage bound init_synth_col components
   in
+
+  let new_body =
+    List.split substitution_maps
+    |> snd
+    |> List.fold_left
+         (fun acc s ->
+           Raw_term.typed_subst_raw_term s
+             (fun { ty; _ } -> Raw_term.Var "lol" #: ty)
+             acc)
+         raw_body
+    |> Raw_term_to_anf.normalize_term
+  in
+
+  output_to_something reconstruct_code_with_new_body new_body;
+
   print_endline "Finished Synthesis"
 
 (** Benchmarks can be provided as a command line argument

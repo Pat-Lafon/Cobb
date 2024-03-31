@@ -40,6 +40,29 @@ module Pieces = struct
     if record then NameTracking.add_ast ret rhs else ();
     (ret, mk_lete ret rhs (ret |> id_to_term))
 
+  let mk_ND_choice (t1 : ('a, 'a term) typed) (t2 : ('a, 'a term) typed) =
+    assert (t1.ty = t2.ty);
+    let f = "bool_gen" #: (Nt.Ty_arrow (Nt.Ty_unit, Nt.Ty_bool)) in
+    let ret = (Rename.name ()) #: (snd @@ Nt.destruct_arr_tp f.ty) in
+    let arg = Constant.U |> constant_to_value in
+    let app = mk_app (f |> id_to_value) arg in
+    NameTracking.add_ast ret app;
+    let body =
+      (CMatch
+         {
+           matched = ret |> id_to_value;
+           match_cases =
+             [
+               CMatchcase
+                 { constructor = "True" #: Nt.Ty_bool; args = []; exp = t1 };
+               CMatchcase
+                 { constructor = "False" #: Nt.Ty_bool; args = []; exp = t2 };
+             ];
+         })
+      #: t1.ty
+    in
+    mk_lete ret app body
+
   let ast_to_string ?(erased = false) (id : identifier) : string =
     let term = NameTracking.get_ast id |> Option.get in
     let tterm = if erased then (* Termlang.erase_type  *) term else term in
@@ -88,7 +111,16 @@ module Pieces = struct
         (fun t { x = name; ty } ->
           if NameTracking.is_known name #: ty then t
           else
-            let new_name = Hashtbl.find ht name in
+            let new_name =
+              match Hashtbl.find_opt ht name with
+              | Some s -> s
+              | None ->
+                  print_endline "ut_subst::failed to find mapping:";
+                  Hashtbl.iter
+                    (fun k v  -> k ^ " -> " ^ v |> print_endline)
+                    ht;
+                  failwith ("ut_subst::failed to find " ^ name ^ " in mapping")
+            in
             Rty.subst_rty_instance name (AVar new_name #: ty) t)
         ut (Rty.fv_rty ut)
     in
@@ -145,7 +177,7 @@ module Pieces = struct
         | RtyBase _ -> None
         | RtyBaseArr
             { argcty = Cty { nty = Nt.Ty_unit; _ }; retty = RtyBase _; _ } ->
-            failwith "unimplemented"
+            failwith "components_from_args::RtyBaseArr::unimplemented"
         | RtyBaseArr _ ->
             let id = x #: nt |> NameTracking.known_var in
             let new_component : component * (t list * t) =
@@ -189,61 +221,9 @@ module Pieces = struct
                 (string_to_component x #: nt, nt |> Nt.destruct_arr_tp)
               in
               (seeds, new_component :: components)
-          | RtyArrArr _ -> failwith "unimplemented"
-          | RtyTuple _ -> failwith "unimplemented")
+          | RtyArrArr _ ->
+              failwith "seeds_and_components::RtyArrArr::unimplemented"
+          | RtyTuple _ ->
+              failwith "seeds_and_components::RtyTuple::unimplemented")
       ([], []) ctx_list
-
-  (*
-  let mk_if (cond : id NNtyped.typed) (true_branch : id NNtyped.typed)
-      (false_branch : id NNtyped.typed) : NL.term =
-    let cond = NL.id_to_value cond in
-    let e_t = NL.id_to_value true_branch |> NL.value_to_term in
-    let e_f = NL.id_to_value false_branch |> NL.value_to_term in
-    NL.Ite { cond; e_t; e_f }
-
-  (* A special case for the moment when we want to create if's where the second
-     branch is an exception *)
-  (* I don't want to bind Exn to an id because then it gets executed after the
-     condition no? *)
-  let mk_one_sided_if (cond : id NNtyped.typed) (true_branch : id NNtyped.typed)
-      : NL.term =
-    let cond = NL.id_to_value cond in
-    let e_t = NL.id_to_value true_branch |> NL.value_to_term in
-    let exn = { x = NL.Exn; ty = true_branch.ty } |> NL.value_to_term in
-    NL.Ite { cond; e_t; e_f = exn }
-
-  let mmt_subst_id a before after =
-    let aux (t : Underty.MMT.ut_with_copy) before after =
-      match t with
-      | Underty.MMT.UtNormal t ->
-          Underty.MMT.UtNormal (UT.subst_id t before after)
-      | Underty.MMT.UtCopy { x; ty } ->
-          if String.equal x before then Underty.MMT.UtCopy { x = after; ty }
-          else t
-    in
-    match a with
-    | Underty.MMT.Ot t -> Underty.MMT.Ot (ot_subst_id t before after)
-    | Underty.MMT.Ut t -> Underty.MMT.Ut (aux t before after)
-    | Underty.MMT.Consumed t -> Underty.MMT.Consumed (aux t before after)
-
-  let ut_subst (ut : UT.t) (ht : (id, id) Hashtbl.t) : UT.t =
-    let renamed_ty =
-      List.fold_left
-        (fun t name ->
-          let new_name = Hashtbl.find ht name in
-          Underty.T.subst_id t name new_name)
-        ut (Underty.T.fv ut)
-    in
-    renamed_ty
-
-  let mmt_subst (mmt : MMT.t) (ht : (id, id) Hashtbl.t) : MMT.t =
-    let renamed_ty =
-      List.fold_left
-        (fun t name ->
-          let new_name = Hashtbl.find ht name in
-          MMT.mmt_subst_id t name new_name)
-        mmt (MMT.fv mmt)
-    in
-    renamed_ty
- *)
 end

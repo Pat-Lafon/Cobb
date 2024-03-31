@@ -19,6 +19,20 @@ module NameTracking = struct
 
   let get_ast (a : identifier) = Hashtbl.find_opt asts a
 
+  let get_term (a : identifier) =
+    match get_ast a with
+    | Some { x = CVal _; ty } -> failwith "get_term::unimplemented"
+    | Some { x = CLetE _; ty } -> failwith "get_term::unimplemented"
+    | Some { x = CLetDeTu _; ty } -> failwith "get_term::unimplemented"
+    | Some { x = CApp _; ty } -> failwith "get_term::unimplemented"
+    | Some { x = CAppOp _; ty } -> failwith "get_term::unimplemented"
+    | Some { x = CErr; _ } | Some { x = CMatch _; _ } | None ->
+        print_endline ("get_term: " ^ a.x);
+        Hashtbl.iter
+          (fun k v -> k.x ^ " -> " ^ layout_typed_term v |> print_endline)
+          asts;
+        failwith "get_term"
+
   let ctx_subst (ctx : t rty Typectx.ctx) (ht : (string, string) Hashtbl.t) :
       t rty Typectx.ctx =
     Typectx.map_ctx_typed

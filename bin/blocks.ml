@@ -110,6 +110,7 @@ end
 and Relations : sig
   type relation = Equiv | ImpliesTarget | ImpliedByTarget | None | Timeout
 
+  val layout : relation -> string
   val sexp_of_relation : relation -> Core.Sexp.t
   val is_equiv_or_timeout : relation -> bool
   val rty_typing_relation : uctx -> t rty -> t rty -> relation
@@ -118,6 +119,8 @@ and Relations : sig
 end = struct
   type relation = Equiv | ImpliesTarget | ImpliedByTarget | None | Timeout
   [@@deriving sexp]
+
+  let layout relation = Core.Sexp.to_string_hum (sexp_of_relation relation)
 
   let invert_relation = function
     | Equiv -> Equiv
@@ -139,6 +142,8 @@ end = struct
         Timeout.sub_rty_bool_or_timeout ctx (ty, target_ty)
       in
 
+      print_endline (Timeout.bool_or_timeout_to_string implies_target);
+
       (* Short circuit on timeout *)
       if implies_target = Timeout then Timeout
       else
@@ -146,6 +151,7 @@ end = struct
         let implied_by_target =
           Timeout.sub_rty_bool_or_timeout ctx (target_ty, ty)
         in
+        print_endline (Timeout.bool_or_timeout_to_string implied_by_target);
         match (implies_target, implied_by_target) with
         | Timeout, _ | _, Timeout -> Timeout
         | Result true, Result true -> Equiv
@@ -158,8 +164,10 @@ end = struct
     let target_id, target_ty, target_ctx = target_block in
     let id, ty, ctx = block in
 
-    match RelationCache.check target_id id with
-    | Some r -> r
+    (match RelationCache.check target_id id with
+    | Some r ->
+        print_endline "in cache";
+        r
     | None ->
         let res =
           if diff_base_type target_ty ty then None
@@ -172,7 +180,10 @@ end = struct
               target_ty updated_ty
         in
         RelationCache.add target_id id res;
-        res
+        res)
+    |> fun res ->
+    layout res |> print_endline;
+    res
 end
 
 module BlockSet : sig
@@ -187,6 +198,7 @@ module BlockSet : sig
   val to_list : t -> Block.t list
   val print : t -> unit
   val is_empty : t -> bool
+  val fold : ('a -> Block.t -> 'a) -> 'a -> t -> 'a
   val extract : t -> Block.t -> Block.t option * Ptset.t * Ptset.t
 end = struct
   module P = Pomap_impl.Make (struct
@@ -233,6 +245,9 @@ end = struct
 
   let to_list (pm : t) : P.key list =
     P.Store.fold (fun b acc -> P.get_key b :: acc) (P.get_nodes pm) []
+
+  let fold (f : 'a -> P.key -> 'a) (acc : 'a) (pm : t) : 'a =
+    P.fold (fun n acc -> f acc (P.get_key n)) pm acc
 
   let extract (pm : t) (b : P.key) =
     let equal_block, n, pm =
@@ -566,7 +581,7 @@ module Synthesis = struct
 
   (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
   let under_blocks_join (collection : SynthesisCollection.t) (target_ty : t rty)
-      : program option =
+      : (local_ctx * _ list) list =
     let target_nty = erase_rty target_ty in
     let uctx = !global_uctx |> Option.get in
 
@@ -577,21 +592,62 @@ module Synthesis = struct
         uctx.local_ctx )
     in
 
-    (* Get all blocks from the collection *)
+    (* Get all blocks from the general collection *)
     let general_set =
       BlockCollection.get_full_map collection.general_coll |> fun x ->
       BlockMap.get x target_nty
     in
-    (* Get all blocks from the collection *)
     Printf.printf "\n\n Generall collection we are interested in\n";
     BlockSet.print general_set;
 
+    let equal_block, _pred_blocks, _succ_blocks =
+      BlockSet.extract general_set target_block
+    in
+
+    (* Do we care about pred blocks from general?
+       Pred blocks have less coverage than the target
+       Hmmm, maybe starting from smallest and going up?
+       Except when you already have no coverage from paths... then skip straight
+       to the succ_blocks since you need all the coverage
+        Not true because you can join small blocks together
+    *)
+    (match equal_block with
+    | Some b ->
+        print_endline (Block.layout b);
+        failwith "Can we just short circuit the general case and finish?"
+    | _ -> ());
+
+    assert (List.length collection.path_specific > 0);
+
     let path_specific_sets =
-      List.filter_map
+      List.map
         (fun (lc, bc) ->
           BlockCollection.get_full_map bc |> fun x ->
-          BlockMap.get_opt x target_nty |> Option.map (fun x -> (lc, x)))
+          BlockMap.get_opt x target_nty |> Option.value ~default:BlockSet.empty
+          |> fun x -> (lc, x))
         collection.path_specific
+    in
+
+    assert (List.length path_specific_sets > 0);
+
+    let path_specific_sets =
+      List.map
+        (fun (lc, bs) ->
+          ( lc,
+            BlockSet.fold
+              (* I haven't  *)
+                (fun acc (id, rt, block_ctx) ->
+                let new_context, mapping = NameTracking.freshen block_ctx in
+                let fresh_id = (Hashtbl.find mapping id.x) #: id.ty in
+                let fresh_rt = Pieces.ut_subst rt mapping in
+                NameTracking.add_ast fresh_id
+                  (NameTracking.get_ast id |> Option.get);
+                BlockSet.add_block acc
+                  ( fresh_id,
+                    fresh_rt,
+                    promote_ctx_to_path new_context ~promote_ctx:lc ))
+              bs general_set ))
+        path_specific_sets
     in
 
     Printf.printf "\n\n Path Specific collections we are interested in\n";
@@ -601,29 +657,11 @@ module Synthesis = struct
         BlockSet.print set)
       path_specific_sets;
 
-    let block_options_generally = BlockSet.extract general_set target_block in
-
     let block_options_in_each_path =
       List.map
         (fun (lc, bs) -> (lc, BlockSet.extract bs target_block))
         path_specific_sets
     in
-
-
-    (* Do we care about pred blocks from general?
-       Pred blocks have less coverage than the target
-       Hmmm, maybe starting from smallest and going up?
-       Except when you already have no coverage from paths... then skip straight
-       to the succ_blocks since you need all the coverage
-        Not true because you can join small blocks together
-       *)
-    let (equal_block, _pred_blocks, succ_blocks) = block_options_generally in
-    match equal_block with
-    | Some (b) ->
-        print_endline (Block.layout b);
-        failwith "Can we just short circuit the general case and finish?"
-    | _ -> ();
-
 
     (match
        List.find_opt
@@ -636,104 +674,156 @@ module Synthesis = struct
         failwith "Can we just short circuit and finish in this case?"
     | _ -> ());
 
-    if List.is_empty block_options_in_each_path then
-      failwith "todo"
-    else failwith "continue"
+    (* https://codereview.stackexchange.com/questions/40366/combinations-of-size-k-from-a-list-in-ocaml
+    *)
+    let rec combnk k lst =
+      if k = 0 then [ [] ]
+      else
+        let rec inner = function
+          | [] -> []
+          | x :: xs ->
+              List.map (fun z -> x :: z) (combnk (k - 1) xs) :: inner xs
+        in
+        List.concat (inner lst)
+    in
 
-    (* Need to existentialized : exists_rtys_to_rty *)
-    (* Need to union together : union_rtys *)
+    (* First step, go through and increase coverage if current largest minimum
+       isn't enough *)
+    let unioned_rty_type (l : (local_ctx * (identifier * t rty) * Ptset.t) list)
+        : t rty =
+      List.map (fun (_, (_, rt), _) -> rt) l |> union_rtys
+    in
 
-    (* What are we interested in here? *)
-    (* We have general terms and path specific terms *)
-    (* General terms can be promoted to be path specific *)
-    (* let new_path_ctx =
-                       promote_ctx_to_path new_uctx.local_ctx ~promote_ctx:x
-                     in *)
-    (* When does this promotion need to happen? *)
-    (* We want need the actual target_ty, the missing coverage, not the overall
-       spec *)
-    (* What do we need for that? Ideally incorporate Zhe's work... especially
-       since it is now apparently fast *)
-    (* I want to factor out the promote block to path logic from incrememnt *)
-    (* I want to look for three things, types that imply my target, types that
-       equal my target and are implied by my target *)
-    (* Equal terms might mean we are done... though some will need to be
-       promoted *)
-    (* When does repair happen? Now? Or do I extract this out? *)
-    (* We want to run one final check over the completed program *)
+    (* Then alternate between trying to minimize number *)
+    (* And minimizing coverage by trying to swap out children*)
+    let minimize_once (x : (local_ctx * (identifier * t rty) * Ptset.t) list) :
+        (local_ctx * (identifier * t rty) * Ptset.t) list =
+      if List.length x = 1 then x
+      else
+        let () = assert (List.length x > 1) in
 
-    (* let groups =
-         group_by
-           (fun (_id, ut, ctx) ->
-             (* Blocks.layout_block (id, ut, ctx) |> print_endline; *)
-             (* print_endline "\n\nNew candidate";
-                Blocks.mmt_type_to_string ut |> print_endline;
-                List.iter
-                  (fun (id, mmt) ->
-                    print_string (id ^ ": ");
-                    print_endline (Blocks.mmt_type_to_string mmt);
-                    print_endline (Pieces.ast_to_string ~erased:true id))
-                  ctx;
-                print_string ((id : id NNtyped.typed).x ^ ": ");
-                Pieces.ast_to_string ~erased:true (id : id NNtyped.typed).x
-                |> print_endline; *)
-             (* subtyping_check __FILE__ __LINE__ uctx
-                (MMT.UtNormal (UT.make_basic_bot (snd body.NL.ty)))
-                ty *)
-             let x = Blocks.uctx_add_local_ctx uctx ctx in
-             Relations.rty_typing_relation x target_ty ut)
-           u_b_list
-       in *)
+        let current_min = unioned_rty_type x in
 
-    (* let _ =
-         List.iter
-           (fun ((g, es) : Relations.relation * Blocks.block_set) ->
-             print_string "Group ";
-             print_endline (Core.Sexp.to_string_hum (Relations.sexp_of_relation g));
-             List.iter
-               (fun b ->
-                 Blocks.layout_block b |> print_endline
-                 (* Pp.printf "%s: %s : %s\n" id.x
-                    (Pieces.ast_to_string ~erased:true id)
-                    (layout_rty rty) *))
-               es)
-           groups
-       in *)
-    (* let super_type_list =
-         List.find_map
-           (fun (g, es) -> if g == Relations.ImpliesTarget then Some es else None)
-           groups
-         |> Option.get
-       in
-       let sub_type_list =
-         List.find_map
-           (fun (g, es) ->
-             if g == Relations.ImpliedByTarget then Some es else None)
-           groups
-         |> Option.get
-       in *)
+        (* Assert that current min passes subtyping check *)
+        let () = assert true in
 
-    (* let potential_program =
-         if List.length super_type_list > 0 then
-           let potential_program = List.hd super_type_list in
-           (* We will check all of the other super_types to see if there is a program
-              that is smaller but still works *)
-           let potential_program =
-             List.fold_left
-               (fun p e ->
-                 let r = Relations.block_typing_relation uctx p e in
+        let uctx = !global_uctx |> Option.get in
+        List.fold_left
+          (fun (current_min, current_list) proposed_list ->
+            let proposed_min = unioned_rty_type proposed_list in
+            if
+              (* The proposed min implies the target*)
+              sub_rty_bool uctx (proposed_min, target_ty)
+              && (* And it is implied by the current min*)
+              sub_rty_bool uctx (current_min, proposed_min)
+            then (proposed_min, proposed_list)
+            else (current_min, current_list))
+          (current_min, x)
+          (combnk (List.length x - 1) x)
+        |> snd
+    in
 
-                 (* If the new block is smaller then use it *)
-                 if r == Relations.ImpliedByTarget then e else p)
-               potential_program (List.tl super_type_list)
-           in
-           Some potential_program
-         else None
-       in *)
+    let minimize_types (x : (local_ctx * (identifier * t rty) * Ptset.t) list) :
+        (local_ctx * (identifier * t rty) * Ptset.t) list =
+      let rec aux (x : (local_ctx * (identifier * t rty) * Ptset.t) list) =
+        let new_x = minimize_once x in
+        if List.length new_x < List.length x then aux new_x else x
+      in
+      aux x
+    in
+
+    let (_ : _) = failwith "unimplemented" in
+    failwith "unimplemented"
+
+  (* Need to existentialized : exists_rtys_to_rty *)
+  (* Need to union together : union_rtys *)
+
+  (* let new_path_ctx =
+                     promote_ctx_to_path new_uctx.local_ctx ~promote_ctx:x
+                   in *)
+
+  (* I want to factor out the promote block to path logic from incrememnt *)
+
+  (* I want to look for three things, types that imply my target, types that
+     equal my target and are implied by my target *)
+  (* Equal terms might mean we are done... though some will need to be
+     promoted *)
+  (* When does repair happen? Now? Or do I extract this out? *)
+  (* We want to run one final check over the completed program *)
+
+  (* let groups =
+       group_by
+         (fun (_id, ut, ctx) ->
+           (* Blocks.layout_block (id, ut, ctx) |> print_endline; *)
+           (* print_endline "\n\nNew candidate";
+              Blocks.mmt_type_to_string ut |> print_endline;
+              List.iter
+                (fun (id, mmt) ->
+                  print_string (id ^ ": ");
+                  print_endline (Blocks.mmt_type_to_string mmt);
+                  print_endline (Pieces.ast_to_string ~erased:true id))
+                ctx;
+              print_string ((id : id NNtyped.typed).x ^ ": ");
+              Pieces.ast_to_string ~erased:true (id : id NNtyped.typed).x
+              |> print_endline; *)
+           (* subtyping_check __FILE__ __LINE__ uctx
+              (MMT.UtNormal (UT.make_basic_bot (snd body.NL.ty)))
+              ty *)
+           let x = Blocks.uctx_add_local_ctx uctx ctx in
+           Relations.rty_typing_relation x target_ty ut)
+         u_b_list
+     in *)
+
+  (* let _ =
+       List.iter
+         (fun ((g, es) : Relations.relation * Blocks.block_set) ->
+           print_string "Group ";
+           print_endline (Core.Sexp.to_string_hum (Relations.sexp_of_relation g));
+           List.iter
+             (fun b ->
+               Blocks.layout_block b |> print_endline
+               (* Pp.printf "%s: %s : %s\n" id.x
+                  (Pieces.ast_to_string ~erased:true id)
+                  (layout_rty rty) *))
+             es)
+         groups
+     in *)
+  (* let super_type_list =
+       List.find_map
+         (fun (g, es) -> if g == Relations.ImpliesTarget then Some es else None)
+         groups
+       |> Option.get
+     in
+     let sub_type_list =
+       List.find_map
+         (fun (g, es) ->
+           if g == Relations.ImpliedByTarget then Some es else None)
+         groups
+       |> Option.get
+     in *)
+
+  (* let potential_program =
+       if List.length super_type_list > 0 then
+         let potential_program = List.hd super_type_list in
+         (* We will check all of the other super_types to see if there is a program
+            that is smaller but still works *)
+         let potential_program =
+           List.fold_left
+             (fun p e ->
+               let r = Relations.block_typing_relation uctx p e in
+
+               (* If the new block is smaller then use it *)
+               if r == Relations.ImpliedByTarget then e else p)
+             potential_program (List.tl super_type_list)
+         in
+         Some potential_program
+       else None
+     in *)
 
   let rec synthesis_helper (max_depth : int) (target_type : t rty)
       (collection : SynthesisCollection.t)
-      (operations : (Pieces.component * (t list * t)) list) : program option =
+      (operations : (Pieces.component * (t list * t)) list) :
+      (local_ctx * _ list) list =
     match max_depth with
     | 0 ->
         SynthesisCollection.print collection;
@@ -760,12 +850,8 @@ module Synthesis = struct
   (** Given some initial setup, run the synthesis algorithm *)
   let synthesis (target_type : t rty) (max_depth : int)
       (inital_seeds : SynthesisCollection.t)
-      (operations : (Pieces.component * (t list * t)) list) : program option =
+      (operations : (Pieces.component * (t list * t)) list) :
+      (local_ctx * _ list) list =
     SynthesisCollection.print inital_seeds;
     synthesis_helper max_depth target_type inital_seeds operations
 end
-
-(* let%test "bot_int" =
-  let ty = Ty_int in
-  let t = term_bot ty in
-  is_base_bot t *)
