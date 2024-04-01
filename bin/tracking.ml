@@ -7,6 +7,15 @@ open Mtyped
 module NameTracking = struct
   let asts : (identifier, _ typed) Hashtbl.t = Hashtbl.create 128
   let known : (identifier, unit) Hashtbl.t = Hashtbl.create 128
+
+  let debug () =
+    print_endline "ASTS";
+    Hashtbl.iter
+      (fun a b -> Printf.printf "%s -> %s\n" a.x (layout_typed_term b))
+      asts;
+    print_endline "KNOWN";
+    Hashtbl.iter (fun a _ -> Printf.printf "%s\n" a.x) known
+
   let is_known (name : identifier) = Hashtbl.mem known name
 
   let known_var (a : identifier) =
@@ -16,6 +25,10 @@ module NameTracking = struct
 
   let add_ast (a : identifier) (term : (t, t term) typed) =
     Hashtbl.add asts a term
+
+  let known_ast (a : identifier) (term : (t, t term) typed) =
+    Hashtbl.add known a ();
+    add_ast a term
 
   let get_ast (a : identifier) = Hashtbl.find_opt asts a
 
@@ -28,34 +41,53 @@ module NameTracking = struct
     let expr = get_ast a in
     Option.value expr ~default:(a |> id_to_term)
 
-  let rec get_term (a : identifier) : (t, t term) typed =
-    let t = get_ast a in
-    match t with
-    | Some ({ x = CVal _; ty } as t) -> t
-    | Some { x = CLetE _; ty } -> failwith "get_term::unimplemented::CLetE"
-    | Some { x = CLetDeTu _; ty } ->
-        failwith "get_term::unimplemented::CLetDeTu"
-    | Some ({ x = CApp { appf; apparg = { x = VVar id; _ } }; ty } as t) ->
-        mk_lete a (get_term id) t
-    | Some ({ x = CApp { appf; apparg = { x = VConst U; _ } }; ty } as t) -> t
-    | Some { x = CApp { appf; apparg }; ty } ->
-        failwith "get_term::unimplemented::CApp"
-    | Some ({ x = CAppOp { op; appopargs }; ty } as t) ->
-        let args =
-          List.map
-            (fun x ->
-              match x.x with
-              | VVar id -> (id, get_term id)
-              | _ -> failwith "get_term::unimplemented::CAppOp")
-            appopargs
-        in
-        List.fold_left (fun acc (id, rhs) -> mk_lete id rhs acc) t args
-    | Some { x = CErr; _ } | Some { x = CMatch _; _ } | None ->
-        print_endline ("get_term: " ^ a.x);
-        Hashtbl.iter
-          (fun k v -> k.x ^ " -> " ^ layout_typed_term v |> print_endline)
-          asts;
-        failwith "get_term"
+  let get_term (a : identifier) : (t, t term) typed =
+    let rec aux a : _ list * (t, t term) typed =
+      let t = get_ast a in
+      match t with
+      | Some ({ x = CVal { x = VConst _; _ }; ty } as t) -> ([], t)
+      | Some { x = CVal { x = VTu l; _ }; _ } -> failwith "get_term::VTu"
+      | Some ({ x = CVal { x = VVar s; _ }; ty } as t) ->
+          (* Check for a level of indirection *)
+          (* String.equal (layout_typed_term t)
+             (aux s |> snd |> layout_typed_term) *)
+          if String.equal a.x s.x then ([], t)
+          else
+            let bindings, rhs = aux s in
+            ((a, t) :: bindings, rhs)
+      | Some { x = CLetE _; ty } -> failwith "get_term::unimplemented::CLetE"
+      | Some { x = CLetDeTu _; ty } ->
+          failwith "get_term::unimplemented::CLetDeTu"
+      | Some ({ x = CApp { appf; apparg = { x = VVar id; _ } }; ty } as t) ->
+          let bindings, rhs = aux id in
+          ((a, t) :: bindings, rhs)
+      | Some ({ x = CApp { appf; apparg = { x = VConst U; _ } }; ty } as t) ->
+          ([], t)
+      | Some { x = CApp { appf; apparg }; ty } ->
+          failwith "get_term::unimplemented::CApp"
+      | Some ({ x = CAppOp { op; appopargs }; ty } as t) ->
+          let args =
+            List.map
+              (fun x ->
+                match x.x with
+                | VVar id -> aux id
+                | _ -> failwith "get_term::unimplemented::CAppOp")
+              appopargs
+            |> List.split |> fst |> List.concat
+          in
+          (args, t)
+      | Some { x = CVal _; _ }
+      | Some { x = CErr; _ }
+      | Some { x = CMatch _; _ }
+      | None ->
+          print_endline ("get_term: " ^ a.x);
+          Hashtbl.iter
+            (fun k v -> k.x ^ " -> " ^ layout_typed_term v |> print_endline)
+            asts;
+          failwith "get_term"
+    in
+    let bindings, b = aux a in
+    List.fold_left (fun acc (id, rhs) -> mk_lete id rhs acc) b bindings
 
   let ctx_subst (ctx : t rty Typectx.ctx) (ht : (string, string) Hashtbl.t) :
       t rty Typectx.ctx =

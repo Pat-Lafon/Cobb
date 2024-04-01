@@ -107,9 +107,7 @@ module Pieces = struct
               | Some s -> s
               | None ->
                   print_endline "ut_subst::failed to find mapping:";
-                  Hashtbl.iter
-                    (fun k v  -> k ^ " -> " ^ v |> print_endline)
-                    ht;
+                  Hashtbl.iter (fun k v -> k ^ " -> " ^ v |> print_endline) ht;
                   failwith ("ut_subst::failed to find " ^ name ^ " in mapping")
             in
             Rty.subst_rty_instance name (AVar new_name #: ty) t)
@@ -121,7 +119,8 @@ module Pieces = struct
 
   let selfification (x : string) (nt : t) =
     let new_name = (Rename.name ()) #: nt in
-    NameTracking.add_ast new_name (id_to_term (NameTracking.known_var x #: nt));
+    NameTracking.known_ast new_name
+      (id_to_term (NameTracking.known_var x #: nt));
     let new_rty_type =
       Rty.RtyBase
         {
@@ -154,7 +153,6 @@ module Pieces = struct
             let nty = erase_rty ty in
             let new_seed = selfification x nty in
             let (x, _, _), _ = new_seed in
-            let _ : identifier = NameTracking.known_var x in
             Some new_seed
         | _ -> None)
       ctx_list
@@ -175,7 +173,7 @@ module Pieces = struct
               (string_to_component id, nt |> Nt.destruct_arr_tp)
             in
             Some new_component
-        | _ -> failwith "unimplemented")
+        | _ -> failwith "components_from_args::Other::unimplemented")
       ctx_list
 
   let seeds_and_components (Typectx ctx_list : t rty Typectx.ctx) :
@@ -188,6 +186,7 @@ module Pieces = struct
           let nt = erase_rty ty in
           match ty with
           | RtyBase _ ->
+              NameTracking.known_ast x #: nt (id_to_term x #: nt);
               let name, _ = mk_let ~record:true x #: nt in
               let new_seed : new_seed =
                 ((name, ty, Typectx [ name.x #: ty ]), nt)
