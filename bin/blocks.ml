@@ -91,10 +91,12 @@ end
 module rec RelationCache : sig
   val add : identifier -> identifier -> Relations.relation -> unit
   val check : identifier -> identifier -> Relations.relation option
+  val reset_cache : unit -> unit
 end = struct
   type t = (string * string, Relations.relation) Hashtbl.t
 
   let cache : t = Hashtbl.create 10000
+  let reset_cache () = Hashtbl.clear cache
 
   let add (l : identifier) (r : identifier) (rel : Relations.relation) : unit =
     Hashtbl.add cache (l.x, r.x) rel
@@ -142,7 +144,7 @@ end = struct
         Timeout.sub_rty_bool_or_timeout ctx (ty, target_ty)
       in
 
-      print_endline (Timeout.bool_or_timeout_to_string implies_target);
+      (* print_endline (Timeout.bool_or_timeout_to_string implies_target); *)
 
       (* Short circuit on timeout *)
       if implies_target = Timeout then Timeout
@@ -151,7 +153,7 @@ end = struct
         let implied_by_target =
           Timeout.sub_rty_bool_or_timeout ctx (target_ty, ty)
         in
-        print_endline (Timeout.bool_or_timeout_to_string implied_by_target);
+        (* print_endline (Timeout.bool_or_timeout_to_string implied_by_target); *)
         match (implies_target, implied_by_target) with
         | Timeout, _ | _, Timeout -> Timeout
         | Result true, Result true -> Equiv
@@ -192,6 +194,7 @@ module BlockSet : sig
   val empty : t
   val singleton : Block.t -> t
   val add_block : t -> Block.t -> t
+  val get_idx : t -> Ptset.elt -> Block.t
   val union : t -> t -> t
   val inter : t -> t -> t
   val diff : t -> t -> t
@@ -199,6 +202,7 @@ module BlockSet : sig
   val print : t -> unit
   val is_empty : t -> bool
   val fold : ('a -> Block.t -> 'a) -> 'a -> t -> 'a
+  val get_succs : t -> Block.t -> Ptset.t
   val extract : t -> Block.t -> Block.t option * Ptset.t * Ptset.t
   val existentialize : t -> t
 end = struct
@@ -239,6 +243,10 @@ end = struct
   let is_empty (pm : t) : bool = P.is_empty pm
   let singleton (x : Block.t) : t = P.singleton x ()
   let add_block (pm : t) x : t = P.add x () pm
+
+  let get_idx (pm : t) (idx : Ptset.elt) : Block.t =
+    P.find_ix idx pm |> P.get_key
+
   let union (l : t) (r : t) : t = P.union l r
   let inter (l : t) (r : t) : t = P.inter l r
   let diff (l : t) (r : t) : t = P.diff l r
@@ -250,6 +258,9 @@ end = struct
   let fold (f : 'a -> P.key -> 'a) (acc : 'a) (pm : t) : 'a =
     P.fold (fun n acc -> f acc (P.get_key n)) pm acc
 
+  let get_succs (pm : t) (b : P.key) : Ptset.t =
+    P.find b pm |> snd |> P.get_sucs
+
   let extract (pm : t) (b : P.key) =
     let equal_block, n, pm =
       match P.add_find b () pm with
@@ -257,7 +268,7 @@ end = struct
           print_endline "found";
           (Some (P.get_key n), n, pm)
       | Added (_, n, new_pm) ->
-          print_endline "added";
+          (* print_endline "added"; *)
           (None, n, new_pm)
     in
 
@@ -276,7 +287,7 @@ end = struct
           Typectx.to_list local_ctx |> List.filter (fun { x; _ } -> x <> id.x)
         in
         let ext_rty = exists_rtys_to_rty local_ctx rty in
-        add_block acc (id, ext_rty, Typectx.emp))
+        add_block acc (id, ext_rty, Typectx.Typectx [ id.x #: ext_rty ]))
       pm P.empty
 end
 
@@ -399,12 +410,13 @@ module BlockMap = struct
                   (List.fold_left
                      (fun path_specific_list x ->
                        let new_path_ctx =
-                         promote_ctx_to_path new_uctx.local_ctx ~promote_ctx:x
+                         promote_ctx_to_path joined_ctx ~promote_ctx:x
                        in
 
                        let new_path_uctx =
-                         { new_uctx with local_ctx = new_path_ctx }
+                         uctx_add_local_ctx uctx new_path_ctx
                        in
+
                        let new_path_ut =
                          Termcheck.term_type_infer_with_rec_check new_path_uctx
                            { x = term.x; ty = block_id.ty }
@@ -641,10 +653,73 @@ module Extraction = struct
     in
     aux x
 
+  let rec minimize_type_helper (map : BlockSet.t) (target_ty : t rty)
+      (acc : 'a list) (remaining_set : Ptset.t) (current_minimum : t rty) :
+      ('a list * t rty) option =
+    if Ptset.is_empty remaining_set then None
+    else
+      let idx = Ptset.max_elt remaining_set in
+      let new_term = BlockSet.get_idx map idx in
+      let id, rty, lc = new_term in
+
+      let new_term_succs = BlockSet.get_succs map new_term in
+
+      let new_thing : local_ctx * (identifier * t rty) * Ptset.t =
+        (lc, (id, rty), new_term_succs)
+      in
+
+      let new_covered_rty = unioned_rty_type (new_thing :: acc) in
+
+      let uctx = !global_uctx |> Option.get in
+
+      if sub_rty_bool uctx (new_covered_rty, target_ty) then
+        if sub_rty_bool uctx (current_minimum, new_covered_rty) then
+          Some (new_thing :: acc, new_covered_rty)
+        else
+          minimize_type_helper map target_ty acc
+            (Ptset.remove idx remaining_set)
+            current_minimum
+      else
+        (* Other successors to draw on if not sufficient in hitting the target
+           type *)
+        let other_succs = Ptset.diff remaining_set new_term_succs in
+        minimize_type_helper map target_ty (new_thing :: acc) other_succs
+          current_minimum
+
   (* Try to reduce coverage of a specific term*)
-  let minimize_type (x : (local_ctx * (identifier * t rty) * Ptset.t) list)
+  let minimize_type (map : BlockSet.t)
+      (x : (local_ctx * (identifier * t rty) * Ptset.t) list)
       (target_ty : t rty) : (local_ctx * (identifier * t rty) * Ptset.t) list =
-    failwith "unimplemented"
+    let uctx = !global_uctx |> Option.get in
+    let current_coverage_type = unioned_rty_type x in
+    assert (sub_rty_bool uctx (current_coverage_type, target_ty));
+
+    List.fold_left
+      (fun (current_min_coverage, (acc : _ list)) idx : (t rty * _ list) ->
+        let current_term, rest_terms =
+          Core.List.drop x idx |> List.destruct_opt |> Option.get
+        in
+
+        let lc, (_, _), ptset = current_term in
+
+        if Ptset.is_empty ptset then
+          (* Bail out if there are no other possible options*)
+          ( current_min_coverage,
+            List.concat [ acc; [ current_term ]; rest_terms ] )
+        else
+          let _ = (current_min_coverage, [ current_term ]) in
+
+          match
+            minimize_type_helper map target_ty
+              (List.concat [ acc; rest_terms ])
+              ptset current_min_coverage
+          with
+          | None -> (current_min_coverage, acc)
+          | Some (interesting_terms, new_min_coverage) ->
+              (new_min_coverage, List.append interesting_terms acc))
+      (current_coverage_type, [])
+      (range (List.length x))
+    |> snd
 
   (* Try to increase the coverage of a specific term to satisfy
      the target type *)
@@ -652,7 +727,7 @@ module Extraction = struct
       (target_ty : t rty) : (local_ctx * (identifier * t rty) * Ptset.t) list =
     let uctx = !global_uctx |> Option.get in
     (* this should fail*)
-    assert (sub_rty_bool uctx (unioned_rty_type x, target_ty));
+    assert (not (sub_rty_bool uctx (unioned_rty_type x, target_ty)));
     failwith "unimplemented"
 
   (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
@@ -660,6 +735,7 @@ module Extraction = struct
       (local_ctx * _ list) list =
     let target_nty = erase_rty target_ty in
     let uctx = !global_uctx |> Option.get in
+    RelationCache.reset_cache ();
 
     (* Create a target block that we are missing *)
     let target_block : Block.t =
@@ -680,15 +756,6 @@ module Extraction = struct
       BlockSet.extract general_set target_block
     in
 
-    failwith "stop here for now";
-
-    (* Do we care about pred blocks from general?
-       Pred blocks have less coverage than the target
-       Hmmm, maybe starting from smallest and going up?
-       Except when you already have no coverage from paths... then skip straight
-       to the succ_blocks since you need all the coverage
-        Not true because you can join small blocks together
-    *)
     (match equal_block with
     | Some b ->
         print_endline (Block.layout b);
@@ -701,15 +768,21 @@ module Extraction = struct
     let path_specific_sets =
       List.map
         (fun (lc, bc) ->
+          ( BlockCollection.get_full_map bc |> fun x ->
+            BlockMap.get_opt x target_nty
+            |> Option.value ~default:BlockSet.empty
+            |> BlockSet.print );
+
           BlockCollection.get_full_map bc |> fun x ->
-          BlockMap.get_opt x target_nty |> Option.value ~default:BlockSet.empty
+          BlockMap.get_opt x target_nty
+          |> Option.value ~default:BlockSet.empty
+          |> BlockSet.existentialize
           |> fun x -> (lc, x))
         collection.path_specific
     in
 
     (* We are going to do some normalization setup *)
     (* All General terms are going to get pushed into paths *)
-    (* TODO: Existentialize each of the types here : exists_rtys_to_rty  *)
     let path_specific_sets =
       List.map
         (fun (lc, bs) ->
@@ -718,6 +791,7 @@ module Extraction = struct
               (* I haven't  *)
                 (fun acc (id, rt, block_ctx) ->
                 let new_context, mapping = NameTracking.freshen block_ctx in
+                print_endline id.x;
                 let fresh_id = (Hashtbl.find mapping id.x) #: id.ty in
                 let fresh_rt = Pieces.ut_subst rt mapping in
                 NameTracking.add_ast fresh_id
@@ -736,6 +810,10 @@ module Extraction = struct
         Printf.printf "Path Specific Collection\n";
         BlockSet.print set)
       path_specific_sets;
+
+    NameTracking.debug ();
+
+    failwith "stop here for now";
 
     let block_options_in_each_path =
       List.map
