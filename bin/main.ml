@@ -1,5 +1,4 @@
 open Typing
-open Core
 open Term
 open Pieces
 open Blocks
@@ -66,7 +65,7 @@ let handle_first_arg (a : (t, t value) typed) (rty : t rty) =
       let _retty = subst_rty_instance arg (AVar fixarg) retty in
       (*       Pp.printf "\nSubstituted Return Type: %s\n" (layout_rty _retty); *)
       assert (
-        Sexp.( = )
+        Core.Sexp.( = )
           (Rty.sexp_of_rty Nt.sexp_of_t _retty)
           (Rty.sexp_of_rty Nt.sexp_of_t retty));
       let rec_fix = fixname.x #: rty' in
@@ -148,7 +147,7 @@ let get_args_rec_retty_body_from_source meta_config_file source_file =
             Some (name, rty)
         | _ -> None)
       processed_file
-    |> Option.value_exn
+    |> Option.get
   in
   Pp.printf "\nSynthesis Problem: %s:%s\n" synth_name (layout_rty synth_type);
 
@@ -165,7 +164,7 @@ let get_args_rec_retty_body_from_source meta_config_file source_file =
             Some body
         | _ -> None)
       processed_file
-    |> Option.value_exn
+    |> Option.get
   in
 
   let code =
@@ -280,9 +279,7 @@ let run_benchmark source_file meta_config_file =
 
   global_uctx := Some uctx;
 
-  let typed_code =
-    Typing.Termcheck.term_type_infer uctx body |> Option.value_exn
-  in
+  let typed_code = Typing.Termcheck.term_type_infer uctx body |> Option.get in
 
   Pp.printf "\nTyped Code:\n%s\n" (layout_rty typed_code.ty);
 
@@ -389,7 +386,7 @@ let regular_directory =
           failwith "Could not determine if this was a regular directory")
 
 let cobb_synth =
-  Command.basic ~summary:"TODO"
+  Command.basic ~summary:"The Cobb synthesizer which leverages coverage types"
     Command.Let_syntax.(
       let%map_open benchmark_dir = anon ("benchmark_dir" %: regular_directory)
       and program_name =
