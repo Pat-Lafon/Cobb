@@ -248,19 +248,17 @@ module Localization = struct
       (target_ty : Nt.t rty) :
       (local_ctx * BlockMap.t * string) list
       * (Nt.t, Nt.t Term.term) Mtyped.typed =
-    print_endline "LOCALIZATION";
-
+    (* print_endline "LOCALIZATION"; *)
     pprint_simple_typectx_judge uctx (layout_typed_term body, target_ty);
 
-    print_endline (layout_rty target_ty);
-    print_endline ("BODY: " ^ layout_typed_term body);
+    (* print_endline (layout_rty target_ty);
+       print_endline ("BODY: " ^ layout_typed_term body); *)
     let inferred_body = term_type_infer uctx body |> Option.get in
     pprint_simple_typectx_judge uctx
       ( inferred_body |> map_typed_term erase_rty |> layout_typed_term,
         inferred_body.ty );
 
-    print_endline ("Inferred whole type" ^ layout_rty inferred_body.ty);
-
+    (* print_endline ("Inferred whole type" ^ layout_rty inferred_body.ty); *)
     let exnified = term_exnify body in
 
     let new_body = exnified.hole_variation in
@@ -281,16 +279,14 @@ module Localization = struct
       |> List.combine program_variations
     in
 
-    print_endline "\nInferred path conditions";
-
+    (* print_endline "\nInferred path conditions"; *)
     inferred_program_types
     |> List.iter (fun ((x, v, _), (y, v2, _)) ->
            pprint_typectx_infer uctx.local_ctx (layout_typed_term x, y.ty));
     ();
 
-    print_string "\nInitial subtyping check: ";
-    sub_rty_bool uctx (target_ty, target_ty) |> string_of_bool |> print_endline;
-
+    (* print_string "\nInitial subtyping check: "; *)
+    (* sub_rty_bool uctx (target_ty, target_ty) |> string_of_bool |> print_endline; *)
     let possible_props =
       List.split inferred_program_types
       |> snd
@@ -343,9 +339,10 @@ module Localization = struct
             current_prop :: acc
           else
             let rest_props = List.tl ps in
-            List.map (fun (a, _, _) -> a) ps
-            |> Zzdatatype.Datatype.List.split_by_comma layout_prop
-            |> print_endline;
+
+            (* List.map (fun (a, _, _) -> a) ps
+               |> Zzdatatype.Datatype.List.split_by_comma layout_prop
+               |> print_endline; *)
 
             (* Does the check work without this prop?*)
             let modified_target_ty =
@@ -356,7 +353,7 @@ module Localization = struct
               sub_rty_bool uctx (inferred_body.ty, modified_target_ty)
             in
 
-            subtyping_res |> string_of_bool |> print_endline;
+            (* subtyping_res |> string_of_bool |> print_endline; *)
             if subtyping_res then acc else current_prop :: acc)
         []
         (range (List.length possible_props))
@@ -374,13 +371,12 @@ module Localization = struct
         useful_props
     in
 
-    print_string "\nUseful path props and local vars: ";
-    remove_negations_in_props
-    |> Zzdatatype.Datatype.List.split_by_comma (fun (x, vs, _) ->
-           layout_prop x ^ " : "
-           ^ Zzdatatype.Datatype.List.split_by_comma layout_id_rty vs)
-    |> print_endline;
-
+    (* print_string "\nUseful path props and local vars: ";
+       remove_negations_in_props
+       |> Zzdatatype.Datatype.List.split_by_comma (fun (x, vs, _) ->
+              layout_prop x ^ " : "
+              ^ Zzdatatype.Datatype.List.split_by_comma layout_id_rty vs)
+       |> print_endline; *)
     let res =
       remove_negations_in_props
       |> List.map (fun (x, local_vs, s) ->

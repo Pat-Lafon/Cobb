@@ -186,7 +186,8 @@ module Pieces = struct
           let nt = erase_rty ty in
           match ty with
           | RtyBase _ ->
-              NameTracking.known_ast x #: nt (id_to_term x #: nt);
+              NameTracking.known_ast x #: nt
+                (mk_appop (Op.DtConstructor x) #: nt []);
               let name, _ = mk_let ~record:true x #: nt in
               let new_seed : new_seed =
                 ((name, ty, Typectx [ name.x #: ty ]), nt)

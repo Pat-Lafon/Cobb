@@ -5,7 +5,7 @@ open Blocks
 open Localization
 
 (* open Utils *)
-open Frontend_opt.To_typectx
+(* open Frontend_opt.To_typectx *)
 open Language.FrontendTyped
 open Zzdatatype.Datatype
 open Mtyped
@@ -22,7 +22,7 @@ let rec unfold_rty_helper rty : _ typed list * _ rty =
       let other_args, retty = unfold_rty_helper retty in
       ((arg #: (RtyBase { ou = true; cty = argcty })) :: other_args, retty)
   | RtyBase _ -> ([], rty)
-  | _ -> failwith "unfold_rty_helper::unimplemented"
+  | _ -> failwith "unfold_rty_helper::error"
 
 let rec strip_lam (t : (t, t term) typed) : (t, t term) typed =
   match t.x with
@@ -37,7 +37,7 @@ let handle_first_arg (a : (t, t value) typed) (rty : t rty) =
       let retty = subst_rty_instance arg (AVar fixarg) retty in
 
       assert (String.equal fixarg.x arg);
-      let rec_constraint_cty = Termcheck.apply_rec_arg fixarg in
+      let rec_constraint_cty = Termcheck.apply_rec_arg1 fixarg in
       let () =
         Termcheck.init_cur_rec_func_name (fixname.x, rec_constraint_cty)
       in
@@ -79,7 +79,10 @@ let get_synth_config_values meta_config_file =
   let metaj = load_json meta_config_file in
   let bound = metaj |> member "synth_bound" |> to_int in
   let timeout = metaj |> member "synth_timeout" |> to_string in
-  (bound, timeout)
+  let res_ext = metaj |> member "resfile" |> to_string in
+  let abd_ext = metaj |> member "abdfile" |> to_string in
+  let syn_ext = metaj |> member "synfile" |> to_string in
+  (bound, timeout, res_ext, abd_ext, syn_ext)
 
 let build_initial_typing_context meta_config_file : uctx =
   let prim_path = Env.get_prim_path () in
@@ -87,27 +90,19 @@ let build_initial_typing_context meta_config_file : uctx =
   let predefine =
     Commands.Cre.preproress meta_config_file prim_path.coverage_typing ()
   in
-  Pp.printf "\nPredefined:\n%s\n" (layout_structure predefine);
 
+  (*   Pp.printf "\nPredefined:\n%s\n" (layout_structure predefine); *)
   let builtin_ctx = Typing.Itemcheck.gather_uctx predefine in
-  Pp.printf "\nBuiltin Context:\n%s\n" (layout_typectx layout_rty builtin_ctx);
 
+  (*   Pp.printf "\nBuiltin Context:\n%s\n" (layout_typectx layout_rty builtin_ctx); *)
   assert (List.length predefine = List.length (Typectx.to_list builtin_ctx));
 
   let lemmas = Commands.Cre.preproress meta_config_file prim_path.axioms () in
-
-  (* TODO: There is a slightly different handling of lemmas for usingn templates*)
 
   (* Pp.printf "\nLemmas:\n%s\n" (layout_structure lemmas); *)
   let axioms =
     Typing.Itemcheck.gather_axioms lemmas |> List.map Mtyped._get_ty
   in
-  Pp.printf "\nAxioms:\n%s\n" (List.split_by "\n" layout_prop axioms);
-  let templates =
-    Commands.Cre.preproress meta_config_file prim_path.templates ()
-  in
-  let templates = Commands.Cre.handle_template templates in
-  let () = Inference.Feature.init_template templates in
 
   { builtin_ctx; local_ctx = Typectx.emp; axioms }
 
@@ -128,7 +123,7 @@ let rec swap_in_body (code : (Nt.t, Nt.t value) typed) :
   | VLam { lamarg; body } -> (
       fun x : (Nt.t, Nt.t value) typed -> (VLam { lamarg; body = x }) #: code.ty
       )
-  | _ -> failwith "Not implemented"
+  | _ -> failwith "swap_in_body::failure"
 
 let get_args_rec_retty_body_from_source meta_config_file source_file =
   let processed_file =
@@ -136,8 +131,8 @@ let get_args_rec_retty_body_from_source meta_config_file source_file =
   in
 
   assert (List.length processed_file = 2);
-  Pp.printf "\nProcessed File:\n%s\n" (layout_structure processed_file);
 
+  (*  Pp.printf "\nProcessed File:\n%s\n" (layout_structure processed_file); *)
   let synth_name, synth_type =
     List.find_map
       (fun item ->
@@ -149,12 +144,12 @@ let get_args_rec_retty_body_from_source meta_config_file source_file =
       processed_file
     |> Option.get
   in
-  Pp.printf "\nSynthesis Problem: %s:%s\n" synth_name (layout_rty synth_type);
 
+  (*   Pp.printf "\nSynthesis Problem: %s:%s\n" synth_name (layout_rty synth_type); *)
   let argtyps, retty = unfold_rty_helper synth_type in
-  Pp.printf "\nArg Types: %s\n" (List.split_by "," layout_id_rty argtyps);
-  Pp.printf "\nReturn Type: %s\n" (layout_rty retty);
 
+  (* Pp.printf "\nArg Types: %s\n" (List.split_by "," layout_id_rty argtyps);
+     Pp.printf "\nReturn Type: %s\n" (layout_rty retty); *)
   let code =
     List.find_map
       (fun item ->
@@ -184,19 +179,28 @@ let get_args_rec_retty_body_from_source meta_config_file source_file =
   in
 
   let first_arg, rec_fix, body = handle_first_arg code synth_type in
-  Pp.printf "Body: %s\n" (layout_typed_term body);
-  Pp.printf "\nFirst Arg: %s\n" (layout_id_rty first_arg);
-  Pp.printf "\nRec Fix: %s\n" (layout_id_rty rec_fix);
+  (* Pp.printf "Body: %s\n" (layout_typed_term body);
+     Pp.printf "\nFirst Arg: %s\n" (layout_id_rty first_arg);
+     Pp.printf "\nRec Fix: %s\n" (layout_id_rty rec_fix); *)
   let args = first_arg :: List.tl argtyps in
   (args, rec_fix, retty, body, reconstruct_code_with_new_body)
 
-let rec remove_excess_holes_aux t =
+let rec remove_excess_ast_aux (t : (Nt.t, Nt.t term) typed) =
   match t.x with
   | CErr | CApp _ | CAppOp _ | CVal _ -> t
   | CLetE
       {
         lhs;
-        rhs = { x = CApp { appf; apparg = { x = VConst U; _ } }; _ };
+        rhs =
+          {
+            x =
+              CApp
+                {
+                  appf = { x = VVar { x = "bool_gen"; _ }; _ };
+                  apparg = { x = VConst U; _ };
+                };
+            _;
+          };
         body =
           {
             x =
@@ -219,13 +223,49 @@ let rec remove_excess_holes_aux t =
           };
       }
     when Core.String.(lhs.x = v.x && is_prefix f.x ~prefix:"Hole") ->
-      let _ = layout_typed_term t |> print_endline in
-      let _ = f.x |> print_endline in
-      remove_excess_holes_aux exp
+      (* let _ = layout_typed_term t |> print_endline in
+         let _ = f.x |> print_endline in *)
+      remove_excess_ast_aux exp
+  | CLetE
+      {
+        lhs;
+        rhs =
+          {
+            x =
+              CApp
+                {
+                  appf = { x = VVar { x = "bool_gen"; _ }; _ };
+                  apparg = { x = VConst U; _ };
+                };
+            _;
+          };
+        body =
+          {
+            x =
+              CMatch
+                {
+                  matched = { x = VVar v; _ };
+                  match_cases =
+                    [
+                      CMatchcase
+                        {
+                          constructor = { x = "True"; _ };
+                          args = [];
+                          exp = { x = CErr; _ };
+                        };
+                      CMatchcase
+                        { constructor = { x = "False"; _ }; args = []; exp };
+                    ];
+                };
+            _;
+          };
+      }
+    when Core.String.(lhs.x = v.x) ->
+      remove_excess_ast_aux exp
   | CLetE { lhs; rhs; body } ->
-      (CLetE { lhs; rhs; body = remove_excess_holes_aux body }) #: t.ty
+      (CLetE { lhs; rhs; body = remove_excess_ast_aux body }) #: t.ty
   | CLetDeTu { turhs; tulhs; body } ->
-      (CLetDeTu { turhs; tulhs; body = remove_excess_holes_aux body }) #: t.ty
+      (CLetDeTu { turhs; tulhs; body = remove_excess_ast_aux body }) #: t.ty
   | CMatch { matched; match_cases } ->
       (CMatch
          {
@@ -234,7 +274,7 @@ let rec remove_excess_holes_aux t =
              List.map
                (fun (CMatchcase { constructor; args; exp }) ->
                  CMatchcase
-                   { constructor; args; exp = remove_excess_holes_aux exp })
+                   { constructor; args; exp = remove_excess_ast_aux exp })
                match_cases;
          })
       #: t.ty
@@ -247,22 +287,25 @@ let rec nd_join_list (t : (t, t term) typed list) : (t, t term) typed =
 
 (** Take the body of the function, a lambda to convert the body into full code,
   and output it somewhere after some cleanup.  *)
-let output_to_something (reconstruct_code_with_new_body : _ -> _) new_body :
-    unit =
+let final_program_to_string (reconstruct_code_with_new_body : _ -> _) new_body :
+    string =
   let new_frontend_prog =
     new_body |> reconstruct_code_with_new_body |> Item.map_item (fun x -> None)
   in
 
-  Frontend_opt.To_item.layout_item new_frontend_prog |> print_endline
+  Frontend_opt.To_item.layout_item new_frontend_prog
 
 let run_benchmark source_file meta_config_file =
+  let start_time = Sys.time () in
+
   let missing_coverage =
     Commands.Cre.type_infer_inner meta_config_file source_file ()
   in
 
-  Printf.printf "Missing Coverage: %s\n" (layout_rty missing_coverage);
-
-  let bound, timeout = get_synth_config_values meta_config_file in
+  (*   Printf.printf "Missing Coverage: %s\n" (layout_rty missing_coverage); *)
+  let bound, timeout, res_ext, abd_ext, syn_ext =
+    get_synth_config_values meta_config_file
+  in
 
   (*   Env.sexp_of_meta_config (!Env.meta_config |> Option.value_exn) |> dbg_sexp; *)
   let () =
@@ -281,21 +324,19 @@ let run_benchmark source_file meta_config_file =
 
   let typed_code = Typing.Termcheck.term_type_infer uctx body |> Option.get in
 
-  Pp.printf "\nTyped Code:\n%s\n" (layout_rty typed_code.ty);
-
+  (*   Pp.printf "\nTyped Code:\n%s\n" (layout_rty typed_code.ty); *)
   (match Typing.Termcheck.term_type_check uctx body retty with
   | None -> ()
   | Some _ -> failwith "Nothing to repair");
 
-  pprint_simple_typectx_infer uctx ("res", typed_code.ty);
+  (* pprint_simple_typectx_infer uctx ("res", typed_code.ty);
 
-  pprint_typectx_subtyping uctx.local_ctx (typed_code.ty, retty);
+     pprint_typectx_subtyping uctx.local_ctx (typed_code.ty, retty);
 
-  Pp.printf "\nBuiltinTypingContext Before Synthesis:\n%s\n"
-    (layout_typectx layout_rty uctx.builtin_ctx);
-  Pp.printf "\nLocalTypingContext Before Synthesis:\n%s\n"
-    (layout_typectx layout_rty uctx.local_ctx);
-
+     Pp.printf "\nBuiltinTypingContext Before Synthesis:\n%s\n"
+       (layout_typectx layout_rty uctx.builtin_ctx);
+     Pp.printf "\nLocalTypingContext Before Synthesis:\n%s\n"
+       (layout_typectx layout_rty uctx.local_ctx); *)
   assert (
     not (Typing.Termcheck.term_type_check uctx body retty |> Option.is_some));
   assert (Subtyping.Subrty.sub_rty_bool uctx (retty, missing_coverage));
@@ -309,8 +350,7 @@ let run_benchmark source_file meta_config_file =
 
   let raw_body = Anf_to_raw_term.typed_term_to_typed_raw_term new_body in
 
-  Printf.printf "Missing Coverage: %s\n" (layout_rty missing_coverage);
-
+  (*   Printf.printf "Missing Coverage: %s\n" (layout_rty missing_coverage); *)
   let ( (seeds : (Block.t * t) list),
         (components : (Pieces.component * (t list * t)) list) ) =
     Pieces.seeds_and_components uctx.builtin_ctx
@@ -322,19 +362,18 @@ let run_benchmark source_file meta_config_file =
     List.concat [ components; Pieces.components_from_args uctx.local_ctx ]
   in
 
-  Pp.printf "\nSeeds:\n%s\n"
-    (List.split_by "\n"
-       (fun (a, b) -> Block.layout a ^ " " ^ Nt.layout b)
-       seeds);
+  (* Pp.printf "\nSeeds:\n%s\n"
+       (List.split_by "\n"
+          (fun (a, b) -> Block.layout a ^ " " ^ Nt.layout b)
+          seeds);
 
-  Pp.printf "\nComponents:\n%s\n"
-    (List.split_by "\n"
-       (fun (c, (args, ret)) ->
-         Pieces.layout_component c ^ " : "
-         ^ List.split_by "," Nt.layout args
-         ^ " -> " ^ Nt.layout ret)
-       components);
-
+     Pp.printf "\nComponents:\n%s\n"
+       (List.split_by "\n"
+          (fun (c, (args, ret)) ->
+            Pieces.layout_component c ^ " : "
+            ^ List.split_by "," Nt.layout args
+            ^ " -> " ^ Nt.layout ret)
+          components); *)
   let inital_map = BlockMap.init seeds in
 
   let init_synth_col = SynthesisCollection.init inital_map context_maps in
@@ -344,27 +383,59 @@ let run_benchmark source_file meta_config_file =
   in
 
   let synthesis_result =
-    synthesis_result |> List.map (fun (a, b) -> (a, nd_join_list b))
+    synthesis_result
+    |> List.map (fun (a, b) -> (a, nd_join_list (List.map (fun (_, b) -> b) b)))
   in
 
   let new_body =
     substitution_maps
     |> List.fold_left
          (fun acc (lc, s) ->
-           Raw_term.typed_subst_raw_term s
-             (fun { ty; _ } ->
-               List.assoc lc synthesis_result
-               |> Anf_to_raw_term.denormalize_term
-               |> fun x -> x.x)
-             acc)
+           match List.assoc_opt lc synthesis_result with
+           | None -> acc
+           | Some synth_repair ->
+               Raw_term.typed_subst_raw_term s
+                 (fun _ -> (Anf_to_raw_term.denormalize_term synth_repair).x)
+                 acc)
          raw_body
-    |> Raw_term_to_anf.normalize_term |> remove_excess_holes_aux
+    |> Raw_term_to_anf.normalize_term |> remove_excess_ast_aux
+    |> remove_excess_ast_aux
   in
 
-  assert (
-    not (Typing.Termcheck.term_type_check uctx new_body retty |> Option.is_some));
 
-  output_to_something reconstruct_code_with_new_body new_body;
+  (* Utils.dbg_sexp
+     (Mtyped.sexp_of_typed Nt.sexp_of_t
+        (Term.sexp_of_term Nt.sexp_of_t)
+        new_body); *)
+
+  (* NameTracking.debug (); *)
+  let result =
+    Typing.Termcheck.term_type_check uctx new_body retty |> Option.is_some
+  in
+  if not result then failwith "Failed to type check";
+
+  let total_time = Sys.time () -. start_time in
+
+  let synthesized_program =
+    final_program_to_string reconstruct_code_with_new_body new_body
+  in
+
+  let abduction_file = source_file ^ abd_ext in
+  let synthesis_file = source_file ^ syn_ext in
+  let results_file = source_file ^ res_ext ^ ".csv" in
+
+  let results_csv_contents =
+    Printf.sprintf
+      "Result, Bounds, SMT Timeout, Queries, Total Time\n%b, %d, %s, %d, %.2f"
+      result bound timeout
+      !Backend.Check.query_counter
+      total_time
+  in
+  Core.Out_channel.write_all results_file ~data:results_csv_contents;
+  Core.Out_channel.write_all synthesis_file ~data:synthesized_program;
+  Core.Out_channel.write_all abduction_file
+    ~data:
+      (Rty.sexp_of_rty Nt.sexp_of_t missing_coverage |> Core.Sexp.to_string_hum);
 
   print_endline "Finished Synthesis"
 

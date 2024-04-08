@@ -46,7 +46,6 @@ module NameTracking = struct
       let t = get_ast a in
       match t with
       | Some ({ x = CVal { x = VConst _; _ }; ty } as t) -> ([], t)
-      | Some { x = CVal { x = VTu l; _ }; _ } -> failwith "get_term::VTu"
       | Some ({ x = CVal { x = VVar s; _ }; ty } as t) ->
           (* Check for a level of indirection *)
           (* String.equal (layout_typed_term t)
@@ -55,14 +54,11 @@ module NameTracking = struct
           else
             let bindings, rhs = aux s in
             ((a, t) :: bindings, rhs)
-      | Some { x = CLetE _; ty } -> failwith "get_term::unimplemented::CLetE"
-      | Some { x = CLetDeTu _; ty } ->
-          failwith "get_term::unimplemented::CLetDeTu"
       | Some ({ x = CApp { appf; apparg = { x = VVar id; _ } }; ty } as t) ->
           let bindings, rhs = aux id in
           ((a, t) :: bindings, rhs)
       | Some ({ x = CApp { appf; apparg = { x = VConst U; _ } }; ty } as t) ->
-          ([], t)
+          ([ (a, t) ], t)
       | Some { x = CApp { appf; apparg }; ty } ->
           failwith "get_term::unimplemented::CApp"
       | Some ({ x = CAppOp { op; appopargs }; ty } as t) ->
@@ -76,6 +72,8 @@ module NameTracking = struct
             |> List.split |> fst |> List.concat
           in
           (args, t)
+      | Some { x = CLetE _; _ }
+      | Some { x = CLetDeTu _; _ }
       | Some { x = CVal _; _ }
       | Some { x = CErr; _ }
       | Some { x = CMatch _; _ }
