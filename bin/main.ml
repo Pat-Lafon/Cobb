@@ -402,7 +402,6 @@ let run_benchmark source_file meta_config_file =
     |> remove_excess_ast_aux
   in
 
-
   (* Utils.dbg_sexp
      (Mtyped.sexp_of_typed Nt.sexp_of_t
         (Term.sexp_of_term Nt.sexp_of_t)

@@ -16,8 +16,19 @@
   (pps ppx_jane)))
 
 (library
+ (name localctx)
+ (libraries underapproximation_type.typing tracking)
+ (modules localctx))
+
+(library
  (name blocks)
- (libraries underapproximation_type.typing timeout tracking pieces pomap)
+ (libraries
+  underapproximation_type.typing
+  localctx
+  timeout
+  tracking
+  pieces
+  pomap)
  (modules blocks)
  (preprocess
   (pps ppx_optcomp ppx_compare ppx_sexp_conv)))
@@ -46,6 +57,7 @@
   blocks
   tracking
   timeout
+  localctx
   utils)
  (modules localization)
  (inline_tests)

@@ -10,6 +10,7 @@ open Cty
 open Blocks
 open Tracking
 open Pieces
+open Localctx
 
 type 'a exn_variations = {
   full_exn : 'a;
@@ -246,7 +247,7 @@ module Localization = struct
 
   let localization (uctx : uctx) (body : (Nt.t, Nt.t Term.term) Mtyped.typed)
       (target_ty : Nt.t rty) :
-      (local_ctx * BlockMap.t * string) list
+      (LocalCtx.t * BlockMap.t * string) list
       * (Nt.t, Nt.t Term.term) Mtyped.typed =
     (* print_endline "LOCALIZATION"; *)
     pprint_simple_typectx_judge uctx (layout_typed_term body, target_ty);
@@ -380,7 +381,7 @@ module Localization = struct
     let res =
       remove_negations_in_props
       |> List.map (fun (x, local_vs, s) ->
-             let local_ctx : local_ctx =
+             let local_ctx : LocalCtx.t =
                Typectx [ mk_path_var (remove_local_vars_from_prop x local_vs) ]
              in
              (* todo: refactor this to use block_map_init*)

@@ -6,6 +6,18 @@ open Term
 open Mtyped
 open Tracking
 
+let rec typed_term_replace_block_body (t : (_, _ term) typed) replacement_body :
+    (_, _ term) typed =
+  match t.x with
+  | CVal _ -> replacement_body
+  | CLetE { lhs; rhs; body } ->
+      let new_body = typed_term_replace_block_body body replacement_body in
+      (CLetE { lhs; rhs; body = new_body }) #: new_body.ty
+  | CMatch _ | CApp _ | CAppOp _ | CErr ->
+      failwith "Unsupported use of typed_term_replace_block_body"
+  | CLetDeTu _ ->
+      failwith "typed_term_replace_block_body::CLetDeTu::unimplemented"
+
 module Pieces = struct
   let mk_let_app_const ?(record = false) (f : identifier)
       (arg : Constant.constant) : identifier * (Nt.t, Nt.t term) typed =
@@ -18,9 +30,11 @@ module Pieces = struct
 
   let mk_let_app ?(record = false) (f : identifier) (arg : identifier) :
       identifier * (Nt.t, Nt.t term) typed =
-    let ret : identifier =
-      (Rename.name ()) #: (snd @@ Nt.destruct_arr_tp f.ty)
+    assert (not (Nt.is_base_tp f.ty));
+    let new_ret_ty =
+      Nt.destruct_arr_tp f.ty |> fun (l, t) -> Nt.construct_arr_tp (List.tl l, t)
     in
+    let ret : identifier = (Rename.name ()) #: new_ret_ty in
     let app = mk_app (f |> id_to_value) (arg |> id_to_value) in
     if record then NameTracking.add_ast ret app else ();
     (ret, mk_lete ret app (ret |> id_to_term))
@@ -77,10 +91,21 @@ module Pieces = struct
 
   let mk_app (f_id : identifier) (args : identifier list) _ :
       identifier * (t, t term) typed =
-    assert (List.length args = 1);
-    let arg = List.hd args in
-    let aterm = mk_let_app ~record:true f_id arg in
-    aterm
+    assert (List.length args >= 1);
+    let res =
+      List.fold_left
+        (fun (resid, aterm) arg ->
+          assert (not (Nt.is_base_tp resid.ty));
+          let id, new_app = mk_let_app ~record:true resid arg in
+          let x = typed_term_replace_block_body aterm new_app in
+          (id, x))
+        (f_id, f_id |> id_to_term)
+        args
+    in
+    res
+  (* let arg = List.hd args in
+     let aterm = mk_let_app ~record:true f_id arg in
+     aterm *)
 
   let mk_op (ctor : (Nt.t, Op.op) typed) (args : identifier list) _ :
       identifier * (t, t term) typed =

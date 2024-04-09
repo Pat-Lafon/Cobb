@@ -10,57 +10,9 @@ open Timeout
 open Tracking
 open Pomap
 open Language
+open Localctx
 
 let global_uctx : uctx option ref = ref None
-
-type local_ctx = t rty Typectx.ctx
-
-(* Combining to local contexts together for renaming *)
-let local_ctx_union_r (Typectx l : local_ctx) (r : local_ctx) :
-    local_ctx * (string, string) Hashtbl.t =
-  map_fst
-    (fun (Typectx.Typectx res) ->
-      (* TODO: Duplicates *)
-      Typectx.Typectx (l @ res))
-    (NameTracking.freshen r)
-
-let uctx_add_local_ctx (uctx : uctx) (ctx : local_ctx) : uctx =
-  {
-    uctx with
-    local_ctx =
-      Typectx
-        (List.concat [ Typectx.to_list ctx; Typectx.to_list uctx.local_ctx ]);
-  }
-
-let promote_ctx_to_path local_ctx ~promote_ctx =
-  Typectx.Typectx (Typectx.to_list local_ctx @ Typectx.to_list promote_ctx)
-
-let combine_all_args args =
-  let arg_names = List.map (fun (id, _, _) -> id) args in
-  let ctxs = List.map (fun (_, _, ctx) -> ctx) args in
-  let unchanged_arg_name = List.hd arg_names in
-  let unchanged_context = List.hd ctxs in
-  List.fold_left2
-    (fun ((args : identifier list), (acc_context : local_ctx)) (id : identifier)
-         changed_ctx : (identifier list * local_ctx) ->
-      let new_ctx, mapping = local_ctx_union_r acc_context changed_ctx in
-      ( args
-        @ [
-            (match Hashtbl.find_opt mapping id.x with
-            | Some s -> s
-            | None ->
-                Printf.printf "id: %s\n" id.x;
-                List.iter (fun id -> Printf.printf "%s\n" id.x) args;
-                Hashtbl.iter (fun k v -> Printf.printf "%s -> %s\n" k v) mapping;
-                List.iter
-                  (fun l -> layout_typectx layout_rty l |> print_endline)
-                  ctxs;
-                failwith "you messed up")
-            #: id.ty;
-          ],
-        new_ctx ))
-    ([ unchanged_arg_name ], unchanged_context)
-    (List.tl arg_names) (List.tl ctxs)
 
 type subtypingres = NoOverlap | NotSubset | Res of (t rty, t rty term) typed
 
@@ -75,7 +27,7 @@ let analyze_subtyping_result (new_rty : (t rty, t rty term) typed option) :
   | None -> NotSubset
 
 module Block = struct
-  type t = identifier * Nt.t rty * local_ctx
+  type t = identifier * Nt.t rty * LocalCtx.t
 
   let to_typed_term ((name, ut, ctx) : t) : (Nt.t, Nt.t term) typed =
     NameTracking.get_term name
@@ -171,11 +123,13 @@ end = struct
         let res =
           if diff_base_type target_ty ty then None
           else
-            let combined_ctx, mapping = local_ctx_union_r target_ctx ctx in
+            let combined_ctx, mapping =
+              LocalCtx.local_ctx_union_r target_ctx ctx
+            in
             let updated_ty = Pieces.ut_subst ty mapping in
 
             rty_typing_relation
-              (uctx_add_local_ctx uctx combined_ctx)
+              (LocalCtx.uctx_add_local_ctx uctx combined_ctx)
               target_ty updated_ty
         in
         RelationCache.add target_id id res;
@@ -280,7 +234,7 @@ end = struct
   let existentialize (pm : t) : t =
     P.fold
       (fun n acc ->
-        let id, rty, (local_ctx : local_ctx) = P.get_key n in
+        let id, rty, (local_ctx : LocalCtx.t) = P.get_key n in
         let local_ctx =
           Typectx.to_list local_ctx |> List.filter (fun { x; _ } -> x <> id.x)
         in
@@ -352,8 +306,8 @@ module BlockMap = struct
         Relations.is_equiv_or_timeout relation_result)
       arg_names
 
-  let rec _add_to_path_specifc_list (path_specific : (local_ctx * t) list)
-      (local_ctx : local_ctx) (b : Block.t) ret_type =
+  let rec _add_to_path_specifc_list (path_specific : (LocalCtx.t * t) list)
+      (local_ctx : LocalCtx.t) (b : Block.t) ret_type =
     match path_specific with
     | [] -> [ (local_ctx, init [ (b, ret_type) ]) ]
     | (l, m) :: rest ->
@@ -367,7 +321,7 @@ module BlockMap = struct
   (* Should we separate out the general and path specific cases? *)
   let increment (new_blocks : t) (old_blocks : t)
       ((component, (args, ret_type)) : Pieces.component * (Nt.t list * Nt.t))
-      (promotable_paths : local_ctx list) : t * (local_ctx * t) list =
+      (promotable_paths : LocalCtx.t list) : t * (LocalCtx.t * t) list =
     let uctx = !global_uctx |> Option.get in
 
     (* Loop from 0 to args.len - 1 to choose an index for the `new_blocks` *)
@@ -385,13 +339,13 @@ module BlockMap = struct
         List.fold_left
           (fun (new_map, path_specific_list) (args : Block.t list) ->
             (* Correct joining of contexts? *)
-            let (arg_names : identifier list), (joined_ctx : local_ctx) =
-              combine_all_args args
+            let (arg_names : identifier list), (joined_ctx : LocalCtx.t) =
+              LocalCtx.combine_all_args args
             in
 
             let block_id, term = Pieces.apply component arg_names in
 
-            let new_uctx : uctx = uctx_add_local_ctx uctx joined_ctx in
+            let new_uctx : uctx = LocalCtx.uctx_add_local_ctx uctx joined_ctx in
 
             assert (term.ty = block_id.ty);
 
@@ -408,11 +362,11 @@ module BlockMap = struct
                   (List.fold_left
                      (fun path_specific_list x ->
                        let new_path_ctx =
-                         promote_ctx_to_path joined_ctx ~promote_ctx:x
+                         LocalCtx.promote_ctx_to_path joined_ctx ~promote_ctx:x
                        in
 
                        let new_path_uctx =
-                         uctx_add_local_ctx uctx new_path_ctx
+                         LocalCtx.uctx_add_local_ctx uctx new_path_ctx
                        in
 
                        let new_path_ut =
@@ -490,12 +444,12 @@ end
 module SynthesisCollection = struct
   type t = {
     general_coll : BlockCollection.t;
-    path_specific : (local_ctx * BlockCollection.t) list;
+    path_specific : (LocalCtx.t * BlockCollection.t) list;
   }
   (** A set of block_collections, a general one and some path specific ones *)
 
   let init (inital_seeds : BlockMap.t)
-      (path_specific_seeds : (local_ctx * BlockMap.t) list) : t =
+      (path_specific_seeds : (LocalCtx.t * BlockMap.t) list) : t =
     let general_coll : BlockCollection.t =
       { new_blocks = inital_seeds; old_blocks = [] }
     in
@@ -519,9 +473,9 @@ module SynthesisCollection = struct
 
   (* First list must be a superset of the second in terms of local_ctx used*)
   let merge_path_specific_maps
-      (path_specific : (local_ctx * BlockCollection.t) list)
-      (path_specific_maps : (local_ctx * BlockMap.t) list) :
-      (local_ctx * BlockCollection.t) list =
+      (path_specific : (LocalCtx.t * BlockCollection.t) list)
+      (path_specific_maps : (LocalCtx.t * BlockMap.t) list) :
+      (LocalCtx.t * BlockCollection.t) list =
     assert (List.length path_specific >= List.length path_specific_maps);
     List.map
       (fun (l, bc) ->
@@ -611,19 +565,19 @@ module Extraction = struct
       List.concat (inner lst)
 
   (* Helper function to get the current rty of terms under consideration *)
-  let unioned_rty_type (l : (local_ctx * (identifier * t rty) * Ptset.t) list) :
-      t rty =
+  let unioned_rty_type (l : (LocalCtx.t * (identifier * t rty) * Ptset.t) list)
+      : t rty =
     List.map (fun (_, (_, rt), _) -> rt) l |> union_rtys
 
   (* Helper function to get the current rty of terms under consideration *)
   let unioned_rty_type2
-      (l : (local_ctx * BlockSet.t * (identifier * t rty) * Ptset.t) list) :
+      (l : (LocalCtx.t * BlockSet.t * (identifier * t rty) * Ptset.t) list) :
       t rty =
     List.map (fun (_, _, (_, rt), _) -> rt) l |> union_rtys
 
   (* Try to find the largest block that can be removed *)
-  let minimize_once (x : (local_ctx * (identifier * t rty) * Ptset.t) list)
-      (target_ty : t rty) : (local_ctx * (identifier * t rty) * Ptset.t) list =
+  let minimize_once (x : (LocalCtx.t * (identifier * t rty) * Ptset.t) list)
+      (target_ty : t rty) : (LocalCtx.t * (identifier * t rty) * Ptset.t) list =
     if List.length x = 1 then x
     else
       let () = assert (List.length x > 1) in
@@ -659,9 +613,9 @@ module Extraction = struct
       res
 
   (* Repeat trying to reduce the number of blocks until minimum is found *)
-  let minimize_num (x : (local_ctx * (identifier * t rty) * Ptset.t) list)
-      (target_ty : t rty) : (local_ctx * (identifier * t rty) * Ptset.t) list =
-    let rec aux (x : (local_ctx * (identifier * t rty) * Ptset.t) list) =
+  let minimize_num (x : (LocalCtx.t * (identifier * t rty) * Ptset.t) list)
+      (target_ty : t rty) : (LocalCtx.t * (identifier * t rty) * Ptset.t) list =
+    let rec aux (x : (LocalCtx.t * (identifier * t rty) * Ptset.t) list) =
       let new_x = minimize_once x target_ty in
       if List.length new_x < List.length x then aux new_x else new_x
     in
@@ -678,7 +632,7 @@ module Extraction = struct
 
       let new_term_succs = BlockSet.get_succs map new_term in
 
-      let new_thing : local_ctx * (identifier * t rty) * Ptset.t =
+      let new_thing : LocalCtx.t * (identifier * t rty) * Ptset.t =
         (lc, (id, rty), new_term_succs)
       in
 
@@ -702,8 +656,8 @@ module Extraction = struct
 
   (* Try to reduce coverage of a specific term*)
   let minimize_type (map : BlockSet.t)
-      (x : (local_ctx * (identifier * t rty) * Ptset.t) list)
-      (target_ty : t rty) : (local_ctx * (identifier * t rty) * Ptset.t) list =
+      (x : (LocalCtx.t * (identifier * t rty) * Ptset.t) list)
+      (target_ty : t rty) : (LocalCtx.t * (identifier * t rty) * Ptset.t) list =
     let uctx = !global_uctx |> Option.get in
     let current_coverage_type = unioned_rty_type x in
     assert (sub_rty_bool uctx (current_coverage_type, target_ty));
@@ -737,9 +691,9 @@ module Extraction = struct
 
   (* Try to increase the coverage of a specific term to satisfy
      the target type *)
-  let setup_type (x : (local_ctx * BlockSet.t * (Ptset.t * Ptset.t)) list)
+  let setup_type (x : (LocalCtx.t * BlockSet.t * (Ptset.t * Ptset.t)) list)
       (target_ty : t rty) :
-      (local_ctx * BlockSet.t * (identifier * t rty) * Ptset.t) list =
+      (LocalCtx.t * BlockSet.t * (identifier * t rty) * Ptset.t) list =
     let uctx = !global_uctx |> Option.get in
 
     (* print_endline (layout_rty target_ty); *)
@@ -769,16 +723,17 @@ module Extraction = struct
 
   let path_promotion lc acc (id, rt, block_ctx) =
     let new_context, mapping = NameTracking.freshen block_ctx in
-    (* print_endline id.x; *)
     let fresh_id = (Hashtbl.find mapping id.x) #: id.ty in
     let fresh_rt = Pieces.ut_subst rt mapping in
     NameTracking.add_ast fresh_id (NameTracking.get_ast id |> Option.get);
     BlockSet.add_block acc
-      (fresh_id, fresh_rt, promote_ctx_to_path new_context ~promote_ctx:lc)
+      ( fresh_id,
+        fresh_rt,
+        LocalCtx.promote_ctx_to_path new_context ~promote_ctx:lc )
 
   (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
   let extract_blocks (collection : SynthesisCollection.t) (target_ty : t rty) :
-      (local_ctx * Block.t) list =
+      (LocalCtx.t * Block.t) list =
     let target_nty = erase_rty target_ty in
     let uctx = !global_uctx |> Option.get in
     RelationCache.reset_cache ();
@@ -802,10 +757,12 @@ module Extraction = struct
       BlockSet.extract general_set target_block
     in
 
+    assert (List.length collection.path_specific > 0);
+
     match equal_block with
     | Some b ->
         (* print_endline (Block.layout b); *)
-        let current : (local_ctx * (identifier * t rty) * Ptset.t) list =
+        let current : (LocalCtx.t * (identifier * t rty) * Ptset.t) list =
           List.map
             (fun (lc, _) ->
               let id, rty, _ =
@@ -820,16 +777,10 @@ module Extraction = struct
 
         List.map (fun (lc, (id, rty), _) -> (lc, (id, rty, lc))) current
     | _ -> (
-        assert (List.length collection.path_specific > 0);
-
         (* Get the sets for each path *)
         let path_specific_sets =
           List.map
             (fun (lc, bc) ->
-              (* ( BlockCollection.get_full_map bc |> fun x ->
-                 BlockMap.get_opt x target_nty
-                 |> Option.value ~default:BlockSet.empty
-                 |> BlockSet.print ); *)
               BlockCollection.get_full_map bc |> fun x ->
               BlockMap.get_opt x target_nty
               |> Option.value ~default:BlockSet.empty
@@ -882,7 +833,6 @@ module Extraction = struct
 
             let _ = setup_type block_options_in_each_path target_ty in
 
-            (* Eventually use a Block.to_typed_term *)
             failwith "unimplemented")
 
   (* let new_path_ctx =
@@ -896,7 +846,7 @@ module Synthesis = struct
   let rec synthesis_helper (max_depth : int) (target_type : t rty)
       (collection : SynthesisCollection.t)
       (operations : (Pieces.component * (t list * t)) list) :
-      (local_ctx * _) list =
+      (LocalCtx.t * _ list) list =
     match max_depth with
     | 0 ->
         (* SynthesisCollection.print collection; *)
@@ -920,7 +870,7 @@ module Synthesis = struct
   let synthesis (target_type : t rty) (max_depth : int)
       (inital_seeds : SynthesisCollection.t)
       (operations : (Pieces.component * (t list * t)) list) :
-      (local_ctx * _) list =
+      (LocalCtx.t * _) list =
     (* SynthesisCollection.print inital_seeds; *)
     synthesis_helper max_depth target_type inital_seeds operations
 end
