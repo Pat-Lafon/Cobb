@@ -26,9 +26,14 @@ module LocalCtx = struct
           (List.concat [ Typectx.to_list ctx; Typectx.to_list uctx.local_ctx ]);
     }
 
+  (** Take a local context and add the local context of a path which should have
+   only path constraints and local vars.
+   * must not be incompatible contexts *)
   let promote_ctx_to_path (local_ctx : t) ~promote_ctx =
     Typectx.Typectx (Typectx.to_list local_ctx @ Typectx.to_list promote_ctx)
 
+  (* Takes vars with their own locals variables and constructs a list of
+  arguments with a singular local context *)
   let combine_all_args args =
     let arg_names = List.map (fun (id, _, _) -> id) args in
     let ctxs = List.map (fun (_, _, ctx) -> ctx) args in
