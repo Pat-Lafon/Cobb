@@ -38,6 +38,13 @@ module Block = struct
       ^ if List.is_empty (Typectx.to_list ctx) then "" else " \n")
       (NameTracking.get_term name |> layout_typed_erased_term)
       (layout_ty name.ty) (layout_rty ut)
+
+  let existentialize ((name, ut, ctx) : t) : t =
+    let local_ctx =
+      Typectx.to_list ctx |> List.filter (fun { x; _ } -> x <> name.x)
+    in
+    let ext_rty = exists_rtys_to_rty local_ctx ut in
+    (name, ext_rty, Typectx.Typectx [ name.x #: ext_rty ])
 end
 
 module rec RelationCache : sig
@@ -214,32 +221,25 @@ end = struct
   let get_succs (pm : t) (b : P.key) : Ptset.t =
     P.find b pm |> snd |> P.get_sucs
 
+  (* Given a (probably dummy) block, get all blocks equivalent, above, and below
+     that block in the heirarchy *)
   let extract (pm : t) (b : P.key) =
     let equal_block, n, pm =
       match P.add_find b () pm with
-      | Found (_, n) ->
-          (* print_endline "found"; *)
-          (Some (P.get_key n), n, pm)
-      | Added (_, n, new_pm) ->
-          (* print_endline "added"; *)
-          (None, n, new_pm)
+      | Found (_, n) -> (Some (P.get_key n), n, pm)
+      | Added (_, n, new_pm) -> (None, n, new_pm)
     in
 
-    (* print_endline "extracting for pm";
-       print pm; *)
     let pred_blocks = P.get_prds n in
     let succ_blocks = P.get_sucs n in
     (equal_block, pred_blocks, succ_blocks)
 
+  (* Produce a new block set where each block is existentialized. *)
+  (* todo: Probably inefficient? Maybe cut this? ... But maybe exactly what we
+  want *)
   let existentialize (pm : t) : t =
     P.fold
-      (fun n acc ->
-        let id, rty, (local_ctx : LocalCtx.t) = P.get_key n in
-        let local_ctx =
-          Typectx.to_list local_ctx |> List.filter (fun { x; _ } -> x <> id.x)
-        in
-        let ext_rty = exists_rtys_to_rty local_ctx rty in
-        add_block acc (id, ext_rty, Typectx.Typectx [ id.x #: ext_rty ]))
+      (fun n acc -> add_block acc (Block.existentialize (P.get_key n)))
       pm P.empty
 end
 
