@@ -6,6 +6,12 @@ let dbg_sexp sexp = print_endline (Core.Sexp.to_string_hum sexp)
 let ty_intlist = Nt.Ty_constructor ("list", [ Ty_int ])
 let ty_intrbtree = Nt.Ty_constructor ("rbtree", [ Ty_int ])
 let ty_inttree = Nt.Ty_constructor ("tree", [ Ty_int ])
+
+let rty_is_false (rty : Nt.t Rty.rty) : bool =
+  match rty with
+  | RtyBase { cty = Cty { phi = Lit { x = AC (B false); _ }; _ }; _ } -> true
+  | _ -> false
+
 let map_fst f (l, r) = (f l, r)
 
 (** Produces a list from 0..n-1 *)

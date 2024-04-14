@@ -19,11 +19,7 @@ type subtypingres = NoOverlap | NotSubset | Res of (t rty, t rty term) typed
 let analyze_subtyping_result (new_rty : (t rty, t rty term) typed option) :
     subtypingres =
   match new_rty with
-  | Some new_rty -> (
-      match new_rty.ty with
-      | RtyBase { cty = Cty { phi = Lit { x = AC (B false); _ }; _ }; _ } ->
-          NoOverlap
-      | _ -> Res new_rty)
+  | Some new_rty -> if rty_is_false new_rty.ty then NoOverlap else Res new_rty
   | None -> NotSubset
 
 module Relations : sig
@@ -683,8 +679,10 @@ module Extraction = struct
     List.map (fun (_, _, (_, rt), _) -> rt) l |> union_rtys
 
   (* Try to find the largest block that can be removed *)
-  let minimize_once (x : (LocalCtx.t * (identifier * t rty) * Ptset.t) list)
-      (target_ty : t rty) : (LocalCtx.t * (identifier * t rty) * Ptset.t) list =
+  let minimize_once
+      (x : (LocalCtx.t * BlockSetE.t * (identifier * t rty) * Ptset.t) list)
+      (target_ty : t rty) :
+      (LocalCtx.t * BlockSetE.t * (identifier * t rty) * Ptset.t) list =
     if List.length x = 1 then x
     else
       let () = assert (List.length x > 1) in
@@ -694,16 +692,16 @@ module Extraction = struct
       print_endline (layout_rty target_ty);
 
       (* Assert that current min passes subtyping check *)
-      assert (sub_rty_bool uctx (unioned_rty_type x, target_ty));
+      assert (sub_rty_bool uctx (unioned_rty_type2 x, target_ty));
 
-      let current_min = unioned_rty_type x in
+      let current_min = unioned_rty_type2 x in
 
-      print_endline (unioned_rty_type x |> layout_rty);
+      print_endline (unioned_rty_type2 x |> layout_rty);
 
       let res =
         List.fold_left
           (fun (current_min, current_list) proposed_list ->
-            let proposed_min = unioned_rty_type proposed_list in
+            let proposed_min = unioned_rty_type2 proposed_list in
             if
               (* The proposed min implies the target*)
               sub_rty_bool uctx (proposed_min, target_ty)
@@ -716,13 +714,15 @@ module Extraction = struct
         |> snd
       in
 
-      assert (sub_rty_bool uctx (unioned_rty_type res, target_ty));
+      assert (sub_rty_bool uctx (unioned_rty_type2 res, target_ty));
       res
 
   (* Repeat trying to reduce the number of blocks until minimum is found *)
-  let minimize_num (x : (LocalCtx.t * (identifier * t rty) * Ptset.t) list)
-      (target_ty : t rty) : (LocalCtx.t * (identifier * t rty) * Ptset.t) list =
-    let rec aux (x : (LocalCtx.t * (identifier * t rty) * Ptset.t) list) =
+  let minimize_num
+      (x : (LocalCtx.t * BlockSetE.t * ExistentializedBlock.t * Ptset.t) list)
+      (target_ty : t rty) :
+      (LocalCtx.t * BlockSetE.t * ExistentializedBlock.t * Ptset.t) list =
+    let rec aux (x : _ list) =
       let new_x = minimize_once x target_ty in
       if List.length new_x < List.length x then aux new_x else new_x
     in
@@ -857,17 +857,20 @@ module Extraction = struct
 
     match equal_block with
     | Some b ->
-        let current : (LocalCtx.t * ExistentializedBlock.t * Ptset.t) list =
+        let current : _ list =
           List.map
             (fun (lc, _) ->
               (* We already have our solution so we only need the set of paths *)
-              (lc, ExistentializedBlock.path_promotion lc b, Ptset.empty))
+              ( lc,
+                BlockSetE.empty,
+                ExistentializedBlock.path_promotion lc b,
+                Ptset.empty ))
             collection.path_specific
         in
 
         let current = minimize_num current target_ty in
 
-        List.map (fun (lc, b, _) -> (lc, b)) current
+        List.map (fun (lc, _, b, _) -> (lc, b)) current
     | _ -> (
         (* Get the sets for each path *)
         let path_specific_sets =
@@ -967,15 +970,11 @@ module Extraction = struct
                 Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
               block_choices;
 
+            let block_choices = minimize_num block_choices target_ty in
+
             (* When we are done, drop any remaining predesessors and the block
                map *)
             List.map (fun (lc, _, b, _) -> (lc, b)) block_choices)
-
-  (* let new_path_ctx =
-                     promote_ctx_to_path new_uctx.local_ctx ~promote_ctx:x
-                   in *)
-
-  (* When does repair happen? Now? Or do I extract this out? *)
 end
 
 module Synthesis = struct

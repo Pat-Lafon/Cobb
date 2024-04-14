@@ -280,12 +280,6 @@ module Localization = struct
       |> List.combine program_variations
     in
 
-    (* print_endline "\nInferred path conditions"; *)
-    inferred_program_types
-    |> List.iter (fun ((x, v, _), (y, v2, _)) ->
-           pprint_typectx_infer uctx.local_ctx (layout_typed_term x, y.ty));
-    ();
-
     (* print_string "\nInitial subtyping check: "; *)
     (* sub_rty_bool uctx (target_ty, target_ty) |> string_of_bool |> print_endline; *)
     let possible_props =
@@ -297,13 +291,23 @@ module Localization = struct
              (Prop.Not phi, local_vs, s))
     in
 
+    (* print_endline "Possible props: ";
+       List.iter
+         (fun (x, local_vs, s) ->
+           print_endline (layout_prop x);
+           List.iter (fun x -> print_endline (layout_id_rty x)) local_vs)
+         possible_props; *)
+
     (* Check that on it's own, the inferred type is no sufficient *)
     assert (not (sub_rty_bool uctx (inferred_body.ty, target_ty)));
 
-    ((* Check that with all path conditions negated, the inferred type is trivially sufficient but not vaciously so *)
+    ((* Check that with all path conditions negated, the inferred type is trivially sufficient *)
      let modified_target_ty = add_props_to_base target_ty possible_props in
      assert (sub_rty_bool uctx (inferred_body.ty, modified_target_ty));
-     assert (not (sub_rty_bool uctx (modified_target_ty, inferred_body.ty))));
+
+     if not (rty_is_false inferred_body.ty) then
+       (* but not vaciously so *)
+       assert (not (sub_rty_bool uctx (modified_target_ty, inferred_body.ty))));
 
     (* Lets try and exclude all paths with local variables and see if it still
        checks out
