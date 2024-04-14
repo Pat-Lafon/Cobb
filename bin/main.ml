@@ -382,6 +382,8 @@ let run_benchmark source_file meta_config_file =
     Synthesis.synthesis missing_coverage bound init_synth_col components
   in
 
+(*   NameTracking.debug ();
+ *)
   let synthesis_result =
     synthesis_result
     |> List.map (fun (a, b) -> (a, nd_join_list (List.map (fun (_, b) -> b) b)))
@@ -402,10 +404,10 @@ let run_benchmark source_file meta_config_file =
     |> remove_excess_ast_aux
   in
 
-  (* Utils.dbg_sexp
-     (Mtyped.sexp_of_typed Nt.sexp_of_t
-        (Term.sexp_of_term Nt.sexp_of_t)
-        new_body); *)
+(*   Utils.dbg_sexp
+    (Mtyped.sexp_of_typed Nt.sexp_of_t
+       (Term.sexp_of_term Nt.sexp_of_t)
+       new_body); *)
 
   (* NameTracking.debug (); *)
   let result =

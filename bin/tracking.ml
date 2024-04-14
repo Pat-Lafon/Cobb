@@ -11,7 +11,10 @@ module NameTracking = struct
   let debug () =
     print_endline "ASTS";
     Hashtbl.iter
-      (fun a b -> Printf.printf "%s -> %s\n" a.x (layout_typed_term b))
+      (fun a b ->
+        Printf.printf "%s ->\n" a.x;
+        Utils.dbg_sexp
+          (Mtyped.sexp_of_typed Nt.sexp_of_t (Term.sexp_of_term Nt.sexp_of_t) b))
       asts;
     print_endline "KNOWN";
     Hashtbl.iter (fun a _ -> Printf.printf "%s\n" a.x) known
@@ -45,7 +48,8 @@ module NameTracking = struct
     let rec aux a : _ list * (t, t term) typed =
       let t = get_ast a in
       match t with
-      | Some ({ x = CVal { x = VConst _; _ }; ty } as t) -> ([], t)
+      | Some ({ x = CVal { x = VConst _; _ }; ty } as t) ->
+          failwith "unimplemented"
       | Some ({ x = CVal { x = VVar s; _ }; ty } as t) ->
           (* Check for a level of indirection *)
           (* String.equal (layout_typed_term t)
@@ -53,12 +57,12 @@ module NameTracking = struct
           if String.equal a.x s.x then ([], t)
           else
             let bindings, rhs = aux s in
-            ((a, t) :: bindings, rhs)
+            (bindings, rhs)
       | Some ({ x = CApp { appf; apparg = { x = VVar id; _ } }; ty } as t) ->
           let bindings, rhs = aux id in
-          ((a, t) :: bindings, rhs)
+          ((id, rhs) :: bindings, t)
       | Some ({ x = CApp { appf; apparg = { x = VConst U; _ } }; ty } as t) ->
-          ([ (a, t) ], t)
+          ([], t)
       | Some { x = CApp { appf; apparg }; ty } ->
           failwith "get_term::unimplemented::CApp"
       | Some ({ x = CAppOp { op; appopargs }; ty } as t) ->
@@ -66,10 +70,12 @@ module NameTracking = struct
             List.map
               (fun x ->
                 match x.x with
-                | VVar id -> aux id
+                | VVar id ->
+                    let bindings, rhs = aux id in
+                    (id, rhs) :: bindings
                 | _ -> failwith "get_term::unimplemented::CAppOp")
               appopargs
-            |> List.split |> fst |> List.concat
+            |> List.concat
           in
           (args, t)
       | Some { x = CLetE _; _ }
@@ -91,7 +97,6 @@ module NameTracking = struct
       t rty Typectx.ctx =
     Typectx.map_ctx_typed
       (fun ({ x; ty } : (t rty, string) typed) : (t rty, string) typed ->
-        (* foldLeft ( takes the old type, and the id, substitute if id is in old type, return the new type ) (the unsubstituted type) (the var space ) *)
         let renamed_ty =
           List.fold_left
             (fun t name ->
@@ -99,8 +104,6 @@ module NameTracking = struct
               else
                 let new_name = Hashtbl.find ht name.x in
                 subst_rty_instance name.x (AVar new_name #: name.ty) t)
-            (* let new_name = Hashtbl.find ht name.x in
-               subst_rty_instance name.x (AVar new_name #: (erase_rty t)) t *)
             ty (fv_rty ty)
         in
         let new_name = Hashtbl.find ht x in
@@ -124,8 +127,7 @@ module NameTracking = struct
           | None -> failwith name.x
           | Some x -> Hashtbl.add asts new_name x
         in
-        (* TODO: remove this since context addition checks this already ?*)
-        if Hashtbl.mem ht name.x then failwith "duplicate key";
+        assert (not (Hashtbl.mem ht name.x));
         Hashtbl.add ht name.x new_name.x;
         new_name.x #: name_rty.ty
     in

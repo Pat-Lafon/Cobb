@@ -19,7 +19,7 @@ let rec typed_term_replace_block_body (t : (_, _ term) typed) replacement_body :
       failwith "typed_term_replace_block_body::CLetDeTu::unimplemented"
 
 module Pieces = struct
-  let mk_let_app_const ?(record = false) (f : identifier)
+  let mk_let_app_const ~(record : bool) (f : identifier)
       (arg : Constant.constant) : identifier * (Nt.t, Nt.t term) typed =
     let ret : identifier =
       (Rename.name ()) #: (snd @@ Nt.destruct_arr_tp f.ty)
@@ -28,7 +28,7 @@ module Pieces = struct
     if record then NameTracking.add_ast ret app else ();
     (ret, mk_lete ret app (ret |> id_to_term))
 
-  let mk_let_app ?(record = false) (f : identifier) (arg : identifier) :
+  let mk_let_app ~(record : bool) (f : identifier) (arg : identifier) :
       identifier * (Nt.t, Nt.t term) typed =
     assert (not (Nt.is_base_tp f.ty));
     let new_ret_ty =
@@ -103,9 +103,6 @@ module Pieces = struct
         args
     in
     res
-  (* let arg = List.hd args in
-     let aterm = mk_let_app ~record:true f_id arg in
-     aterm *)
 
   let mk_op (ctor : (Nt.t, Op.op) typed) (args : identifier list) _ :
       identifier * (t, t term) typed =
