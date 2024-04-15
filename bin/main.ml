@@ -332,25 +332,15 @@ let run_benchmark source_file meta_config_file =
   (* pprint_simple_typectx_infer uctx ("res", typed_code.ty);
 
      pprint_typectx_subtyping uctx.local_ctx (typed_code.ty, retty);
-
-     Pp.printf "\nBuiltinTypingContext Before Synthesis:\n%s\n"
-       (layout_typectx layout_rty uctx.builtin_ctx);
+  *)
+  (* Pp.printf "\nBuiltinTypingContext Before Synthesis:\n%s\n"
+       (Frontend_opt.To_typectx.layout_typectx layout_rty uctx.builtin_ctx);
      Pp.printf "\nLocalTypingContext Before Synthesis:\n%s\n"
-       (layout_typectx layout_rty uctx.local_ctx); *)
+       (Frontend_opt.To_typectx.layout_typectx layout_rty uctx.local_ctx); *)
   assert (
     not (Typing.Termcheck.term_type_check uctx body retty |> Option.is_some));
   assert (Subtyping.Subrty.sub_rty_bool uctx (retty, missing_coverage));
 
-  let path_maps, new_body =
-    Localization.localization uctx body missing_coverage
-  in
-
-  let context_maps = List.map (fun (a, b, _) -> (a, b)) path_maps in
-  let substitution_maps = List.map (fun (a, _, c) -> (a, c)) path_maps in
-
-  let raw_body = Anf_to_raw_term.typed_term_to_typed_raw_term new_body in
-
-  (*   Printf.printf "Missing Coverage: %s\n" (layout_rty missing_coverage); *)
   let ( (seeds : (Block.t * t) list),
         (components : (Pieces.component * (t list * t)) list) ) =
     Pieces.seeds_and_components uctx.builtin_ctx
@@ -361,6 +351,19 @@ let run_benchmark source_file meta_config_file =
   let components =
     List.concat [ components; Pieces.components_from_args uctx.local_ctx ]
   in
+
+  let path_maps, new_body =
+    Localization.localization uctx body missing_coverage
+  in
+
+  print_endline ("Number of paths: " ^ string_of_int (List.length path_maps));
+
+  let context_maps = List.map (fun (a, b, _) -> (a, b)) path_maps in
+  let substitution_maps = List.map (fun (a, _, c) -> (a, c)) path_maps in
+
+  let raw_body = Anf_to_raw_term.typed_term_to_typed_raw_term new_body in
+
+  (*   Printf.printf "Missing Coverage: %s\n" (layout_rty missing_coverage); *)
 
   (* Pp.printf "\nSeeds:\n%s\n"
        (List.split_by "\n"
@@ -382,8 +385,7 @@ let run_benchmark source_file meta_config_file =
     Synthesis.synthesis missing_coverage bound init_synth_col components
   in
 
-(*   NameTracking.debug ();
- *)
+  (* NameTracking.debug (); *)
   let synthesis_result =
     synthesis_result
     |> List.map (fun (a, b) -> (a, nd_join_list (List.map (fun (_, b) -> b) b)))
@@ -404,16 +406,16 @@ let run_benchmark source_file meta_config_file =
     |> remove_excess_ast_aux
   in
 
-(*   Utils.dbg_sexp
-    (Mtyped.sexp_of_typed Nt.sexp_of_t
-       (Term.sexp_of_term Nt.sexp_of_t)
-       new_body); *)
+  (* Utils.dbg_sexp
+     (Mtyped.sexp_of_typed Nt.sexp_of_t
+        (Term.sexp_of_term Nt.sexp_of_t)
+        new_body); *)
 
   (* NameTracking.debug (); *)
   let result =
     Typing.Termcheck.term_type_check uctx new_body retty |> Option.is_some
   in
-  if not result then failwith "Failed to type check";
+  if not result then failwith "Failed to type check result";
 
   let total_time = Sys.time () -. start_time in
 

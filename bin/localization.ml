@@ -386,24 +386,30 @@ module Localization = struct
       remove_negations_in_props
       |> List.map (fun (x, local_vs, s) ->
              let local_ctx : LocalCtx.t =
-               Typectx [ mk_path_var (remove_local_vars_from_prop x local_vs) ]
+               let path_var =
+                 mk_path_var (remove_local_vars_from_prop x local_vs)
+               in
+               (* let _ =
+                    NameTracking.known_var path_var.x #: (erase_rty path_var.ty)
+                  in *)
+               Typectx [ path_var ]
              in
              (* todo: refactor this to use block_map_init*)
              let block_map =
-               List.fold_left
-                 (fun (acc : BlockMap.t) local_v ->
-                   let nty = erase_rty local_v.ty in
-                   let block : Block.t =
-                     ( local_v.x #: nty,
-                       local_v.ty,
-                       (* We intentionally want to add the variables before the
-                          current local_ctx as we want them available ot fill holes
-                          from remove_local_vars_from_prop *)
-                       Typectx (local_v :: Typectx.to_list local_ctx) )
-                   in
-                   let block_map = BlockMap.add acc block nty in
-                   block_map)
-                 [] local_vs
+               BlockMap.init
+                 (List.map
+                    (fun local_v ->
+                      let nty = erase_rty local_v.ty in
+                      let block : Block.t =
+                        ( local_v.x #: nty |> NameTracking.known_var,
+                          local_v.ty,
+                          (* We intentionally want to add the variables before the
+                             current local_ctx as we want them available to fill holes
+                             from remove_local_vars_from_prop *)
+                          Typectx (local_v :: Typectx.to_list local_ctx) )
+                      in
+                      (block, nty))
+                    local_vs)
              in
              (local_ctx, block_map, s))
     in
