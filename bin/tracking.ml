@@ -21,13 +21,13 @@ module NameTracking = struct
 
   let is_known (name : identifier) = Hashtbl.mem known name
 
-  let known_var (a : identifier) =
-    Hashtbl.add known a ();
-    Hashtbl.add asts a (a |> id_to_term);
-    a
-
   let add_ast (a : identifier) (term : (t, t term) typed) =
     Hashtbl.add asts a term
+
+  let known_var (a : identifier) =
+    Hashtbl.add known a ();
+    add_ast a (a |> id_to_term);
+    a
 
   let known_ast (a : identifier) (term : (t, t term) typed) =
     Hashtbl.add known a ();
