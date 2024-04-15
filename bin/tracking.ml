@@ -70,9 +70,11 @@ module NameTracking = struct
             List.map
               (fun x ->
                 match x.x with
-                | VVar id ->
+                | VVar id -> (
                     let bindings, rhs = aux id in
-                    (id, rhs) :: bindings
+                    match rhs.x with
+                    | CVal { x = VVar v; _ } when v = id -> bindings
+                    | _ -> (id, rhs) :: bindings)
                 | _ -> failwith "get_term::unimplemented::CAppOp")
               appopargs
             |> List.concat
