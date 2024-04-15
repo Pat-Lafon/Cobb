@@ -394,7 +394,6 @@ module Localization = struct
                   in *)
                Typectx [ path_var ]
              in
-             (* todo: refactor this to use block_map_init*)
              let block_map =
                BlockMap.init
                  (List.map
