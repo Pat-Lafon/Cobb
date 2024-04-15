@@ -233,8 +233,13 @@ end = struct
       LocalCtx.promote_ctx_to_path new_context ~promote_ctx:lc )
 
   let existentialize ((name, ut, ctx) : t) : identifier * Nt.t rty =
+    (* Kind of awkward, we want to filter out the current blocks name from the
+       type(which would be redundant, unless that name is important) *)
     let local_ctx =
-      Typectx.to_list ctx |> List.filter (fun { x; _ } -> x <> name.x)
+      Typectx.to_list ctx
+      |> List.filter (fun { x; ty } ->
+             if x == name.x then NameTracking.is_known x #: (erase_rty ty)
+             else true)
     in
     let ext_rty = exists_rtys_to_rty local_ctx ut in
     (name, ext_rty)
