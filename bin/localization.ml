@@ -274,7 +274,12 @@ module Localization = struct
           ( term_type_infer uctx a |> Option.get,
             (* Filter out bool local_vars because those are just variables used in
                conditions and nothing more *)
-            List.filter (fun x -> erase_rty x.ty <> Ty_bool) b,
+            List.filter
+              (fun x ->
+                (not (Rename.has_been_uniqified x.x))
+                && erase_rty x.ty <> Ty_bool
+                && Nt.is_base_tp (erase_rty x.ty))
+              b,
             s ))
         program_variations
       |> List.combine program_variations
@@ -392,7 +397,7 @@ module Localization = struct
                (* let _ =
                     NameTracking.known_var path_var.x #: (erase_rty path_var.ty)
                   in *)
-               Typectx [ path_var ]
+               Typectx (local_vs @ [ path_var ])
              in
              let block_map =
                BlockMap.init
@@ -405,8 +410,10 @@ module Localization = struct
                           (* We intentionally want to add the variables before the
                              current local_ctx as we want them available to fill holes
                              from remove_local_vars_from_prop *)
-                          Typectx (local_v :: Typectx.to_list local_ctx) )
+                          local_ctx )
                       in
+                      Block.layout block |> print_endline;
+
                       (block, nty))
                     local_vs)
              in
