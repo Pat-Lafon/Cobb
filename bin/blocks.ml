@@ -309,6 +309,9 @@ end = struct
     try Some (P.find x pm |> snd |> P.get_key) with Not_found -> None
 
   let get_idx (pm : t) (idx : Ptset.elt) : P.key = P.find_ix idx pm |> P.get_key
+
+  (* TODO: Maybe a performance win from choosing larger/smaller sets on one side
+     or the other*)
   let union (l : t) (r : t) : t = P.union l r
   let inter (l : t) (r : t) : t = P.inter l r
   let diff (l : t) (r : t) : t = P.diff l r
@@ -861,7 +864,6 @@ module Extraction = struct
                   BlockSetE.print_ptset map p;
                   (lc, map, b, p) :: acc)
                 under_set [])
-        (* get_max_elts under_set |> List.map (fun (b, s) -> (lc, map, b, s))) *)
         x
       |> List.concat
     in
@@ -914,6 +916,10 @@ module Extraction = struct
     | _ -> (
         print_endline "Existentializing the path specific sets";
         Relations.clear_cache ();
+
+        (* TODO, no need to consider all blocks, what if we filter out all the
+           ones with not useful converage *)
+
         (* Get the sets for each path *)
         let path_specific_sets =
           List.map
@@ -953,11 +959,6 @@ module Extraction = struct
             BlockSetE.print_ptset set (BlockSetE.get_preds set target_block))
           path_specific_sets;
 
-        (* let block_options_in_each_path =
-             List.map
-               (fun (lc, bs) -> (lc, bs, BlockSetE.extract bs target_block))
-               path_specific_sets
-           in *)
         print_endline "ready to match";
 
         match
@@ -978,14 +979,18 @@ module Extraction = struct
 
             (* Filter out those equal terms then to make my life cleaner *)
             let block_options_in_each_path =
-              List.map
+              List.filter_map
                 (fun (lc, set) ->
                   let bs = BlockSetE.add_block set target_block in
                   let p = BlockSetE.get_preds bs target_block in
                   let s = BlockSetE.get_succs bs target_block in
                   BlockSetE.print_ptset bs p;
-                  assert (not (Ptset.is_empty p && Ptset.is_empty s));
-                  (lc, bs, (s, p)))
+
+                  (* Some paths might not get blocks that aid in getting the
+                     target? *)
+                  if not (Ptset.is_empty p && Ptset.is_empty s) then
+                    Some (lc, bs, (s, p))
+                  else None)
                 path_specific_sets
             in
 
