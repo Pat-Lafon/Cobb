@@ -410,6 +410,7 @@ let run_benchmark source_file meta_config_file =
      (Mtyped.sexp_of_typed Nt.sexp_of_t
         (Term.sexp_of_term Nt.sexp_of_t)
         new_body); *)
+  (*   print_endline ("New_body :\n" ^ layout_typed_term new_body); *)
 
   (* NameTracking.debug (); *)
   let result =

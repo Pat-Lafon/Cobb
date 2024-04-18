@@ -48,8 +48,7 @@ module NameTracking = struct
     let rec aux a : _ list * (t, t term) typed =
       let t = get_ast a in
       match t with
-      | Some ({ x = CVal { x = VConst _; _ }; ty } as t) ->
-          failwith "unimplemented"
+      | Some { x = CVal { x = VConst _; _ }; ty } -> failwith "unimplemented"
       | Some ({ x = CVal { x = VVar s; _ }; ty } as t) ->
           (* Check for a level of indirection *)
           (* String.equal (layout_typed_term t)

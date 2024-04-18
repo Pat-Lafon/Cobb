@@ -75,6 +75,7 @@ end = struct
   let check_cache = RelationCache.check
   let clear_cache () = RelationCache.reset_cache ()
 
+  (* TODO: Where can this be replaced with cache access?*)
   let typing_relation ctx target_ty ty =
     if diff_base_type target_ty ty then None
     else
@@ -310,10 +311,14 @@ end = struct
 
   let get_idx (pm : t) (idx : Ptset.elt) : P.key = P.find_ix idx pm |> P.get_key
 
-  (* TODO: Maybe a performance win from choosing larger/smaller sets on one side
-     or the other*)
-  let union (l : t) (r : t) : t = P.union l r
-  let inter (l : t) (r : t) : t = P.inter l r
+  let union (l : t) (r : t) : t =
+    (* A minor optimization to choose a size order for performing a union *)
+    if P.cardinal l > P.cardinal r then P.union r l else P.union l r
+
+  let inter (l : t) (r : t) : t =
+    (* A minor optimization to choose a size order for performing a inter *)
+    if P.cardinal l > P.cardinal r then P.inter r l else P.inter l r
+
   let diff (l : t) (r : t) : t = P.diff l r
   let print (pm : t) : unit = D.printf pm
 
@@ -396,7 +401,7 @@ module BlockMapF (B : Block_intf) = struct
 
   let check_coverage_with_args uctx block_id new_ut arg_names : bool =
     List.exists
-      (fun ({ x; _ } as id : identifier) ->
+      (fun ({ x; _ } : identifier) ->
         let arg_t = FrontendTyped.get_opt uctx x |> Option.get in
         let relation_result =
           Relations.typed_relation uctx x #: arg_t block_id.x #: new_ut.ty
@@ -472,6 +477,12 @@ module BlockMap = struct
                   { x = term.x; ty = block_id.ty }
               in
 
+              (* Option.iter
+                 (fun ut ->
+                   print_endline "Considering block: ";
+                   Block.to_typed_term (block_id, ut.ty, joined_ctx)
+                   |> layout_typed_term |> print_endline)
+                 new_ut; *)
               match analyze_subtyping_result new_ut with
               | NoOverlap -> (new_map, path_specific_list)
               | NotSubset ->
@@ -875,7 +886,6 @@ module Extraction = struct
   let extract_blocks (collection : SynthesisCollection.t) (target_ty : t rty) :
       (LocalCtx.t * ExistentializedBlock.t) list =
     let target_nty = erase_rty target_ty in
-    let uctx = !global_uctx |> Option.get in
 
     (* Create a target block that we are missing *)
     let target_block : ExistentializedBlock.t =
@@ -1032,6 +1042,7 @@ module Synthesis = struct
     match max_depth with
     | 0 ->
         print_endline "Starting Extraction";
+        (*        failwith (string_of_int !Backend.Check.query_counter); *)
         Extraction.extract_blocks collection target_type
         |> List.map (fun (lc, b) -> (lc, ExistentializedBlock.to_typed_term b))
         |> group_by (fun (x, y) -> x)

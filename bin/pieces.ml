@@ -174,7 +174,7 @@ module Pieces = struct
         | RtyBase _ ->
             let nty = erase_rty ty in
             let new_seed = selfification x nty in
-            let (x, _, _), _ = new_seed in
+            (* let (x, _, _), _ = new_seed in *)
             Some new_seed
         | _ -> None)
       ctx_list
