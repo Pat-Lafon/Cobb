@@ -4,4 +4,4 @@
 	url = https://github.com/Pat-Lafon/underapproximation_type.git
 [submodule "language_utils"]
 	path = language_utils
-	url = https://github.com/zhezhouzz/language_utils.git
+	url = https://github.com/Pat-Lafon/language_utils.git
