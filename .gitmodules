@@ -1,5 +1,5 @@
 [submodule "underapproximation_type"]
-	branch = main
+	branch = meta
 	path = underapproximation_type
 	url = https://github.com/Pat-Lafon/underapproximation_type.git
 [submodule "language_utils"]
