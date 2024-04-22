@@ -30,6 +30,9 @@ module Relations : sig
   val is_equiv_or_timeout : relation -> bool
   val diff_base_type : t rty -> t rty -> bool
 
+  (* TODO: comment this line out so everyone needs to use cache*)
+  val is_sub_rty : uctx -> t rty -> t rty -> bool
+
   (* todo: comment this line out so everyone needs to use cache *)
   val typing_relation : uctx -> t rty -> t rty -> relation
 
@@ -75,6 +78,12 @@ end = struct
   let check_cache = RelationCache.check
   let clear_cache () = RelationCache.reset_cache ()
 
+  let is_sub_rty uctx l r =
+    if diff_base_type l r then false
+    else
+      let res = Timeout.sub_rty_bool_or_timeout uctx (l, r) in
+      match res with Result true -> true | _ -> false
+
   (* TODO: Where can this be replaced with cache access?*)
   let typing_relation ctx target_ty ty =
     if diff_base_type target_ty ty then None
@@ -115,6 +124,7 @@ module type Block_intf = sig
   val to_typed_term : t -> (Nt.t, Nt.t term) typed
   val get_local_ctx : t -> LocalCtx.t
   val typing_relation : uctx -> t -> t -> Relations.relation
+  val is_sub_rty : uctx -> t -> t -> bool
   val combine_all_args : t list -> identifier list * LocalCtx.t
   val path_promotion : LocalCtx.t -> t -> t
 end
@@ -139,6 +149,10 @@ end = struct
     Typectx.Typectx [ name.x #: ext_rty ]
 
   let new_X (x : identifier) (ty : Nt.t rty) : t = (x, ty)
+
+  let is_sub_rty (uctx : uctx) ((name, ext_rty) : t) ((name', ext_rty') : t) :
+      bool =
+    Relations.is_sub_rty uctx ext_rty ext_rty'
 
   let typing_relation (uctx : uctx) ((name, ext_rty) : t)
       ((name', ext_rty') : t) : Relations.relation =
@@ -177,6 +191,16 @@ end = struct
       (layout_ty name.ty) (layout_rty ut)
 
   let get_local_ctx ((name, ut, ctx) : t) : LocalCtx.t = ctx
+
+  let is_sub_rty (uctx : uctx) (block : t) (block' : t) : bool =
+    let id, target_ty, ctx = block in
+    let id', ty, ctx' = block' in
+    let combined_ctx, mapping = LocalCtx.local_ctx_union_r ctx ctx' in
+    let updated_ty = Pieces.ut_subst ty mapping in
+
+    Relations.is_sub_rty
+      (LocalCtx.uctx_add_local_ctx uctx combined_ctx)
+      target_ty updated_ty
 
   let typing_relation (uctx : uctx) (target_block : t) (block : t) :
       Relations.relation =
@@ -895,14 +919,24 @@ module Extraction = struct
 
     print_endline "Existentializing the general set";
     (* Get all blocks from the general collection *)
-    let general_set =
+    let general_block_list =
       BlockCollection.get_full_map collection.general_coll |> fun x ->
-      BlockMap.get x target_nty |> BlockSet.existentialize
+      BlockMap.get x target_nty |> BlockSet.to_list
+      |> List.map Block.existentialize
     in
+
+    let uctx = !global_uctx |> Option.get in
 
     (* The updated set is commented out because we don't to include the target
        block in later calculations *)
-    let equal_block = BlockSetE.find_block_opt general_set target_block in
+    let equal_block =
+      List.find_opt
+        (fun b ->
+          match ExistentializedBlock.typing_relation uctx b target_block with
+          | Relations.Equiv -> true
+          | _ -> false)
+        general_block_list
+    in
 
     assert (List.length collection.path_specific > 0);
 
@@ -927,18 +961,16 @@ module Extraction = struct
         print_endline "Existentializing the path specific sets";
         Relations.clear_cache ();
 
-        (* TODO, no need to consider all blocks, what if we filter out all the
-           ones with not useful converage *)
-
         (* Get the sets for each path *)
         let path_specific_sets =
           List.map
             (fun (lc, bc) ->
-              BlockCollection.get_full_map bc |> fun x ->
-              BlockMap.get_opt x target_nty
-              |> Option.value ~default:BlockSet.empty
-              |> BlockSet.existentialize
-              |> fun x -> (lc, x))
+              ( lc,
+                BlockCollection.get_full_map bc |> fun x ->
+                BlockMap.get_opt x target_nty
+                |> Option.map BlockSet.to_list
+                |> Option.value ~default:[]
+                |> List.map Block.existentialize ))
             collection.path_specific
         in
 
@@ -946,27 +978,58 @@ module Extraction = struct
         (* All General terms are going to get pushed into paths *)
         let path_specific_sets =
           List.map
-            (fun ((lc : LocalCtx.t), bs) ->
-              ( lc,
-                BlockSetE.fold
+            (fun ((lc : LocalCtx.t), (path_blocks : _ list)) ->
+              let res = BlockSetE.empty in
+              (* TODO: We should only use this block once and enable caching *)
+              (* Existentialization should rename the block... Maybe still worth
+                 it to clear cache lol just to not flood things*)
+              let path_target_ty =
+                ExistentializedBlock.path_promotion lc target_block
+              in
+
+              let conditional_add (bs : BlockSetE.t)
+                  (b : ExistentializedBlock.t) : BlockSetE.t =
+                if ExistentializedBlock.is_sub_rty uctx b path_target_ty then
+                  BlockSetE.add_block bs b
+                else if ExistentializedBlock.is_sub_rty uctx path_target_ty b
+                then BlockSetE.add_block bs b
+                else bs
+              in
+
+              (* Fold over general_terms for this path and path promote them *)
+              let res =
+                List.fold_left
                   (fun acc b ->
-                    BlockSetE.add_block acc
+                    conditional_add acc
                       (ExistentializedBlock.path_promotion lc b))
-                  bs general_set ))
+                  res general_block_list
+              in
+
+              (* Fold over path specific terms for this path *)
+              let res =
+                List.fold_left
+                  (fun acc b -> conditional_add acc b)
+                  res path_blocks
+              in
+
+              (lc, res))
             path_specific_sets
         in
 
         Printf.printf "\n\n Path Specific collections we are interested in\n";
         List.iter
           (fun (ctx, set) ->
-            let set = BlockSetE.add_block set target_block in
+            let path_target_ty =
+              ExistentializedBlock.path_promotion ctx target_block
+            in
+            let set = BlockSetE.add_block set path_target_ty in
             Printf.printf "Path Specific Collection: %s\n"
               (layout_typectx layout_rty ctx);
             BlockSetE.print set;
 
             Printf.printf "\n\nPath Specific Succs\n\n";
-            BlockSetE.print_ptset set (BlockSetE.get_succs set target_block);
-            BlockSetE.print_ptset set (BlockSetE.get_preds set target_block))
+            BlockSetE.print_ptset set (BlockSetE.get_succs set path_target_ty);
+            BlockSetE.print_ptset set (BlockSetE.get_preds set path_target_ty))
           path_specific_sets;
 
         print_endline "ready to match";
@@ -974,7 +1037,8 @@ module Extraction = struct
         match
           List.find_map
             (fun (lc, path_set) ->
-              BlockSetE.find_block_opt path_set target_block
+              BlockSetE.find_block_opt path_set
+                (ExistentializedBlock.path_promotion lc target_block)
               |> Option.map (fun b -> (lc, b)))
             path_specific_sets
         with
@@ -991,9 +1055,13 @@ module Extraction = struct
             let block_options_in_each_path =
               List.filter_map
                 (fun (lc, set) ->
-                  let bs = BlockSetE.add_block set target_block in
-                  let p = BlockSetE.get_preds bs target_block in
-                  let s = BlockSetE.get_succs bs target_block in
+                  let path_target_block =
+                    ExistentializedBlock.path_promotion lc target_block
+                  in
+
+                  let bs = BlockSetE.add_block set path_target_block in
+                  let p = BlockSetE.get_preds bs path_target_block in
+                  let s = BlockSetE.get_succs bs path_target_block in
                   BlockSetE.print_ptset bs p;
 
                   (* Some paths might not get blocks that aid in getting the
