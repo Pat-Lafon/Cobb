@@ -226,7 +226,7 @@ let rec remove_excess_ast_aux (t : (Nt.t, Nt.t term) typed) =
       (* let _ = layout_typed_term t |> print_endline in
          let _ = f.x |> print_endline in *)
       remove_excess_ast_aux exp
-  | CLetE
+  | CLetE (* True branch Err *)
       {
         lhs;
         rhs =
@@ -255,6 +255,42 @@ let rec remove_excess_ast_aux (t : (Nt.t, Nt.t term) typed) =
                         };
                       CMatchcase
                         { constructor = { x = "False"; _ }; args = []; exp };
+                    ];
+                };
+            _;
+          };
+      }
+    when Core.String.(lhs.x = v.x) ->
+      remove_excess_ast_aux exp
+  | CLetE (* False branch Err *)
+      {
+        lhs;
+        rhs =
+          {
+            x =
+              CApp
+                {
+                  appf = { x = VVar { x = "bool_gen"; _ }; _ };
+                  apparg = { x = VConst U; _ };
+                };
+            _;
+          };
+        body =
+          {
+            x =
+              CMatch
+                {
+                  matched = { x = VVar v; _ };
+                  match_cases =
+                    [
+                      CMatchcase
+                        { constructor = { x = "True"; _ }; args = []; exp };
+                      CMatchcase
+                        {
+                          constructor = { x = "False"; _ };
+                          args = [];
+                          exp = { x = CErr; _ };
+                        };
                     ];
                 };
             _;
@@ -410,7 +446,7 @@ let run_benchmark source_file meta_config_file =
      (Mtyped.sexp_of_typed Nt.sexp_of_t
         (Term.sexp_of_term Nt.sexp_of_t)
         new_body); *)
-  (*   print_endline ("New_body :\n" ^ layout_typed_term new_body); *)
+  print_endline ("New_body :\n" ^ layout_typed_term new_body);
 
   (* NameTracking.debug (); *)
   let result =
