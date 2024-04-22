@@ -337,6 +337,10 @@ module Localization = struct
       if subtyping_res then local_free_subset else possible_props
     in
 
+    (* Path props usually go from more general to more specific(By the nature of
+       how trees work) so lets reverse the order to make some cases nicer *)
+    let possible_props = List.rev possible_props in
+
     let useful_props =
       List.fold_left
         (fun acc idx ->
