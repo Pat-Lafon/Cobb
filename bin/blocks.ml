@@ -877,7 +877,7 @@ module Extraction = struct
 
   (* Try to increase the coverage of a specific term to satisfy
      the target type *)
-  let setup_type (x : (LocalCtx.t * BlockSetE.t * (Ptset.t * Ptset.t)) list)
+  let setup_type (x : (LocalCtx.t * BlockSetE.t * ('a option * Ptset.t)) list)
       (target_ty : t rty) :
       (LocalCtx.t * BlockSetE.t * (identifier * t rty) * Ptset.t) list =
     let uctx = !global_uctx |> Option.get in
@@ -885,10 +885,10 @@ module Extraction = struct
     (* print_endline (layout_rty target_ty); *)
     let res =
       List.map
-        (fun (lc, map, (over_set, under_set)) ->
-          match Ptset.min_elt_opt over_set with
+        (fun (lc, map, (current_block, under_set)) ->
+          match current_block with
           | Some i ->
-              let id, rty = BlockSetE.get_idx map i in
+              let id, rty = i in
               [ (lc, map, (id, rty), under_set) ]
           | None ->
               Ptset.fold
@@ -1034,11 +1034,12 @@ module Extraction = struct
 
         print_endline "ready to match";
 
+        (* We have one check that a component covers the full target *)
+        (* TODO: May have been made rudundant/not worth the complexity*)
         match
           List.find_map
             (fun (lc, path_set) ->
-              BlockSetE.find_block_opt path_set
-                (ExistentializedBlock.path_promotion lc target_block)
+              BlockSetE.find_block_opt path_set target_block
               |> Option.map (fun b -> (lc, b)))
             path_specific_sets
         with
@@ -1051,24 +1052,43 @@ module Extraction = struct
         | _ ->
             print_endline "In other case";
 
-            (* Filter out those equal terms then to make my life cleaner *)
-            let block_options_in_each_path =
+            let block_options_in_each_path :
+                (LocalCtx.t * BlockSetE.t * ('a option * Ptset.t)) list =
               List.filter_map
                 (fun (lc, set) ->
                   let path_target_block =
                     ExistentializedBlock.path_promotion lc target_block
                   in
 
-                  let bs = BlockSetE.add_block set path_target_block in
-                  let p = BlockSetE.get_preds bs path_target_block in
-                  let s = BlockSetE.get_succs bs path_target_block in
-                  BlockSetE.print_ptset bs p;
+                  (* Does the target exist in this path? *)
+                  match BlockSetE.find_block_opt set path_target_block with
+                  | Some b ->
+                      print_endline "Have a complete block for a path solution";
+                      Some (lc, set, (Some b, Ptset.empty))
+                  | None ->
+                      (* Yes: Return current bs, no preds, and the target_block *)
+                      (* No: Return a new bs with the target block, any preds, and
+                         possibly a starting block from the succs *)
+                      let bs = BlockSetE.add_block set path_target_block in
+                      let p = BlockSetE.get_preds bs path_target_block in
+                      let s = BlockSetE.get_succs bs path_target_block in
+                      BlockSetE.print_ptset bs p;
 
-                  (* Some paths might not get blocks that aid in getting the
-                     target? *)
-                  if not (Ptset.is_empty p && Ptset.is_empty s) then
-                    Some (lc, bs, (s, p))
-                  else None)
+                      let b =
+                        Ptset.min_elt_opt s
+                        |> Option.map (fun idx -> BlockSetE.get_idx bs idx)
+                      in
+
+                      (print_endline "Have a partial solution: ";
+                       match b with
+                       | Some b -> print_endline (ExistentializedBlock.layout b)
+                       | None -> print_endline "None");
+
+                      (* Some paths might not get blocks that aid in getting the
+                         target? *)
+                      if not (Ptset.is_empty p && Ptset.is_empty s) then
+                        Some (lc, bs, (b, p))
+                      else None)
                 path_specific_sets
             in
 
