@@ -231,7 +231,8 @@ module Pieces = struct
               (new_seed :: seeds, components)
           | RtyBaseArr _ ->
               let new_component : component * (t list * t) =
-                (string_to_component x #: nt, nt |> Nt.destruct_arr_tp)
+                ( string_to_component (x #: nt |> NameTracking.known_var),
+                  nt |> Nt.destruct_arr_tp )
               in
               (seeds, new_component :: components)
           | RtyArrArr _ ->

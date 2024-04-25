@@ -14,13 +14,16 @@ open Localctx
 
 let global_uctx : uctx option ref = ref None
 
-type subtypingres = NoOverlap | NotSubset | Res of (t rty, t rty term) typed
+type subtypingres =
+  | NoCoverage
+  | FailedTyping
+  | Res of (t rty, t rty term) typed
 
 let analyze_subtyping_result (new_rty : (t rty, t rty term) typed option) :
     subtypingres =
   match new_rty with
-  | Some new_rty -> if rty_is_false new_rty.ty then NoOverlap else Res new_rty
-  | None -> NotSubset
+  | Some new_rty -> if rty_is_false new_rty.ty then NoCoverage else Res new_rty
+  | None -> FailedTyping
 
 module Relations : sig
   type relation = Equiv | ImpliesTarget | ImpliedByTarget | None | Timeout
@@ -454,9 +457,58 @@ module BlockMap = struct
         BlockSetE.empty pm
   end
 
+  let optional_filter_block (optional_filter_type : (_, _) typed option)
+      (b : Block.t) : _ =
+    match optional_filter_type with
+    | None -> b
+    | Some _ -> failwith "unimplemented"
+
   (** Gets the corresponding set or return  *)
   let get (map : t) (ty : Nt.t) : BlockSet.t =
     get_opt map ty |> Option.value ~default:BlockSet.empty
+
+  let check_filter_type (optional_filter_type : _ option) new_uctx
+      (new_ut : (Nt.t rty, Nt.t rty term) typed) : bool =
+    match optional_filter_type with
+    | None -> false
+    | Some filter_type -> (
+        match
+          Timeout.sub_rty_bool_or_timeout new_uctx (new_ut.ty, filter_type)
+        with
+        | Result true -> false
+        | _ -> (
+            match
+              Timeout.sub_rty_bool_or_timeout new_uctx (filter_type, new_ut.ty)
+            with
+            | Result true -> false
+            | _ -> true))
+
+  let try_path path_specific_list x optional_filter_type ret_type
+      (block_id, term, local_ctx) =
+    let uctx = !global_uctx |> Option.get in
+
+    let new_path_ctx = LocalCtx.promote_ctx_to_path local_ctx ~promote_ctx:x in
+
+    let new_path_uctx = LocalCtx.uctx_add_local_ctx uctx new_path_ctx in
+
+    let new_path_ut =
+      Termcheck.term_type_infer_with_rec_check new_path_uctx
+        { x = term.x; ty = block_id.ty }
+    in
+    match analyze_subtyping_result new_path_ut with
+    | Res new_ut ->
+        assert (ret_type == erase_rty new_ut.ty);
+
+        if check_filter_type optional_filter_type new_path_uctx new_ut then
+          path_specific_list
+        else
+          let new_path_ctx =
+            Typectx.add_to_right new_path_ctx { x = block_id.x; ty = new_ut.ty }
+          in
+          _add_to_path_specifc_list path_specific_list x
+            (block_id, new_ut.ty, new_path_ctx)
+            ret_type
+    | _ -> path_specific_list
 
   (* Promotable_paths should be empty if the new_blocks comes form a
        specific path *)
@@ -465,7 +517,8 @@ module BlockMap = struct
   (* Should we separate out the general and path specific cases? *)
   let increment (new_blocks : t) (old_blocks : t)
       ((component, (args, ret_type)) : Pieces.component * (Nt.t list * Nt.t))
-      (promotable_paths : LocalCtx.t list) : t * (LocalCtx.t * t) list =
+      (promotable_paths : LocalCtx.t list) (optional_filter_type : _ option) :
+      t * (LocalCtx.t * t) list =
     let uctx = !global_uctx |> Option.get in
 
     (* Loop from 0 to args.len - 1 to choose an index for the `new_blocks` *)
@@ -490,11 +543,12 @@ module BlockMap = struct
 
               let block_id, term = Pieces.apply component arg_names in
 
+              assert (block_id.ty = ret_type);
+              assert (term.ty = block_id.ty);
+
               let new_uctx : uctx =
                 LocalCtx.uctx_add_local_ctx uctx joined_ctx
               in
-
-              assert (term.ty = block_id.ty);
 
               let new_ut =
                 Termcheck.term_type_infer_with_rec_check new_uctx
@@ -508,42 +562,30 @@ module BlockMap = struct
                    |> layout_typed_term |> print_endline)
                  new_ut; *)
               match analyze_subtyping_result new_ut with
-              | NoOverlap -> (new_map, path_specific_list)
-              | NotSubset ->
+              | NoCoverage -> (new_map, path_specific_list)
+              | FailedTyping ->
                   (* failed the new rec_check *)
                   ( new_map,
-                    (List.fold_left
-                       (fun path_specific_list x ->
-                         let new_path_ctx =
-                           LocalCtx.promote_ctx_to_path joined_ctx
-                             ~promote_ctx:x
-                         in
-
-                         let new_path_uctx =
-                           LocalCtx.uctx_add_local_ctx uctx new_path_ctx
-                         in
-
-                         let new_path_ut =
-                           Termcheck.term_type_infer_with_rec_check
-                             new_path_uctx
-                             { x = term.x; ty = block_id.ty }
-                         in
-                         match analyze_subtyping_result new_path_ut with
-                         | Res new_ut ->
-                             let new_path_ctx =
-                               Typectx.add_to_right new_path_ctx
-                                 { x = block_id.x; ty = new_ut.ty }
-                             in
-                             _add_to_path_specifc_list path_specific_list x
-                               (block_id, new_ut.ty, new_path_ctx)
-                               ret_type
-                         | _ -> path_specific_list)
-                       path_specific_list)
-                      promotable_paths )
+                    List.fold_left
+                      (fun path_specific_list x ->
+                        try_path path_specific_list x optional_filter_type
+                          ret_type
+                          (block_id, term, joined_ctx))
+                      path_specific_list promotable_paths )
               | Res new_ut ->
-                  (* Check if new term is coverage equivalent to one of it's
-                     arguments *)
-                  if check_coverage_with_args new_uctx block_id new_ut arg_names
+                  assert (ret_type == erase_rty new_ut.ty);
+                  if check_filter_type optional_filter_type new_uctx new_ut then
+                    ( new_map,
+                      List.fold_left
+                        (fun path_specific_list x ->
+                          try_path path_specific_list x optional_filter_type
+                            ret_type
+                            (block_id, term, joined_ctx))
+                        path_specific_list promotable_paths )
+                  else if
+                    (* Check if new term is coverage equivalent to one of it's
+                       arguments *)
+                    check_coverage_with_args new_uctx block_id new_ut arg_names
                   then (* Ignore term if so *)
                     (new_map, path_specific_list)
                   else
@@ -654,7 +696,8 @@ module SynthesisCollection = struct
       path_specific
 
   let increment (collection : t)
-      (operations : (Pieces.component * (Nt.t list * Nt.t)) list) : t =
+      (operations : (Pieces.component * (Nt.t list * Nt.t)) list)
+      (optional_filter_type : _ option) : t =
     (* We want to support the normal block_collection_increment as normal *)
     (* We want to be able to increment using new_seeds and old_seeds +
        old_general_seeds for path specific variations *)
@@ -686,7 +729,7 @@ module SynthesisCollection = struct
           (* Iterate over sets of possible new maps *)
           let new_map, path_specific_maps =
             BlockMap.increment general_new_blocks general_old_blocks op
-              promotable_paths
+              promotable_paths optional_filter_type
           in
           BlockCollection.assert_valid general_coll;
           {
@@ -711,7 +754,7 @@ module SynthesisCollection = struct
                 let path_op_specific_map, promoted_blocks =
                   BlockMap.increment path_col.new_blocks
                     (BlockMap.union path_col.old_blocks general_old_blocks)
-                    op []
+                    op [] optional_filter_type
                 in
                 assert (List.is_empty promoted_blocks);
                 BlockMap.union acc path_op_specific_map)
@@ -1025,11 +1068,7 @@ module Extraction = struct
             let set = BlockSetE.add_block set path_target_ty in
             Printf.printf "Path Specific Collection: %s\n"
               (layout_typectx layout_rty ctx);
-            BlockSetE.print set;
-
-            Printf.printf "\n\nPath Specific Succs\n\n";
-            BlockSetE.print_ptset set (BlockSetE.get_succs set path_target_ty);
-            BlockSetE.print_ptset set (BlockSetE.get_preds set path_target_ty))
+            BlockSetE.print set)
           path_specific_sets;
 
         print_endline "ready to match";
@@ -1142,9 +1181,13 @@ module Synthesis = struct
             List.filter (fun (p, (_, ret_ty)) -> ret_ty = nty) operations
           else operations
         in
+        let optional_filter_type =
+          if depth == 1 then Some target_type else None
+        in
         (* If not, increment the collection and try again *)
         synthesis_helper (depth - 1) target_type
-          (SynthesisCollection.increment collection operations)
+          (SynthesisCollection.increment collection operations
+             optional_filter_type)
           operations
 
   (** Given some initial setup, run the synthesis algorithm *)
