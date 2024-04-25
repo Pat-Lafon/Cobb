@@ -57,13 +57,29 @@ module NameTracking = struct
           else
             let bindings, rhs = aux s in
             (bindings, rhs)
-      | Some ({ x = CApp { appf; apparg = { x = VVar id; _ } }; ty } as t) ->
+      | Some
+          ({
+             x = CApp { appf = { x = VVar f; _ }; apparg = { x = VVar id; _ } };
+             ty;
+           } as t) ->
           let bindings, rhs = aux id in
+          let bindings =
+            if is_known f then
+              (* We were provided this function so nothing else needs to be bound *)
+              bindings
+            else
+              (* This is a partial application and we need to get the binding
+                 for f *)
+              let b, x = aux f in
+              ((f, x) :: b) @ bindings
+          in
           ((id, rhs) :: bindings, t)
       | Some ({ x = CApp { appf; apparg = { x = VConst U; _ } }; ty } as t) ->
           ([], t)
       | Some { x = CApp { appf; apparg }; ty } ->
-          failwith "get_term::unimplemented::CApp"
+          failwith
+            ("get_term::unimplemented::CApp : " ^ layout_typed_value appf ^ " "
+           ^ layout_typed_value apparg)
       | Some ({ x = CAppOp { op; appopargs }; ty } as t) ->
           let args =
             List.map
@@ -86,9 +102,7 @@ module NameTracking = struct
       | Some { x = CMatch _; _ }
       | None ->
           print_endline ("get_term: " ^ a.x);
-          Hashtbl.iter
-            (fun k v -> k.x ^ " -> " ^ layout_typed_term v |> print_endline)
-            asts;
+          debug ();
           failwith "get_term"
     in
     let bindings, b = aux a in
