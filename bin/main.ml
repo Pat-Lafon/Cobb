@@ -356,15 +356,15 @@ let run_benchmark source_file meta_config_file =
 
   let uctx = add_to_rights uctx (rec_fix :: args) in
 
+  (match Typing.Termcheck.term_type_check uctx body retty with
+  | None -> ()
+  | Some _ -> failwith "Nothing to repair");
+
   global_uctx := Some uctx;
 
   let typed_code = Typing.Termcheck.term_type_infer uctx body |> Option.get in
 
   (*   Pp.printf "\nTyped Code:\n%s\n" (layout_rty typed_code.ty); *)
-  (match Typing.Termcheck.term_type_check uctx body retty with
-  | None -> ()
-  | Some _ -> failwith "Nothing to repair");
-
   (* pprint_simple_typectx_infer uctx ("res", typed_code.ty);
 
      pprint_typectx_subtyping uctx.local_ctx (typed_code.ty, retty);
