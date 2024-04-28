@@ -2,6 +2,17 @@ type identifier = (Nt.t, string) Mtyped.typed
 
 (*** Replace the element at pos of l with a *)
 let replace l pos a = List.mapi (fun i x -> if i = pos then a else x) l
+
+(* Creates a version of the list with only unique elements *)
+(* Secretly reverses the order *)
+let unique l =
+  let rec aux l acc =
+    match l with
+    | [] -> acc
+    | h :: t -> if List.mem h acc then aux t acc else aux t (h :: acc)
+  in
+  aux l []
+
 let dbg_sexp sexp = print_endline (Core.Sexp.to_string_hum sexp)
 let ty_intlist = Nt.Ty_constructor ("list", [ Ty_int ])
 let ty_intrbtree = Nt.Ty_constructor ("rbtree", [ Ty_int ])

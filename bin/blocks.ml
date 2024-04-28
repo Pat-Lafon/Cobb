@@ -457,12 +457,6 @@ module BlockMap = struct
         BlockSetE.empty pm
   end
 
-  let optional_filter_block (optional_filter_type : (_, _) typed option)
-      (b : Block.t) : _ =
-    match optional_filter_type with
-    | None -> b
-    | Some _ -> failwith "unimplemented"
-
   (** Gets the corresponding set or return  *)
   let get (map : t) (ty : Nt.t) : BlockSet.t =
     get_opt map ty |> Option.value ~default:BlockSet.empty
@@ -476,15 +470,17 @@ module BlockMap = struct
           Timeout.sub_rty_bool_or_timeout new_uctx (new_ut.ty, filter_type)
         with
         | Result true -> false
-        | _ -> (
-            match
-              Timeout.sub_rty_bool_or_timeout new_uctx (filter_type, new_ut.ty)
-            with
-            | Result true -> false
-            | _ -> true))
+        | _ ->
+            true
+            (* (
+               match
+                 Timeout.sub_rty_bool_or_timeout new_uctx (filter_type, new_ut.ty)
+               with
+               | Result true -> false
+               | _ -> true) *))
 
   let try_path path_specific_list x optional_filter_type ret_type
-      (block_id, term, local_ctx) =
+      (block_id, term, local_ctx) block_added =
     let uctx = !global_uctx |> Option.get in
 
     let new_path_ctx = LocalCtx.promote_ctx_to_path local_ctx ~promote_ctx:x in
@@ -499,16 +495,19 @@ module BlockMap = struct
     | Res new_ut ->
         assert (ret_type == erase_rty new_ut.ty);
 
-        if check_filter_type optional_filter_type new_path_uctx new_ut then
-          path_specific_list
-        else
+        if check_filter_type optional_filter_type new_path_uctx new_ut then (
+          print_endline "Didn't make path";
+          path_specific_list)
+        else (
+          print_endline "Found a path home";
+          block_added := true;
           let new_path_ctx =
             Typectx.add_to_right new_path_ctx { x = block_id.x; ty = new_ut.ty }
           in
           _add_to_path_specifc_list path_specific_list x
             (block_id, new_ut.ty, new_path_ctx)
-            ret_type
-    | _ -> path_specific_list
+            ret_type)
+    | _ -> print_endline "Other bad path cases"; path_specific_list
 
   (* Promotable_paths should be empty if the new_blocks comes form a
        specific path *)
@@ -555,6 +554,24 @@ module BlockMap = struct
                   { x = term.x; ty = block_id.ty }
               in
 
+              (* This abstracts out the path trying logic in a somewhat not-nice
+                 way *)
+              let try_add_paths () =
+                let block_added = ref false in
+                let new_path_list =
+                  List.fold_left
+                    (fun path_specific_list x ->
+                      try_path path_specific_list x optional_filter_type
+                        ret_type
+                        (block_id, term, joined_ctx)
+                        block_added)
+                    path_specific_list promotable_paths
+                in
+
+                if not !block_added then NameTracking.remove_ast block_id;
+                new_path_list
+              in
+
               (* Option.iter
                  (fun ut ->
                    print_endline "Considering block: ";
@@ -562,39 +579,39 @@ module BlockMap = struct
                    |> layout_typed_term |> print_endline)
                  new_ut; *)
               match analyze_subtyping_result new_ut with
-              | NoCoverage -> (new_map, path_specific_list)
+              | NoCoverage ->
+                  print_endline "No coverage";
+                  NameTracking.remove_ast block_id;
+                  (new_map, path_specific_list)
               | FailedTyping ->
                   (* failed the new rec_check *)
-                  ( new_map,
-                    List.fold_left
-                      (fun path_specific_list x ->
-                        try_path path_specific_list x optional_filter_type
-                          ret_type
-                          (block_id, term, joined_ctx))
-                      path_specific_list promotable_paths )
+                  (new_map, try_add_paths ())
               | Res new_ut ->
                   assert (ret_type == erase_rty new_ut.ty);
-                  if check_filter_type optional_filter_type new_uctx new_ut then
-                    ( new_map,
-                      List.fold_left
-                        (fun path_specific_list x ->
-                          try_path path_specific_list x optional_filter_type
-                            ret_type
-                            (block_id, term, joined_ctx))
-                        path_specific_list promotable_paths )
+                  (* If you have a promotable path, and a filter type, just skip the
+                     general filter. Otherwise check filter *)
+                  if
+                    Option.is_some optional_filter_type
+                    && not (List.is_empty promotable_paths)
+                    || check_filter_type optional_filter_type new_uctx new_ut
+                  then (new_map, try_add_paths ())
                   else if
                     (* Check if new term is coverage equivalent to one of it's
                        arguments *)
                     check_coverage_with_args new_uctx block_id new_ut arg_names
-                  then (* Ignore term if so *)
-                    (new_map, path_specific_list)
-                  else
+                  then (
+                    (* Ignore term if so *)
+                    print_endline "same as arg";
+                    NameTracking.remove_ast block_id;
+                    (new_map, path_specific_list))
+                  else (
+                    print_endline "new";
                     let new_ctx =
                       Typectx.add_to_right joined_ctx
                         { x = block_id.x; ty = new_ut.ty }
                     in
                     ( add new_map (block_id, new_ut.ty, new_ctx) ret_type,
-                      path_specific_list ))
+                      path_specific_list )))
             acc l)
         (empty, [])
         (range (List.length args) |> superset)
@@ -923,6 +940,7 @@ module Extraction = struct
   let setup_type (x : (LocalCtx.t * BlockSetE.t * ('a option * Ptset.t)) list)
       (target_ty : t rty) :
       (LocalCtx.t * BlockSetE.t * (identifier * t rty) * Ptset.t) list =
+    assert (not (List.is_empty x));
     let uctx = !global_uctx |> Option.get in
 
     (* print_endline (layout_rty target_ty); *)
@@ -1130,6 +1148,10 @@ module Extraction = struct
                       else None)
                 path_specific_sets
             in
+
+            print_endline
+              ("Num_starting_choices: "
+              ^ string_of_int (List.length block_options_in_each_path));
 
             let block_choices =
               setup_type block_options_in_each_path target_ty

@@ -1,5 +1,7 @@
 (executable
  (public_name Cobb)
+ (modes
+  (native exe))
  (name main)
  (modules main)
  (libraries
@@ -72,4 +74,7 @@
 (env
  (dev
   (flags
-   (:standard -w -32-26-34-69-27-21))))
+   (:standard -w -32-26-34-69-27-21)))
+ (release
+  (ocamlopt_flags
+   (:standard -O3))))

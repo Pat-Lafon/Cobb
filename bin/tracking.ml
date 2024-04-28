@@ -5,7 +5,7 @@ open Term
 open Mtyped
 
 module NameTracking = struct
-  let asts : (identifier, _ typed) Hashtbl.t = Hashtbl.create 128
+  let asts : (identifier, _ typed) Hashtbl.t = Hashtbl.create 12800
   let known : (identifier, unit) Hashtbl.t = Hashtbl.create 128
 
   let debug () =
@@ -23,6 +23,8 @@ module NameTracking = struct
 
   let add_ast (a : identifier) (term : (t, t term) typed) =
     Hashtbl.add asts a term
+
+  let remove_ast (a : identifier) = Hashtbl.remove asts a
 
   let known_var (a : identifier) =
     Hashtbl.add known a ();
@@ -71,7 +73,7 @@ module NameTracking = struct
               (* This is a partial application and we need to get the binding
                  for f *)
               let b, x = aux f in
-              ((f, x) :: b) @ bindings
+              bindings @ ((f, x) :: b)
           in
           ((id, rhs) :: bindings, t)
       | Some ({ x = CApp { appf; apparg = { x = VConst U; _ } }; ty } as t) ->
@@ -106,7 +108,7 @@ module NameTracking = struct
           failwith "get_term"
     in
     let bindings, b = aux a in
-    List.fold_left (fun acc (id, rhs) -> mk_lete id rhs acc) b bindings
+    List.fold_left (fun acc (id, rhs) -> mk_lete id rhs acc) b (List.rev bindings |> unique)
 
   let ctx_subst (ctx : t rty Typectx.ctx) (ht : (string, string) Hashtbl.t) :
       t rty Typectx.ctx =
