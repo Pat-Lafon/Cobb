@@ -11,3 +11,11 @@ One who searches underneath the bottom of consciousness: Inception(2010)
 ### Updating submodules
 1. `git submodule sync`
 2. `git submodule update --remote`
+
+## Running benchmarks
+
+`cd underapproximation_type/ && dune exec Cobb -- synthesis data/validation/sizedlist/ prog1.ml`
+
+or
+
+`python scripts/synth.py underapproximation_type/data/validation/sizedlist/`
