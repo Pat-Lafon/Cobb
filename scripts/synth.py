@@ -7,7 +7,7 @@ import locale
 import re
 from pathlib import Path
 
-cmd_prefix = ["dune", "exec", "Cobb", "--"]
+cmd_prefix = ["dune", "exec", "Cobb", "--no-buffer", "--"]
 config_file = "meta-config.json"
 workdir = "underapproximation_type"
 verbose = True
@@ -23,6 +23,7 @@ def invoc_cmd(verbose, cmd, output_file, cwd=None):
                 subprocess.run(cmd, cwd=cwd, stdout=ofile)
             except subprocess.CalledProcessError as e:
                 print(e.output)
+                raise e
     else:
         if verbose:
             print(" ".join(cmd))
@@ -30,6 +31,7 @@ def invoc_cmd(verbose, cmd, output_file, cwd=None):
             subprocess.run(cmd, cwd=cwd)
         except subprocess.CalledProcessError as e:
             print(e.output)
+            raise e
 
 
 """ def run_synthesis_aux(meta_config_file, f):

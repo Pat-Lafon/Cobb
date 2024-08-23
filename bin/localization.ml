@@ -86,7 +86,7 @@ let exn_map_list_term (f : 'a list -> 'b) (v : 'a exn_variations list) :
         ( x.full_exn,
           if is_base_bot x.full_exn then
             let () = assert (List.length x.other == 1) in
-            let _, _, c = List.hd x.other in
+            let _, _, _c = List.hd x.other in
             x.hole_variation
             (* Pieces.mk_ND_choice x.hole_variation
                (c #: x.hole_variation.ty |> id_to_term) *)

@@ -10,7 +10,7 @@ homepage: "https://github.com/Pat-Lafon/Cobb"
 doc: "https://url/to/documentation"
 bug-reports: "https://github.com/Pat-Lafon/Cobb/issues"
 depends: [
-  "dune" {>= "3.12"}
+  "dune" {>= "3.9"}
   "ocaml" {= "5.1.0"}
   "pomap" {= "4.1.1"}
   "core" {<= "v0.16.2"}
@@ -20,8 +20,8 @@ depends: [
   "qcheck" {<= "0.21.3"}
   "z3" {<= "4.12.4"}
   "yojson" {<= "1.7.0"}
-  "ocamlformat" {dev & <= "0.26.1"}
-  "ocaml-lsp-server" {dev & <= "1.17"}
+  "ocamlformat" {= "0.26.1"}
+  "ocaml-lsp-server" {= "1.19"}
   "odoc" {with-doc}
 ]
 build: [

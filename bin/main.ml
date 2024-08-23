@@ -362,7 +362,7 @@ let run_benchmark source_file meta_config_file =
 
   global_uctx := Some uctx;
 
-  let typed_code = Typing.Termcheck.term_type_infer uctx body |> Option.get in
+  let _typed_code = Typing.Termcheck.term_type_infer uctx body |> Option.get in
 
   (*   Pp.printf "\nTyped Code:\n%s\n" (layout_rty typed_code.ty); *)
   (* pprint_simple_typectx_infer uctx ("res", typed_code.ty);

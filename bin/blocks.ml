@@ -463,27 +463,27 @@ module BlockMap = struct
 
   let check_filter_type (optional_filter_type : _ option) new_uctx
       (new_ut : (Nt.t rty, Nt.t rty term) typed) : bool =
-    match optional_filter_type with
-    | None -> false
-    | Some filter_type -> (
+    Option.fold ~none:false
+      ~some:(fun filter_type ->
         match
           Timeout.sub_rty_bool_or_timeout new_uctx (new_ut.ty, filter_type)
         with
         | Result true -> false
-        | _ ->
-            true
-            (* (
-               match
-                 Timeout.sub_rty_bool_or_timeout new_uctx (filter_type, new_ut.ty)
-               with
-               | Result true -> false
-               | _ -> true) *))
+        | _ -> (
+            match
+              Timeout.sub_rty_bool_or_timeout new_uctx (filter_type, new_ut.ty)
+            with
+            | Result true -> false
+            | _ -> true))
+      optional_filter_type
 
-  let try_path path_specific_list x optional_filter_type ret_type
+  let try_path path_specific_list path_ctx optional_filter_type ret_type
       (block_id, term, local_ctx) block_added =
     let uctx = !global_uctx |> Option.get in
 
-    let new_path_ctx = LocalCtx.promote_ctx_to_path local_ctx ~promote_ctx:x in
+    let new_path_ctx =
+      LocalCtx.promote_ctx_to_path local_ctx ~promote_ctx:path_ctx
+    in
 
     let new_path_uctx = LocalCtx.uctx_add_local_ctx uctx new_path_ctx in
 
@@ -504,10 +504,12 @@ module BlockMap = struct
           let new_path_ctx =
             Typectx.add_to_right new_path_ctx { x = block_id.x; ty = new_ut.ty }
           in
-          _add_to_path_specifc_list path_specific_list x
+          _add_to_path_specifc_list path_specific_list path_ctx
             (block_id, new_ut.ty, new_path_ctx)
             ret_type)
-    | _ -> print_endline "Other bad path cases"; path_specific_list
+    | _ ->
+        print_endline "Other bad path cases";
+        path_specific_list
 
   (* Promotable_paths should be empty if the new_blocks comes form a
        specific path *)
@@ -524,7 +526,7 @@ module BlockMap = struct
     let res =
       List.fold_left
         (fun acc new_set ->
-          let l =
+          let all_possible_block_combinations =
             List.mapi
               (fun j ty : Block.t list ->
                 if List.mem j new_set then get new_blocks ty |> BlockSet.to_list
@@ -533,6 +535,7 @@ module BlockMap = struct
             |> n_cartesian_product
           in
 
+          (* For each set of possible args of that combination of new/old*)
           List.fold_left
             (fun (new_map, path_specific_list) (args : Block.t list) ->
               (* Correct joining of contexts? *)
@@ -568,6 +571,9 @@ module BlockMap = struct
                     path_specific_list promotable_paths
                 in
 
+                (* Currenly, blocks are labelled when they are created, so we
+                   should delete them if they are never used *)
+                (* Assumes that this is the only way to add the block*)
                 if not !block_added then NameTracking.remove_ast block_id;
                 new_path_list
               in
@@ -593,7 +599,6 @@ module BlockMap = struct
                   if
                     Option.is_some optional_filter_type
                     && not (List.is_empty promotable_paths)
-                    || check_filter_type optional_filter_type new_uctx new_ut
                   then (new_map, try_add_paths ())
                   else if
                     (* Check if new term is coverage equivalent to one of it's
@@ -604,6 +609,14 @@ module BlockMap = struct
                     print_endline "same as arg";
                     NameTracking.remove_ast block_id;
                     (new_map, path_specific_list))
+                  else if
+                    (* TODO what do I want to do here??? *)
+                    check_filter_type optional_filter_type new_uctx new_ut
+                  then (
+                    (* Ignore term if so *)
+                    print_endline "Filtered out by type";
+                    NameTracking.remove_ast block_id;
+                    (new_map, path_specific_list))
                   else (
                     print_endline "new";
                     let new_ctx =
@@ -612,7 +625,7 @@ module BlockMap = struct
                     in
                     ( add new_map (block_id, new_ut.ty, new_ctx) ret_type,
                       path_specific_list )))
-            acc l)
+            acc all_possible_block_combinations)
         (empty, [])
         (range (List.length args) |> superset)
     in
@@ -735,6 +748,12 @@ module SynthesisCollection = struct
       }
     in
 
+    (match optional_filter_type with
+    | None -> print_endline "No filter type"
+    | Some filter_type ->
+        print_string "Filter type: ";
+        print_endline (layout_rty filter_type));
+
     print_endline "Increment General Collection";
 
     let new_collection =
@@ -768,12 +787,16 @@ module SynthesisCollection = struct
               (fun acc op ->
                 print_endline
                   ("Incrementing with op: " ^ Pieces.layout_component (fst op));
+
+                BlockMap.print path_col.new_blocks;
+
                 let path_op_specific_map, promoted_blocks =
                   BlockMap.increment path_col.new_blocks
                     (BlockMap.union path_col.old_blocks general_old_blocks)
                     op [] optional_filter_type
                 in
                 assert (List.is_empty promoted_blocks);
+
                 BlockMap.union acc path_op_specific_map)
               (BlockMap.init []) operations
           in
@@ -940,6 +963,7 @@ module Extraction = struct
   let setup_type (x : (LocalCtx.t * BlockSetE.t * ('a option * Ptset.t)) list)
       (target_ty : t rty) :
       (LocalCtx.t * BlockSetE.t * (identifier * t rty) * Ptset.t) list =
+    print_endline "Setup type";
     assert (not (List.is_empty x));
     let uctx = !global_uctx |> Option.get in
 
@@ -950,12 +974,16 @@ module Extraction = struct
           match current_block with
           | Some i ->
               let id, rty = i in
+              print_endline "This block";
               [ (lc, map, (id, rty), under_set) ]
           | None ->
               Ptset.fold
                 (fun idx acc ->
                   let b = BlockSetE.get_idx map idx in
                   let p = BlockSetE.get_preds map b in
+                  print_endline "current block";
+                  ExistentializedBlock.layout b |> print_endline;
+
                   print_endline "Printing Preds";
                   BlockSetE.print_ptset map p;
                   (lc, map, b, p) :: acc)
@@ -1117,13 +1145,15 @@ module Extraction = struct
                     ExistentializedBlock.path_promotion lc target_block
                   in
 
+                  ExistentializedBlock.layout path_target_block |> print_endline;
+
                   (* Does the target exist in this path? *)
                   match BlockSetE.find_block_opt set path_target_block with
                   | Some b ->
+                      (* Yes: Return current bs, no preds, and the target_block *)
                       print_endline "Have a complete block for a path solution";
                       Some (lc, set, (Some b, Ptset.empty))
                   | None ->
-                      (* Yes: Return current bs, no preds, and the target_block *)
                       (* No: Return a new bs with the target block, any preds, and
                          possibly a starting block from the succs *)
                       let bs = BlockSetE.add_block set path_target_block in
@@ -1131,6 +1161,7 @@ module Extraction = struct
                       let s = BlockSetE.get_succs bs path_target_block in
                       BlockSetE.print_ptset bs p;
 
+                      (* Smallest block that covers the target fully *)
                       let b =
                         Ptset.min_elt_opt s
                         |> Option.map (fun idx -> BlockSetE.get_idx bs idx)
@@ -1143,9 +1174,12 @@ module Extraction = struct
 
                       (* Some paths might not get blocks that aid in getting the
                          target? *)
-                      if not (Ptset.is_empty p && Ptset.is_empty s) then
-                        Some (lc, bs, (b, p))
-                      else None)
+                      if not (Ptset.is_empty p && Ptset.is_empty s) then (
+                        print_endline "return a block";
+                        Some (lc, bs, (b, p)))
+                      else (
+                        print_endline "return nothing";
+                        None))
                 path_specific_sets
             in
 

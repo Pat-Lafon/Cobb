@@ -1,4 +1,4 @@
-(lang dune 3.12)
+(lang dune 3.9)
 
 (name Cobb)
 
@@ -40,13 +40,9 @@
   (yojson
    (<= "1.7.0"))
   (ocamlformat
-   (and
-    :dev
-    (<= "0.26.1")))
+   (= "0.26.1"))
   (ocaml-lsp-server
-   (and
-    :dev
-    (<= "1.17"))))
+   (= "1.19")))
  (tags
   (topics "to describe" your project)))
 
