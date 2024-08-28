@@ -128,12 +128,15 @@ module type Block_intf = sig
   val get_local_ctx : t -> LocalCtx.t
   val typing_relation : uctx -> t -> t -> Relations.relation
   val is_sub_rty : uctx -> t -> t -> bool
-  val combine_all_args : t list -> identifier list * LocalCtx.t
-  val path_promotion : LocalCtx.t -> t -> t
+
+  val combine_all_args :
+    t list -> identifier list * LocalCtx.t * identifier Seq.t
 end
 
 module ExistentializedBlock : sig
   type t = identifier * Nt.t rty
+
+  val path_promotion : LocalCtx.t -> t -> t
 
   include Block_intf with type t := t
 end = struct
@@ -161,7 +164,8 @@ end = struct
       ((name', ext_rty') : t) : Relations.relation =
     Relations.typed_relation uctx name.x #: ext_rty name'.x #: ext_rty'
 
-  let combine_all_args (args : t list) : identifier list * LocalCtx.t =
+  let combine_all_args (args : t list) :
+      identifier list * LocalCtx.t * identifier Seq.t =
     failwith "unimplemented"
 
   let path_promotion (lc : LocalCtx.t) ((id, rt) : t) : t =
@@ -219,14 +223,17 @@ end = struct
 
   (* Takes vars with their own locals variables and constructs a list of
      arguments with a singular local context *)
-  let combine_all_args (args : t list) : identifier list * LocalCtx.t =
+  let combine_all_args (args : t list) :
+      identifier list * LocalCtx.t * identifier Seq.t =
     let arg_names = List.map (fun (id, _, _) -> id) args in
     let ctxs = List.map (fun (_, _, ctx) -> ctx) args in
     let unchanged_arg_name = List.hd arg_names in
     let unchanged_context = List.hd ctxs in
     List.fold_left2
-      (fun ((args : identifier list), (acc_context : LocalCtx.t))
-           (id : identifier) changed_ctx : (identifier list * LocalCtx.t) ->
+      (fun ( (args : identifier list),
+             (acc_context : LocalCtx.t),
+             (new_id_list : identifier Seq.t) ) (id : identifier) changed_ctx :
+           (identifier list * LocalCtx.t * identifier Seq.t) ->
         let new_ctx, mapping =
           LocalCtx.local_ctx_union_r acc_context changed_ctx
         in
@@ -238,27 +245,35 @@ end = struct
                   Printf.printf "id: %s\n" id.x;
                   List.iter (fun id -> Printf.printf "%s\n" id.x) args;
                   Hashtbl.iter
-                    (fun k v -> Printf.printf "%s -> %s\n" k v)
+                    (fun k v -> Printf.printf "%s -> %s\n" k v.x)
                     mapping;
                   List.iter
                     (fun l -> layout_typectx layout_rty l |> print_endline)
                     ctxs;
-                  failwith "you messed up")
-              #: id.ty;
+                  failwith "you messed up");
             ],
-          new_ctx ))
-      ([ unchanged_arg_name ], unchanged_context)
+          new_ctx,
+          Seq.append new_id_list
+            (Hashtbl.to_seq mapping
+            |> Seq.filter_map (fun (k, v) -> if k = v.x then None else Some v)
+            |> Seq.filter (fun i ->
+                   Rename.has_been_uniqified i.x
+                   (* TODO: Can the next line be deleted now taht I have the
+                      filter map?*)
+                   && not (NameTracking.is_known i))) ))
+      ([ unchanged_arg_name ], unchanged_context, Seq.empty)
       (List.tl arg_names) (List.tl ctxs)
 
-  let path_promotion (lc : LocalCtx.t) (id, rt, block_ctx) : t =
-    let new_context, mapping = NameTracking.freshen block_ctx in
-    let fresh_id = (Hashtbl.find mapping id.x) #: id.ty in
-    let fresh_rt = Pieces.ut_subst rt mapping in
-    NameTracking.add_ast fresh_id (NameTracking.get_ast id |> Option.get);
+  (* let path_promotion (lc : LocalCtx.t) (id, rt, block_ctx) : t * 'a =
+     let new_context, mapping = NameTracking.freshen block_ctx in
+     let fresh_id = (Hashtbl.find mapping id.x) #: id.ty in
+     let fresh_rt = Pieces.ut_subst rt mapping in
+     NameTracking.add_ast fresh_id (NameTracking.get_ast id |> Option.get);
 
-    ( fresh_id,
-      fresh_rt,
-      LocalCtx.promote_ctx_to_path new_context ~promote_ctx:lc )
+     ( ( fresh_id,
+         fresh_rt,
+         LocalCtx.promote_ctx_to_path new_context ~promote_ctx:lc ),
+       mapping ) *)
 
   let existentialize ((name, ut, ctx) : t) : identifier * Nt.t rty =
     (* Kind of awkward, we want to filter out the current blocks name from the
@@ -504,6 +519,7 @@ module BlockMap = struct
           let new_path_ctx =
             Typectx.add_to_right new_path_ctx { x = block_id.x; ty = new_ut.ty }
           in
+          print_endline "going to add to path specific list";
           _add_to_path_specifc_list path_specific_list path_ctx
             (block_id, new_ut.ty, new_path_ctx)
             ret_type)
@@ -539,7 +555,9 @@ module BlockMap = struct
           List.fold_left
             (fun (new_map, path_specific_list) (args : Block.t list) ->
               (* Correct joining of contexts? *)
-              let (arg_names : identifier list), (joined_ctx : LocalCtx.t) =
+              let ( (arg_names : identifier list),
+                    (joined_ctx : LocalCtx.t),
+                    (newly_created_ids : _) ) =
                 Block.combine_all_args args
               in
 
@@ -574,7 +592,13 @@ module BlockMap = struct
                 (* Currenly, blocks are labelled when they are created, so we
                    should delete them if they are never used *)
                 (* Assumes that this is the only way to add the block*)
-                if not !block_added then NameTracking.remove_ast block_id;
+                if not !block_added then (
+                  print_endline "Block was not added";
+                  NameTracking.remove_ast block_id ~recursive:true;
+                  Seq.iter
+                    (NameTracking.remove_ast ~recursive:false)
+                    newly_created_ids)
+                else print_endline "Block was added";
                 new_path_list
               in
 
@@ -587,7 +611,10 @@ module BlockMap = struct
               match analyze_subtyping_result new_ut with
               | NoCoverage ->
                   print_endline "No coverage";
-                  NameTracking.remove_ast block_id;
+                  NameTracking.remove_ast block_id ~recursive:true;
+                  Seq.iter
+                    (NameTracking.remove_ast ~recursive:false)
+                    newly_created_ids;
                   (new_map, path_specific_list)
               | FailedTyping ->
                   (* failed the new rec_check *)
@@ -607,7 +634,10 @@ module BlockMap = struct
                   then (
                     (* Ignore term if so *)
                     print_endline "same as arg";
-                    NameTracking.remove_ast block_id;
+                    NameTracking.remove_ast block_id ~recursive:true;
+                    Seq.iter
+                      (NameTracking.remove_ast ~recursive:false)
+                      newly_created_ids;
                     (new_map, path_specific_list))
                   else if
                     (* TODO what do I want to do here??? *)
@@ -615,7 +645,10 @@ module BlockMap = struct
                   then (
                     (* Ignore term if so *)
                     print_endline "Filtered out by type";
-                    NameTracking.remove_ast block_id;
+                    NameTracking.remove_ast block_id ~recursive:true;
+                    Seq.iter
+                      (NameTracking.remove_ast ~recursive:false)
+                      newly_created_ids;
                     (new_map, path_specific_list))
                   else (
                     print_endline "new";
@@ -629,6 +662,7 @@ module BlockMap = struct
         (empty, [])
         (range (List.length args) |> superset)
     in
+    print_endline "Finished increment";
     assert_valid (fst res);
     List.iter (fun (l, m) -> assert_valid m) (snd res);
     res
@@ -768,6 +802,7 @@ module SynthesisCollection = struct
               promotable_paths optional_filter_type
           in
           BlockCollection.assert_valid general_coll;
+          print_endline "Constructing new collection";
           {
             general_coll =
               BlockCollection.add_map_with_cov_checked general_coll new_map;
@@ -786,9 +821,8 @@ module SynthesisCollection = struct
             List.fold_left
               (fun acc op ->
                 print_endline
-                  ("Incrementing with op: " ^ Pieces.layout_component (fst op));
-
-                BlockMap.print path_col.new_blocks;
+                  ("Incrementing with op in path: "
+                  ^ Pieces.layout_component (fst op));
 
                 let path_op_specific_map, promoted_blocks =
                   BlockMap.increment path_col.new_blocks
@@ -796,6 +830,8 @@ module SynthesisCollection = struct
                     op [] optional_filter_type
                 in
                 assert (List.is_empty promoted_blocks);
+
+                BlockMap.print path_op_specific_map;
 
                 BlockMap.union acc path_op_specific_map)
               (BlockMap.init []) operations
@@ -1054,6 +1090,7 @@ module Extraction = struct
         let path_specific_sets =
           List.map
             (fun (lc, bc) ->
+              LocalCtx.layout lc |> print_endline;
               ( lc,
                 BlockCollection.get_full_map bc |> fun x ->
                 BlockMap.get_opt x target_nty

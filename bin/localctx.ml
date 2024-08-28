@@ -6,9 +6,13 @@ open Language
 module LocalCtx = struct
   type t = Nt.t rty Typectx.ctx
 
+  let layout (Typectx l : t) : string =
+    List.map (fun { x; ty } -> x ^ " : " ^ (Rty.erase_rty ty |> Nt.layout)) l
+    |> String.concat "\n"
+
   (** Combining to local contexts together with renaming *)
-  let local_ctx_union_r (Typectx l : t) (r : t) : t * (string, string) Hashtbl.t
-      =
+  let local_ctx_union_r (Typectx l : t) (r : t) :
+      t * (string, identifier) Hashtbl.t =
     map_fst
       (fun (Typectx.Typectx res) ->
         (* TODO: Duplicates *)

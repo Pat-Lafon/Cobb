@@ -22,16 +22,39 @@ module NameTracking = struct
   let is_known (name : identifier) = Hashtbl.mem known name
 
   let add_ast (a : identifier) (term : (t, t term) typed) =
-    Hashtbl.add asts a term
+    assert (not (Hashtbl.mem asts a));
+    Hashtbl.replace asts a term
 
-  let remove_ast (a : identifier) = Hashtbl.remove asts a
+  let rec remove_ast (a : identifier) ~(recursive : bool) =
+    assert (Hashtbl.mem asts a);
 
+    (* The problem with removing AST's is that sometimes there are intermediate
+       parts that are not removed *)
+    if recursive then
+      let removed_ast = Hashtbl.find asts a in
+      match (removed_ast.x : t term) with
+      | CApp { appf = { x = VVar v; _ }; apparg } ->
+          if is_known v || not (Hashtbl.mem asts v) then ()
+          else remove_ast v ~recursive
+      | CAppOp { op; appopargs } -> ()
+      | CVal _ -> ()
+      | _ -> assert false
+    else ();
+
+    (* Actually remove *)
+    Hashtbl.remove asts a
+
+  (** Add a variable as known while being duplicate sensative *)
   let known_var (a : identifier) =
-    Hashtbl.add known a ();
-    add_ast a (a |> id_to_term);
-    a
+    if is_known a then a
+    else (
+      Hashtbl.replace known a ();
+      add_ast a (a |> id_to_term);
+      a)
 
+  (** Add an ast as known while being duplicate sensative *)
   let known_ast (a : identifier) (term : (t, t term) typed) =
+    assert (not (Hashtbl.mem asts a));
     Hashtbl.add known a ();
     add_ast a term
 
@@ -108,10 +131,13 @@ module NameTracking = struct
           failwith "get_term"
     in
     let bindings, b = aux a in
-    List.fold_left (fun acc (id, rhs) -> mk_lete id rhs acc) b (List.rev bindings |> unique)
+    List.fold_left
+      (fun acc (id, rhs) -> mk_lete id rhs acc)
+      b
+      (List.rev bindings |> unique)
 
-  let ctx_subst (ctx : t rty Typectx.ctx) (ht : (string, string) Hashtbl.t) :
-      t rty Typectx.ctx =
+  let ctx_subst (ctx : t rty Typectx.ctx) (ht : (string, identifier) Hashtbl.t)
+      : t rty Typectx.ctx =
     Typectx.map_ctx_typed
       (fun ({ x; ty } : (t rty, string) typed) : (t rty, string) typed ->
         let renamed_ty =
@@ -120,32 +146,36 @@ module NameTracking = struct
               if is_known name then t
               else
                 let new_name = Hashtbl.find ht name.x in
-                subst_rty_instance name.x (AVar new_name #: name.ty) t)
+                assert (new_name.ty = name.ty);
+                subst_rty_instance name.x (AVar new_name) t)
             ty (fv_rty ty)
         in
         let new_name = Hashtbl.find ht x in
-        new_name #: renamed_ty)
+        assert (new_name.ty = Rty.erase_rty renamed_ty);
+        new_name.x #: renamed_ty)
       ctx
 
   let freshen (Typectx lst : t rty Typectx.ctx) =
     let ctx = Typectx.Typectx lst in
-    let ht : (string, string) Hashtbl.t = Hashtbl.create (List.length lst) in
+    let ht : (string, identifier) Hashtbl.t =
+      Hashtbl.create (List.length lst)
+    in
 
     let maybe_freshen_one (name_rty : (t rty, string) typed) :
         (t rty, string) typed =
       let name = name_rty #=> erase_rty in
       if is_known name then (
-        Hashtbl.add ht name.x name.x;
+        Hashtbl.replace ht name.x name;
         name_rty)
       else
         let new_name = (Rename.unique name.x) #: name.ty in
         let () =
           match get_ast name with
           | None -> failwith name.x
-          | Some x -> Hashtbl.add asts new_name x
+          | Some x -> add_ast new_name x
         in
         assert (not (Hashtbl.mem ht name.x));
-        Hashtbl.add ht name.x new_name.x;
+        Hashtbl.replace ht name.x new_name;
         new_name.x #: name_rty.ty
     in
     let _ = Typectx.map_ctx_typed maybe_freshen_one ctx in

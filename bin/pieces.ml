@@ -118,7 +118,7 @@ module Pieces = struct
     (*  let () = Hashtbl.add asts resid term in *)
     (resid, aterm)
 
-  let ut_subst (ut : t rty) (ht : (string, string) Hashtbl.t) : t rty =
+  let ut_subst (ut : t rty) (ht : (string, identifier) Hashtbl.t) : t rty =
     let renamed_ty =
       List.fold_left
         (fun t { x = name; ty } ->
@@ -129,10 +129,11 @@ module Pieces = struct
               | Some s -> s
               | None ->
                   print_endline "ut_subst::failed to find mapping:";
-                  Hashtbl.iter (fun k v -> k ^ " -> " ^ v |> print_endline) ht;
+                  Hashtbl.iter (fun k v -> k ^ " -> " ^ v.x |> print_endline) ht;
                   failwith ("ut_subst::failed to find " ^ name ^ " in mapping")
             in
-            Rty.subst_rty_instance name (AVar new_name #: ty) t)
+            assert (new_name.ty = ty);
+            Rty.subst_rty_instance name (AVar new_name) t)
         ut (Rty.fv_rty ut)
     in
     renamed_ty
