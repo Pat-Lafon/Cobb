@@ -7,6 +7,7 @@
  (libraries
   core_unix.command_unix
   utils
+  block
   blocks
   pieces
   localization
@@ -18,19 +19,21 @@
   (pps ppx_jane)))
 
 (library
- (name localctx)
+ (name context)
  (libraries underapproximation_type.typing tracking)
- (modules localctx))
+ (modules context))
 
 (library
  (name blocks)
  (libraries
   underapproximation_type.typing
-  localctx
+  context
   timeout
   tracking
   pieces
-  pomap)
+  pomap
+  block
+  relation)
  (modules blocks)
  (preprocess
   (pps ppx_optcomp ppx_compare ppx_sexp_conv)))
@@ -56,10 +59,11 @@
   underapproximation_type.typing
   underapproximation_type.syntax
   pieces
+  block
   blocks
   tracking
   timeout
-  localctx
+  context
   utils)
  (modules localization)
  (inline_tests)

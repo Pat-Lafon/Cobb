@@ -7,10 +7,11 @@ open Language.FrontendTyped
 open Subtyping.Subrty
 open Utils
 open Cty
+open Block
 open Blocks
 open Tracking
 open Pieces
-open Localctx
+open Context
 
 type 'a exn_variations = {
   full_exn : 'a;
@@ -418,7 +419,7 @@ module Localization = struct
                       in
                       Block.layout block |> print_endline;
 
-                      (block, nty))
+                      block)
                     local_vs)
              in
              (local_ctx, block_map, s))

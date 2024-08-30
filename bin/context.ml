@@ -3,8 +3,22 @@ open Utils
 open Tracking
 open Language
 
+(** There is only one global, uctx for the synthesis problem *)
+let global_uctx : uctx option ref = ref None
+
+let set_global_uctx (uctx : uctx) : unit =
+  assert (!global_uctx = None);
+  global_uctx := Some uctx
+
+let get_global_uctx () : uctx =
+  match !global_uctx with
+  | Some uctx -> uctx
+  | None -> failwith "global uctx not set"
+
 module LocalCtx = struct
   type t = Nt.t rty Typectx.ctx
+
+  let eq (Typectx.Typectx l : t) (Typectx.Typectx r : t) : bool = l = r
 
   let layout (Typectx l : t) : string =
     List.map (fun { x; ty } -> x ^ " : " ^ (Rty.erase_rty ty |> Nt.layout)) l
@@ -21,7 +35,8 @@ module LocalCtx = struct
 
   (** Carefully adds the local context to uctx
     * You should probably use this for constructing uctx's *)
-  let uctx_add_local_ctx (uctx : uctx) (ctx : t) : uctx =
+  let uctx_add_local_ctx (ctx : t) : uctx =
+    let uctx = get_global_uctx () in
     {
       uctx with
       local_ctx =

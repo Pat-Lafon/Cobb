@@ -1,0 +1,13 @@
+(library
+ (name relation)
+ (libraries underapproximation_type.typing timeout)
+ (modules relation)
+ (preprocess
+  (pps ppx_sexp_conv)))
+
+(library
+ (name block)
+ (libraries underapproximation_type.typing context tracking pieces relation)
+ (modules block)
+ (preprocess
+  (pps ppx_optcomp ppx_compare ppx_sexp_conv)))

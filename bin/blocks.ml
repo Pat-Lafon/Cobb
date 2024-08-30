@@ -1,4 +1,3 @@
-open Typing
 open Nt
 open Typing.Termcheck
 open Language.FrontendTyped
@@ -6,286 +5,46 @@ open Utils
 open Pieces
 open Frontend_opt.To_typectx
 open Zzdatatype.Datatype
-open Timeout
 open Tracking
 open Pomap
 open Language
-open Localctx
+open Context
+open Relation
+open Block
 
-let global_uctx : uctx option ref = ref None
+(* type subtypingres =
+     | NoCoverage
+     | FailedTyping
+     | Res of (t rty, t rty term) typed
 
-type subtypingres =
-  | NoCoverage
-  | FailedTyping
-  | Res of (t rty, t rty term) typed
+   let analyze_subtyping_result (new_rty : (t rty, t rty term) typed option) :
+       subtypingres =
+     match new_rty with
+     | Some new_rty -> if rty_is_false new_rty.ty then NoCoverage else Res new_rty
+     | None -> FailedTyping *)
 
-let analyze_subtyping_result (new_rty : (t rty, t rty term) typed option) :
-    subtypingres =
-  match new_rty with
-  | Some new_rty -> if rty_is_false new_rty.ty then NoCoverage else Res new_rty
-  | None -> FailedTyping
+module Hashtbl = struct
+  include Hashtbl
 
-module Relations : sig
-  type relation = Equiv | ImpliesTarget | ImpliedByTarget | None | Timeout
+  let is_empty (t : ('a, 'b) t) : bool = length t = 0
 
-  val layout : relation -> string
-  val invert_relation : relation -> relation
-  val is_equiv_or_timeout : relation -> bool
-  val diff_base_type : t rty -> t rty -> bool
+  let map (f : 'a * 'b -> 'a * 'c) (t : ('a, 'b) t) : ('a, 'c) t =
+    let new_t = create (length t) in
+    iter
+      (fun k v ->
+        let k, v = f (k, v) in
+        replace new_t k v)
+      t;
+    new_t
 
-  (* TODO: comment this line out so everyone needs to use cache*)
-  val is_sub_rty : uctx -> t rty -> t rty -> bool
-
-  (* todo: comment this line out so everyone needs to use cache *)
-  val typing_relation : uctx -> t rty -> t rty -> relation
-
-  val typed_relation :
-    uctx -> (t rty, string) typed -> (t rty, string) typed -> relation
-
-  val check_cache : string -> string -> relation option
-  val clear_cache : unit -> unit
-end = struct
-  type relation = Equiv | ImpliesTarget | ImpliedByTarget | None | Timeout
-  [@@deriving sexp]
-
-  let layout relation = Core.Sexp.to_string_hum (sexp_of_relation relation)
-
-  let invert_relation = function
-    | Equiv -> Equiv
-    | ImpliesTarget -> ImpliedByTarget
-    | ImpliedByTarget -> ImpliesTarget
-    | None -> None
-    | Timeout -> Timeout
-
-  module RelationCache = struct
-    type t = (string * string, relation) Hashtbl.t
-
-    let cache : t = Hashtbl.create 10000
-    let reset_cache () = Hashtbl.clear cache
-
-    let add (l : string) (r : string) (rel : relation) : unit =
-      Hashtbl.add cache (l, r) rel
-
-    let check (l : string) (r : string) : relation option =
-      match Hashtbl.find_opt cache (l, r) with
-      | Some r -> Some r
-      | None -> Hashtbl.find_opt cache (r, l) |> Option.map invert_relation
-  end
-
-  let is_equiv_or_timeout (r : relation) : bool =
-    match r with Equiv | Timeout -> true | _ -> false
-
-  let diff_base_type (l : t rty) (r : t rty) : bool =
-    not (erase_rty l = erase_rty r)
-
-  let check_cache = RelationCache.check
-  let clear_cache () = RelationCache.reset_cache ()
-
-  let is_sub_rty uctx l r =
-    if diff_base_type l r then false
-    else
-      let res = Timeout.sub_rty_bool_or_timeout uctx (l, r) in
-      match res with Result true -> true | _ -> false
-
-  (* TODO: Where can this be replaced with cache access?*)
-  let typing_relation ctx target_ty ty =
-    if diff_base_type target_ty ty then None
-    else
-      let implies_target =
-        Timeout.sub_rty_bool_or_timeout ctx (ty, target_ty)
-      in
-
-      (* (* Short circuit on timeout *)
-         if implies_target = Timeout then Timeout
-         else *)
-      (* Else continue *)
-      let implied_by_target =
-        Timeout.sub_rty_bool_or_timeout ctx (target_ty, ty)
-      in
-      match (implies_target, implied_by_target) with
-      (*       | Timeout, _ | _, Timeout -> Timeout *)
-      | Result true, Result true -> Equiv
-      | Result true, _ -> ImpliesTarget
-      | _, Result true -> ImpliedByTarget
-      | _ -> None
-
-  let typed_relation ctx target_id id =
-    match check_cache target_id.x id.x with
-    | Some r -> r
-    | None ->
-        let target_ty = target_id.ty in
-        let ty = id.ty in
-        let res = typing_relation ctx target_ty ty in
-        RelationCache.add target_id.x id.x res;
-        res
-end
-
-module type Block_intf = sig
-  type t
-
-  val layout : t -> string
-  val to_typed_term : t -> (Nt.t, Nt.t term) typed
-  val get_local_ctx : t -> LocalCtx.t
-  val typing_relation : uctx -> t -> t -> Relations.relation
-  val is_sub_rty : uctx -> t -> t -> bool
-
-  val combine_all_args :
-    t list -> identifier list * LocalCtx.t * identifier Seq.t
-end
-
-module ExistentializedBlock : sig
-  type t = identifier * Nt.t rty
-
-  val path_promotion : LocalCtx.t -> t -> t
-
-  include Block_intf with type t := t
-end = struct
-  type t = identifier * Nt.t rty
-
-  let to_typed_term ((name, ut) : t) : (Nt.t, Nt.t term) typed =
-    NameTracking.get_term name
-
-  let layout ((name, ut) : t) : string =
-    Printf.sprintf "%s : %s :\n%s\n"
-      (NameTracking.get_term name |> layout_typed_erased_term)
-      (layout_ty name.ty) (layout_rty ut)
-
-  (* In the case of an existentialized block, the only thing in context is itself*)
-  let get_local_ctx ((name, ext_rty) : t) : LocalCtx.t =
-    Typectx.Typectx [ name.x #: ext_rty ]
-
-  let new_X (x : identifier) (ty : Nt.t rty) : t = (x, ty)
-
-  let is_sub_rty (uctx : uctx) ((name, ext_rty) : t) ((name', ext_rty') : t) :
-      bool =
-    Relations.is_sub_rty uctx ext_rty ext_rty'
-
-  let typing_relation (uctx : uctx) ((name, ext_rty) : t)
-      ((name', ext_rty') : t) : Relations.relation =
-    Relations.typed_relation uctx name.x #: ext_rty name'.x #: ext_rty'
-
-  let combine_all_args (args : t list) :
-      identifier list * LocalCtx.t * identifier Seq.t =
-    failwith "unimplemented"
-
-  let path_promotion (lc : LocalCtx.t) ((id, rt) : t) : t =
-    let fresh_id = (Rename.unique id.x) #: id.ty in
-    NameTracking.add_ast fresh_id (NameTracking.get_ast id |> Option.get);
-    let fresh_rty = LocalCtx.exists_rtys_to_rty lc rt in
-
-    assert (fresh_rty != rt);
-
-    (fresh_id, fresh_rty)
-end
-
-module Block : sig
-  type t = identifier * Nt.t rty * LocalCtx.t
-
-  include Block_intf with type t := t
-
-  val existentialize : t -> ExistentializedBlock.t
-end = struct
-  type t = identifier * Nt.t rty * LocalCtx.t
-
-  let to_typed_term ((name, ut, ctx) : t) : (Nt.t, Nt.t term) typed =
-    NameTracking.get_term name
-
-  let layout ((name, ut, ctx) : t) : string =
-    Printf.sprintf "%s ⊢ %s : %s :\n%s\n"
-      (layout_typectx layout_rty ctx
-      ^ if List.is_empty (Typectx.to_list ctx) then "" else " \n")
-      (NameTracking.get_term name |> layout_typed_erased_term)
-      (layout_ty name.ty) (layout_rty ut)
-
-  let get_local_ctx ((name, ut, ctx) : t) : LocalCtx.t = ctx
-
-  let is_sub_rty (uctx : uctx) (block : t) (block' : t) : bool =
-    let id, target_ty, ctx = block in
-    let id', ty, ctx' = block' in
-    let combined_ctx, mapping = LocalCtx.local_ctx_union_r ctx ctx' in
-    let updated_ty = Pieces.ut_subst ty mapping in
-
-    Relations.is_sub_rty
-      (LocalCtx.uctx_add_local_ctx uctx combined_ctx)
-      target_ty updated_ty
-
-  let typing_relation (uctx : uctx) (target_block : t) (block : t) :
-      Relations.relation =
-    let target_id, target_ty, target_ctx = target_block in
-    let id, ty, ctx = block in
-
-    let combined_ctx, mapping = LocalCtx.local_ctx_union_r target_ctx ctx in
-    let updated_ty = Pieces.ut_subst ty mapping in
-
-    Relations.typing_relation
-      (LocalCtx.uctx_add_local_ctx uctx combined_ctx)
-      target_ty updated_ty
-
-  (* Takes vars with their own locals variables and constructs a list of
-     arguments with a singular local context *)
-  let combine_all_args (args : t list) :
-      identifier list * LocalCtx.t * identifier Seq.t =
-    let arg_names = List.map (fun (id, _, _) -> id) args in
-    let ctxs = List.map (fun (_, _, ctx) -> ctx) args in
-    let unchanged_arg_name = List.hd arg_names in
-    let unchanged_context = List.hd ctxs in
-    List.fold_left2
-      (fun ( (args : identifier list),
-             (acc_context : LocalCtx.t),
-             (new_id_list : identifier Seq.t) ) (id : identifier) changed_ctx :
-           (identifier list * LocalCtx.t * identifier Seq.t) ->
-        let new_ctx, mapping =
-          LocalCtx.local_ctx_union_r acc_context changed_ctx
-        in
-        ( args
-          @ [
-              (match Hashtbl.find_opt mapping id.x with
-              | Some s -> s
-              | None ->
-                  Printf.printf "id: %s\n" id.x;
-                  List.iter (fun id -> Printf.printf "%s\n" id.x) args;
-                  Hashtbl.iter
-                    (fun k v -> Printf.printf "%s -> %s\n" k v.x)
-                    mapping;
-                  List.iter
-                    (fun l -> layout_typectx layout_rty l |> print_endline)
-                    ctxs;
-                  failwith "you messed up");
-            ],
-          new_ctx,
-          Seq.append new_id_list
-            (Hashtbl.to_seq mapping
-            |> Seq.filter_map (fun (k, v) -> if k = v.x then None else Some v)
-            |> Seq.filter (fun i ->
-                   Rename.has_been_uniqified i.x
-                   (* TODO: Can the next line be deleted now taht I have the
-                      filter map?*)
-                   && not (NameTracking.is_known i))) ))
-      ([ unchanged_arg_name ], unchanged_context, Seq.empty)
-      (List.tl arg_names) (List.tl ctxs)
-
-  (* let path_promotion (lc : LocalCtx.t) (id, rt, block_ctx) : t * 'a =
-     let new_context, mapping = NameTracking.freshen block_ctx in
-     let fresh_id = (Hashtbl.find mapping id.x) #: id.ty in
-     let fresh_rt = Pieces.ut_subst rt mapping in
-     NameTracking.add_ast fresh_id (NameTracking.get_ast id |> Option.get);
-
-     ( ( fresh_id,
-         fresh_rt,
-         LocalCtx.promote_ctx_to_path new_context ~promote_ctx:lc ),
-       mapping ) *)
-
-  let existentialize ((name, ut, ctx) : t) : identifier * Nt.t rty =
-    (* Kind of awkward, we want to filter out the current blocks name from the
-       type(which would be redundant, unless that name is important) *)
-    let local_ctx =
-      Typectx.to_list ctx
-      |> List.filter (fun { x; ty } ->
-             if x == name.x then NameTracking.is_known x #: (erase_rty ty)
-             else true)
-    in
-    let ext_rty = exists_rtys_to_rty local_ctx ut in
-    (name, ext_rty)
+  let filter_map (f : 'a * 'b -> ('a * 'c) option) (t : ('a, 'b) t) : ('a, 'c) t
+      =
+    let new_t = create (length t) in
+    iter
+      (fun k v ->
+        match f (k, v) with Some (k, v) -> replace new_t k v | None -> ())
+      t;
+    new_t
 end
 
 module BlockSetF (B : Block_intf) : sig
@@ -320,7 +79,7 @@ end = struct
       | Relations.Timeout -> Unknown
 
     let compare (a : el) (b : el) =
-      let uctx = !global_uctx |> Option.get in
+      let uctx = Context.get_global_uctx () in
       B.typing_relation uctx a b |> relations_to_ord
   end
 
@@ -403,12 +162,13 @@ module BlockMapF (B : Block_intf) = struct
       map
 
   (** Add the (type, term pair to the map) *)
-  let rec add (map : t) (term : B.t) (ty : Nt.t) : t =
+  let rec add (map : t) (term : B.t) : t =
     match map with
-    | [] -> [ (ty, BlockSet.singleton term) ]
+    | [] -> [ (B.to_nty term, BlockSet.singleton term) ]
     | (ty', terms) :: rest ->
+        let ty = B.to_nty term in
         if eq ty ty' then (ty, BlockSet.add_block terms term) :: rest
-        else (ty', terms) :: add rest term ty
+        else (ty', terms) :: add rest term
 
   (** Add the (type, term pair to the map) *)
   let rec add_list (map : t) (term_list : BlockSet.t) (ty : Nt.t) : t =
@@ -418,10 +178,10 @@ module BlockMapF (B : Block_intf) = struct
         if eq ty ty' then (ty, BlockSet.union terms term_list) :: rest
         else (ty', terms) :: add_list rest term_list ty
 
-  let init (inital_seeds : (B.t * Nt.t) list) : t =
-    let aux (b_map : t) (term, ty) =
+  let init (inital_seeds : B.t list) : t =
+    let aux (b_map : t) term =
       (* layout_block term |> print_endline; *)
-      add b_map term ty
+      add b_map term
     in
     List.fold_left aux [] inital_seeds
 
@@ -441,23 +201,13 @@ module BlockMapF (B : Block_intf) = struct
     in
     List.iter aux map
 
-  let check_coverage_with_args uctx block_id new_ut arg_names : bool =
-    List.exists
-      (fun ({ x; _ } : identifier) ->
-        let arg_t = FrontendTyped.get_opt uctx x |> Option.get in
-        let relation_result =
-          Relations.typed_relation uctx x #: arg_t block_id.x #: new_ut.ty
-        in
-        Relations.Equiv == relation_result)
-      arg_names
-
   let rec _add_to_path_specifc_list (path_specific : (LocalCtx.t * t) list)
-      (local_ctx : LocalCtx.t) (b : B.t) ret_type =
+      (local_ctx : LocalCtx.t) (b : B.t) =
     match path_specific with
-    | [] -> [ (local_ctx, init [ (b, ret_type) ]) ]
+    | [] -> [ (local_ctx, init [ b ]) ]
     | (l, m) :: rest ->
-        if l = local_ctx then (l, add m b ret_type) :: rest
-        else (l, m) :: _add_to_path_specifc_list rest local_ctx b ret_type
+        if l = local_ctx then (l, add m b) :: rest
+        else (l, m) :: _add_to_path_specifc_list rest local_ctx b
 end
 
 module BlockMap = struct
@@ -476,56 +226,38 @@ module BlockMap = struct
   let get (map : t) (ty : Nt.t) : BlockSet.t =
     get_opt map ty |> Option.value ~default:BlockSet.empty
 
-  let check_filter_type (optional_filter_type : _ option) new_uctx
-      (new_ut : (Nt.t rty, Nt.t rty term) typed) : bool =
-    Option.fold ~none:false
-      ~some:(fun filter_type ->
-        match
-          Timeout.sub_rty_bool_or_timeout new_uctx (new_ut.ty, filter_type)
-        with
-        | Result true -> false
-        | _ -> (
-            match
-              Timeout.sub_rty_bool_or_timeout new_uctx (filter_type, new_ut.ty)
-            with
-            | Result true -> false
-            | _ -> true))
-      optional_filter_type
+  (* let try_path path_specific_list path_ctx optional_filter_type ret_type
+       (block_id, term, local_ctx) block_added =
+     let new_path_ctx =
+       LocalCtx.promote_ctx_to_path local_ctx ~promote_ctx:path_ctx
+     in
 
-  let try_path path_specific_list path_ctx optional_filter_type ret_type
-      (block_id, term, local_ctx) block_added =
-    let uctx = !global_uctx |> Option.get in
+     let new_path_uctx = LocalCtx.uctx_add_local_ctx new_path_ctx in
 
-    let new_path_ctx =
-      LocalCtx.promote_ctx_to_path local_ctx ~promote_ctx:path_ctx
-    in
+     let new_path_ut =
+       Termcheck.term_type_infer_with_rec_check new_path_uctx
+         { x = term.x; ty = block_id.ty }
+     in
+     match analyze_subtyping_result new_path_ut with
+     | Res new_ut ->
+         assert (ret_type == erase_rty new_ut.ty);
 
-    let new_path_uctx = LocalCtx.uctx_add_local_ctx uctx new_path_ctx in
-
-    let new_path_ut =
-      Termcheck.term_type_infer_with_rec_check new_path_uctx
-        { x = term.x; ty = block_id.ty }
-    in
-    match analyze_subtyping_result new_path_ut with
-    | Res new_ut ->
-        assert (ret_type == erase_rty new_ut.ty);
-
-        if check_filter_type optional_filter_type new_path_uctx new_ut then (
-          print_endline "Didn't make path";
-          path_specific_list)
-        else (
-          print_endline "Found a path home";
-          block_added := true;
-          let new_path_ctx =
-            Typectx.add_to_right new_path_ctx { x = block_id.x; ty = new_ut.ty }
-          in
-          print_endline "going to add to path specific list";
-          _add_to_path_specifc_list path_specific_list path_ctx
-            (block_id, new_ut.ty, new_path_ctx)
-            ret_type)
-    | _ ->
-        print_endline "Other bad path cases";
-        path_specific_list
+         if check_filter_type optional_filter_type new_path_uctx new_ut then (
+           print_endline "Didn't make path";
+           path_specific_list)
+         else (
+           print_endline "Found a path home";
+           block_added := true;
+           let new_path_ctx =
+             Typectx.add_to_right new_path_ctx { x = block_id.x; ty = new_ut.ty }
+           in
+           print_endline "going to add to path specific list";
+           _add_to_path_specifc_list path_specific_list path_ctx
+             (block_id, new_ut.ty, new_path_ctx)
+             ret_type)
+     | _ ->
+         print_endline "Other bad path cases";
+         path_specific_list *)
 
   (* Promotable_paths should be empty if the new_blocks comes form a
        specific path *)
@@ -534,10 +266,8 @@ module BlockMap = struct
   (* Should we separate out the general and path specific cases? *)
   let increment (new_blocks : t) (old_blocks : t)
       ((component, (args, ret_type)) : Pieces.component * (Nt.t list * Nt.t))
-      (promotable_paths : LocalCtx.t list) (optional_filter_type : _ option) :
-      t * (LocalCtx.t * t) list =
-    let uctx = !global_uctx |> Option.get in
-
+      (promotable_paths : LocalCtx.t list) (filter_type : _ option) :
+      t * (LocalCtx.t, t) Hashtbl.t =
     (* Loop from 0 to args.len - 1 to choose an index for the `new_blocks` *)
     let res =
       List.fold_left
@@ -553,118 +283,37 @@ module BlockMap = struct
 
           (* For each set of possible args of that combination of new/old*)
           List.fold_left
-            (fun (new_map, path_specific_list) (args : Block.t list) ->
-              (* Correct joining of contexts? *)
-              let ( (arg_names : identifier list),
-                    (joined_ctx : LocalCtx.t),
-                    (newly_created_ids : _) ) =
-                Block.combine_all_args args
+            (fun ((new_map, path_specific_list) : _ * (LocalCtx.t, t) Hashtbl.t)
+                 (args : Block.t list) ->
+              let (general_block, path_promo_list) :
+                  Block.t option * (LocalCtx.t * Block.t) list =
+                apply component args ret_type filter_type promotable_paths
               in
 
-              let block_id, term = Pieces.apply component arg_names in
-
-              assert (block_id.ty = ret_type);
-              assert (term.ty = block_id.ty);
-
-              let new_uctx : uctx =
-                LocalCtx.uctx_add_local_ctx uctx joined_ctx
-              in
-
-              let new_ut =
-                Termcheck.term_type_infer_with_rec_check new_uctx
-                  { x = term.x; ty = block_id.ty }
-              in
-
-              (* This abstracts out the path trying logic in a somewhat not-nice
-                 way *)
-              let try_add_paths () =
-                let block_added = ref false in
-                let new_path_list =
-                  List.fold_left
-                    (fun path_specific_list x ->
-                      try_path path_specific_list x optional_filter_type
-                        ret_type
-                        (block_id, term, joined_ctx)
-                        block_added)
-                    path_specific_list promotable_paths
-                in
-
-                (* Currenly, blocks are labelled when they are created, so we
-                   should delete them if they are never used *)
-                (* Assumes that this is the only way to add the block*)
-                if not !block_added then (
-                  print_endline "Block was not added";
-                  NameTracking.remove_ast block_id ~recursive:true;
-                  Seq.iter
-                    (NameTracking.remove_ast ~recursive:false)
-                    newly_created_ids)
-                else print_endline "Block was added";
-                new_path_list
-              in
-
-              (* Option.iter
-                 (fun ut ->
-                   print_endline "Considering block: ";
-                   Block.to_typed_term (block_id, ut.ty, joined_ctx)
-                   |> layout_typed_term |> print_endline)
-                 new_ut; *)
-              match analyze_subtyping_result new_ut with
-              | NoCoverage ->
-                  print_endline "No coverage";
-                  NameTracking.remove_ast block_id ~recursive:true;
-                  Seq.iter
-                    (NameTracking.remove_ast ~recursive:false)
-                    newly_created_ids;
-                  (new_map, path_specific_list)
-              | FailedTyping ->
-                  (* failed the new rec_check *)
-                  (new_map, try_add_paths ())
-              | Res new_ut ->
-                  assert (ret_type == erase_rty new_ut.ty);
-                  (* If you have a promotable path, and a filter type, just skip the
-                     general filter. Otherwise check filter *)
-                  if
-                    Option.is_some optional_filter_type
-                    && not (List.is_empty promotable_paths)
-                  then (new_map, try_add_paths ())
-                  else if
-                    (* Check if new term is coverage equivalent to one of it's
-                       arguments *)
-                    check_coverage_with_args new_uctx block_id new_ut arg_names
-                  then (
-                    (* Ignore term if so *)
-                    print_endline "same as arg";
-                    NameTracking.remove_ast block_id ~recursive:true;
-                    Seq.iter
-                      (NameTracking.remove_ast ~recursive:false)
-                      newly_created_ids;
-                    (new_map, path_specific_list))
-                  else if
-                    (* TODO what do I want to do here??? *)
-                    check_filter_type optional_filter_type new_uctx new_ut
-                  then (
-                    (* Ignore term if so *)
-                    print_endline "Filtered out by type";
-                    NameTracking.remove_ast block_id ~recursive:true;
-                    Seq.iter
-                      (NameTracking.remove_ast ~recursive:false)
-                      newly_created_ids;
-                    (new_map, path_specific_list))
-                  else (
-                    print_endline "new";
-                    let new_ctx =
-                      Typectx.add_to_right joined_ctx
-                        { x = block_id.x; ty = new_ut.ty }
-                    in
-                    ( add new_map (block_id, new_ut.ty, new_ctx) ret_type,
-                      path_specific_list )))
+              match general_block with
+              | None ->
+                  ( new_map,
+                    List.fold_left
+                      (fun (acc : (LocalCtx.t, t) Hashtbl.t)
+                           ((x, y) : _ * Block.t) : (LocalCtx.t, t) Hashtbl.t ->
+                        match Hashtbl.find_opt acc x with
+                        | None ->
+                            Hashtbl.replace acc x (init [ y ]);
+                            acc
+                        | Some s ->
+                            Hashtbl.replace acc x (add s y);
+                            acc)
+                      path_specific_list path_promo_list )
+              | Some s ->
+                  assert (List.is_empty path_promo_list);
+                  (add new_map s, path_specific_list))
             acc all_possible_block_combinations)
-        (empty, [])
+        (empty, Hashtbl.create 5)
         (range (List.length args) |> superset)
     in
     print_endline "Finished increment";
     assert_valid (fst res);
-    List.iter (fun (l, m) -> assert_valid m) (snd res);
+    Hashtbl.iter (fun l m -> assert_valid m) (snd res);
     res
 end
 
@@ -675,7 +324,7 @@ module BlockCollection = struct
 
   (** Initialize a block collection with the given seeds values
     * Seeds are initial blocks that are just variables, constants, or operations that take no arguments (or just unit) *)
-  let init (inital_seeds : (Block.t * Nt.t) list) : t =
+  let init (inital_seeds : Block.t list) : t =
     let new_blocks : BlockMap.t = BlockMap.init inital_seeds in
     { new_blocks; old_blocks = [] }
 
@@ -713,48 +362,67 @@ end
 module SynthesisCollection = struct
   type t = {
     general_coll : BlockCollection.t;
-    path_specific : (LocalCtx.t * BlockCollection.t) list;
+    path_specific : (LocalCtx.t, BlockCollection.t) Hashtbl.t;
   }
   (** A set of block_collections, a general one and some path specific ones *)
 
   let init (inital_seeds : BlockMap.t)
-      (path_specific_seeds : (LocalCtx.t * BlockMap.t) list) : t =
+      (path_specific_seeds : (LocalCtx.t, BlockMap.t) Hashtbl.t) : t =
     let general_coll : BlockCollection.t =
       { new_blocks = inital_seeds; old_blocks = [] }
     in
     let path_specific =
-      List.map
-        (fun (ctx, seeds) : (_ * BlockCollection.t) ->
-          (ctx, { new_blocks = seeds; old_blocks = [] }))
+      Hashtbl.map
+        (fun (lc, seeds) : (_ * BlockCollection.t) ->
+          (lc, { new_blocks = seeds; old_blocks = [] }))
         path_specific_seeds
     in
+
     { general_coll; path_specific }
 
   let print ({ general_coll; path_specific } : t) : unit =
     Printf.printf "General Collection:\n";
     BlockCollection.print general_coll;
     Printf.printf "Path Specific Collection:\n";
-    List.iter
-      (fun (local_ctx, block_collection) ->
-        layout_typectx layout_rty local_ctx |> print_endline;
-        BlockCollection.print general_coll)
-      path_specific
+
+    Hashtbl.to_seq path_specific
+    |> Seq.iter (fun (local_ctx, block_collection) ->
+           layout_typectx layout_rty local_ctx |> print_endline;
+           BlockCollection.print general_coll)
 
   (* First list must be a superset of the second in terms of local_ctx used*)
+  (* let merge_path_specific_maps
+       (path_specific : (LocalCtx.t * BlockCollection.t) list)
+       (path_specific_maps : (LocalCtx.t * BlockMap.t) list) :
+       (LocalCtx.t * BlockCollection.t) list =
+     List.iter
+       (fun (l, m) ->
+         BlockMap.assert_valid m;
+         assert (List.mem_assoc l path_specific))
+       path_specific_maps;
+
+     List.map
+       (fun (l, bc) ->
+         BlockCollection.assert_valid bc;
+         match List.assoc_opt l path_specific_maps with
+         | Some b -> (l, BlockCollection.add_map_with_cov_checked bc b)
+         | None -> (l, bc))
+       path_specific *)
+
   let merge_path_specific_maps
-      (path_specific : (LocalCtx.t * BlockCollection.t) list)
-      (path_specific_maps : (LocalCtx.t * BlockMap.t) list) :
-      (LocalCtx.t * BlockCollection.t) list =
-    List.iter
-      (fun (l, m) ->
+      (path_specific : (LocalCtx.t, BlockCollection.t) Hashtbl.t)
+      (path_specific_maps : (LocalCtx.t, BlockMap.t) Hashtbl.t) :
+      (LocalCtx.t, BlockCollection.t) Hashtbl.t =
+    Hashtbl.iter
+      (fun l m ->
         BlockMap.assert_valid m;
-        assert (List.mem_assoc l path_specific))
+        assert (Hashtbl.mem path_specific l))
       path_specific_maps;
 
-    List.map
+    Hashtbl.map
       (fun (l, bc) ->
         BlockCollection.assert_valid bc;
-        match List.assoc_opt l path_specific_maps with
+        match Hashtbl.find_opt path_specific_maps l with
         | Some b -> (l, BlockCollection.add_map_with_cov_checked bc b)
         | None -> (l, bc))
       path_specific
@@ -768,16 +436,18 @@ module SynthesisCollection = struct
     (* Still want to check for equivalence *)
     let general_new_blocks = collection.general_coll.new_blocks in
     let general_old_blocks = collection.general_coll.old_blocks in
-    let promotable_paths = List.map fst collection.path_specific in
+    let promotable_paths =
+      Hashtbl.to_seq_keys collection.path_specific |> List.of_seq
+    in
     let path_specific_block_collections = collection.path_specific in
 
     let new_collection =
       {
         general_coll = BlockCollection.make_new_old collection.general_coll;
         path_specific =
-          List.map
-            (fun (ctx, path_specific_collection) ->
-              (ctx, BlockCollection.make_new_old path_specific_collection))
+          Hashtbl.map
+            (fun (lc, path_specific_collection) ->
+              (lc, BlockCollection.make_new_old path_specific_collection))
             path_specific_block_collections;
       }
     in
@@ -813,8 +483,8 @@ module SynthesisCollection = struct
     in
 
     let path_specific_maps =
-      List.fold_left
-        (fun acc (local_ctx, (path_col : BlockCollection.t)) ->
+      Hashtbl.fold
+        (fun local_ctx (path_col : BlockCollection.t) acc ->
           print_endline "Increment Path Specific Collection";
           print_endline (layout_typectx layout_rty local_ctx);
           let path_specific_map =
@@ -829,7 +499,7 @@ module SynthesisCollection = struct
                     (BlockMap.union path_col.old_blocks general_old_blocks)
                     op [] optional_filter_type
                 in
-                assert (List.is_empty promoted_blocks);
+                assert (Hashtbl.is_empty promoted_blocks);
 
                 BlockMap.print path_op_specific_map;
 
@@ -837,8 +507,11 @@ module SynthesisCollection = struct
               (BlockMap.init []) operations
           in
           if BlockMap.is_empty path_specific_map then acc
-          else (local_ctx, path_specific_map) :: acc)
-        [] path_specific_block_collections
+          else (
+            assert (not (Hashtbl.mem acc local_ctx));
+            Hashtbl.replace acc local_ctx path_specific_map;
+            acc))
+        path_specific_block_collections (Hashtbl.create 5)
     in
 
     {
@@ -1050,7 +723,7 @@ module Extraction = struct
       |> List.map Block.existentialize
     in
 
-    let uctx = !global_uctx |> Option.get in
+    let uctx = Context.get_global_uctx () in
 
     (* The updated set is commented out because we don't to include the target
        block in later calculations *)
@@ -1063,20 +736,21 @@ module Extraction = struct
         general_block_list
     in
 
-    assert (List.length collection.path_specific > 0);
+    assert (Hashtbl.length collection.path_specific > 0);
 
     match equal_block with
     | Some b ->
         print_endline "Handling the equal_block case";
-        let current : _ list =
-          List.map
-            (fun (lc, _) ->
+        let current : _ =
+          Hashtbl.fold
+            (fun lc _ acc ->
               (* We already have our solution so we only need the set of paths *)
               ( lc,
                 BlockSetE.empty,
                 ExistentializedBlock.path_promotion lc b,
-                Ptset.empty ))
-            collection.path_specific
+                Ptset.empty )
+              :: acc)
+            collection.path_specific []
         in
 
         let current = minimize_num current target_ty in
@@ -1088,7 +762,7 @@ module Extraction = struct
 
         (* Get the sets for each path *)
         let path_specific_sets =
-          List.map
+          Hashtbl.map
             (fun (lc, bc) ->
               LocalCtx.layout lc |> print_endline;
               ( lc,
@@ -1103,7 +777,7 @@ module Extraction = struct
         (* We are going to do some normalization setup *)
         (* All General terms are going to get pushed into paths *)
         let path_specific_sets =
-          List.map
+          Hashtbl.map
             (fun ((lc : LocalCtx.t), (path_blocks : _ list)) ->
               let res = BlockSetE.empty in
               (* TODO: We should only use this block once and enable caching *)
@@ -1143,8 +817,8 @@ module Extraction = struct
         in
 
         Printf.printf "\n\n Path Specific collections we are interested in\n";
-        List.iter
-          (fun (ctx, set) ->
+        Hashtbl.iter
+          (fun ctx set ->
             let path_target_ty =
               ExistentializedBlock.path_promotion ctx target_block
             in
@@ -1157,13 +831,17 @@ module Extraction = struct
         print_endline "ready to match";
 
         (* We have one check that a component covers the full target *)
-        (* TODO: May have been made rudundant/not worth the complexity*)
+        (* TODO: May have been made redundant/not worth the complexity*)
         match
-          List.find_map
-            (fun (lc, path_set) ->
-              BlockSetE.find_block_opt path_set target_block
-              |> Option.map (fun b -> (lc, b)))
-            path_specific_sets
+          Hashtbl.to_seq path_specific_sets
+          |> Seq.find_map (fun (lc, path_set) ->
+                 BlockSetE.find_block_opt path_set target_block
+                 |> Option.map (fun b -> (lc, b)))
+          (* List.find_map
+             (fun (lc, path_set) ->
+               BlockSetE.find_block_opt path_set target_block
+               |> Option.map (fun b -> (lc, b)))
+             path_specific_sets *)
         with
         | Some s ->
             print_endline "In the case where we have a match";
@@ -1176,8 +854,8 @@ module Extraction = struct
 
             let block_options_in_each_path :
                 (LocalCtx.t * BlockSetE.t * ('a option * Ptset.t)) list =
-              List.filter_map
-                (fun (lc, set) ->
+              Hashtbl.fold
+                (fun lc set acc ->
                   let path_target_block =
                     ExistentializedBlock.path_promotion lc target_block
                   in
@@ -1189,7 +867,7 @@ module Extraction = struct
                   | Some b ->
                       (* Yes: Return current bs, no preds, and the target_block *)
                       print_endline "Have a complete block for a path solution";
-                      Some (lc, set, (Some b, Ptset.empty))
+                      (lc, set, (Some b, Ptset.empty)) :: acc
                   | None ->
                       (* No: Return a new bs with the target block, any preds, and
                          possibly a starting block from the succs *)
@@ -1213,11 +891,11 @@ module Extraction = struct
                          target? *)
                       if not (Ptset.is_empty p && Ptset.is_empty s) then (
                         print_endline "return a block";
-                        Some (lc, bs, (b, p)))
+                        (lc, bs, (b, p)) :: acc)
                       else (
                         print_endline "return nothing";
-                        None))
-                path_specific_sets
+                        acc))
+                path_specific_sets []
             in
 
             print_endline

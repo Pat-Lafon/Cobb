@@ -2,10 +2,8 @@ open Typing
 open Term
 open Pieces
 open Blocks
+open Block
 open Localization
-
-(* open Utils *)
-(* open Frontend_opt.To_typectx *)
 open Language.FrontendTyped
 open Zzdatatype.Datatype
 open Mtyped
@@ -298,6 +296,8 @@ let rec remove_excess_ast_aux (t : (Nt.t, Nt.t term) typed) =
       }
     when Core.String.(lhs.x = v.x) ->
       remove_excess_ast_aux exp
+  | CLetE { lhs; rhs = { x = CVal { x = VVar v; _ }; _ }; body } when lhs = v ->
+      remove_excess_ast_aux body
   | CLetE { lhs; rhs; body } ->
       (CLetE { lhs; rhs; body = remove_excess_ast_aux body }) #: t.ty
   | CLetDeTu { turhs; tulhs; body } ->
@@ -360,7 +360,7 @@ let run_benchmark source_file meta_config_file =
   | None -> ()
   | Some _ -> failwith "Nothing to repair");
 
-  global_uctx := Some uctx;
+  Context.set_global_uctx uctx;
 
   let _typed_code = Typing.Termcheck.term_type_infer uctx body |> Option.get in
 
@@ -377,7 +377,7 @@ let run_benchmark source_file meta_config_file =
     not (Typing.Termcheck.term_type_check uctx body retty |> Option.is_some));
   assert (Subtyping.Subrty.sub_rty_bool uctx (retty, missing_coverage));
 
-  let ( (seeds : (Block.t * t) list),
+  let ( (seeds : Block.t list),
         (components : (Pieces.component * (t list * t)) list) ) =
     Pieces.seeds_and_components uctx.builtin_ctx
   in
@@ -394,7 +394,14 @@ let run_benchmark source_file meta_config_file =
 
   print_endline ("Number of paths: " ^ string_of_int (List.length path_maps));
 
-  let context_maps = List.map (fun (a, b, _) -> (a, b)) path_maps in
+  let context_maps =
+    List.fold_left
+      (fun acc (a, b, _) ->
+        assert (not (Hashtbl.mem acc a));
+        Hashtbl.replace acc a b;
+        acc)
+      (Hashtbl.create 5) path_maps
+  in
   let substitution_maps = List.map (fun (a, _, c) -> (a, c)) path_maps in
 
   let raw_body = Anf_to_raw_term.typed_term_to_typed_raw_term new_body in
