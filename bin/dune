@@ -14,7 +14,8 @@
   underapproximation_type.translate
   underapproximation_type.typing
   underapproximation_type.preprocessing
-  underapproximation_type.commands)
+  underapproximation_type.commands
+  memtrace)
  (preprocess
   (pps ppx_jane)))
 
@@ -73,7 +74,7 @@
 (library
  (name utils)
  (modules utils)
- (libraries core underapproximation_type.typing))
+ (libraries core underapproximation_type.typing language_utils.zzdatatype))
 
 (env
  (dev

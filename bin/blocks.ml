@@ -12,45 +12,11 @@ open Context
 open Relation
 open Block
 
-(* type subtypingres =
-     | NoCoverage
-     | FailedTyping
-     | Res of (t rty, t rty term) typed
-
-   let analyze_subtyping_result (new_rty : (t rty, t rty term) typed option) :
-       subtypingres =
-     match new_rty with
-     | Some new_rty -> if rty_is_false new_rty.ty then NoCoverage else Res new_rty
-     | None -> FailedTyping *)
-
-module Hashtbl = struct
-  include Hashtbl
-
-  let is_empty (t : ('a, 'b) t) : bool = length t = 0
-
-  let map (f : 'a * 'b -> 'a * 'c) (t : ('a, 'b) t) : ('a, 'c) t =
-    let new_t = create (length t) in
-    iter
-      (fun k v ->
-        let k, v = f (k, v) in
-        replace new_t k v)
-      t;
-    new_t
-
-  let filter_map (f : 'a * 'b -> ('a * 'c) option) (t : ('a, 'b) t) : ('a, 'c) t
-      =
-    let new_t = create (length t) in
-    iter
-      (fun k v ->
-        match f (k, v) with Some (k, v) -> replace new_t k v | None -> ())
-      t;
-    new_t
-end
-
 module BlockSetF (B : Block_intf) : sig
   type t
 
   val empty : t
+  val size : t -> int
   val singleton : B.t -> t
   val add_block : t -> B.t -> t
   val find_block_opt : t -> B.t -> B.t option
@@ -65,7 +31,6 @@ module BlockSetF (B : Block_intf) : sig
   val fold : ('a -> B.t -> 'a) -> 'a -> t -> 'a
   val get_succs : t -> B.t -> Ptset.t
   val get_preds : t -> B.t -> Ptset.t
-  (*   val extract : t -> B.t -> t * B.t option * Ptset.t * Ptset.t *)
 end = struct
   module BlockOrdering = struct
     type el = B.t
@@ -103,6 +68,7 @@ end = struct
   type t = unit P.pomap
 
   let empty : t = P.empty
+  let size (pm : t) : int = P.cardinal pm
   let is_empty (pm : t) : bool = P.is_empty pm
   let singleton (x : P.key) : t = P.singleton x ()
   let add_block (pm : t) x : t = P.add x () pm
@@ -114,11 +80,11 @@ end = struct
 
   let union (l : t) (r : t) : t =
     (* A minor optimization to choose a size order for performing a union *)
-    if P.cardinal l > P.cardinal r then P.union r l else P.union l r
+    if P.cardinal r > P.cardinal l then P.union r l else P.union l r
 
   let inter (l : t) (r : t) : t =
     (* A minor optimization to choose a size order for performing a inter *)
-    if P.cardinal l > P.cardinal r then P.inter r l else P.inter l r
+    if P.cardinal r > P.cardinal l then P.inter r l else P.inter l r
 
   let diff (l : t) (r : t) : t = P.diff l r
   let print (pm : t) : unit = D.printf pm
@@ -151,15 +117,18 @@ module BlockMapF (B : Block_intf) = struct
 
   let empty : t = []
 
+  let size (map : t) : int =
+    List.fold_left (fun acc (_, set) -> acc + BlockSet.size set) 0 map
+
   let is_empty (map : t) : bool =
     List.for_all (fun (_, set) -> BlockSet.is_empty set) map
 
   let assert_valid (map : t) : unit =
-    List.iter
-      (fun (ty, set) ->
-        let count = List.find_all (fun (t, _) -> t == ty) map in
-        assert (List.length count == 1))
-      map
+    assert (
+      List.for_all
+        (fun (ty, set) ->
+          List.find_all (fun (t, _) -> t == ty) map |> List.length = 1)
+        map)
 
   (** Add the (type, term pair to the map) *)
   let rec add (map : t) (term : B.t) : t =
@@ -226,90 +195,70 @@ module BlockMap = struct
   let get (map : t) (ty : Nt.t) : BlockSet.t =
     get_opt map ty |> Option.value ~default:BlockSet.empty
 
-  (* let try_path path_specific_list path_ctx optional_filter_type ret_type
-       (block_id, term, local_ctx) block_added =
-     let new_path_ctx =
-       LocalCtx.promote_ctx_to_path local_ctx ~promote_ctx:path_ctx
-     in
+  let add_potential_block_to_maps general_block path_promo_list new_map
+      path_specific_list =
+    match general_block with
+    | None ->
+        ( new_map,
+          List.fold_left
+            (fun (acc : (LocalCtx.t, t) Hashtbl.t) ((x, y) : _ * Block.t) :
+                 (LocalCtx.t, t) Hashtbl.t ->
+              match Hashtbl.find_opt acc x with
+              | None ->
+                  Hashtbl.replace acc x (init [ y ]);
+                  acc
+              | Some s ->
+                  Hashtbl.replace acc x (add s y);
+                  acc)
+            path_specific_list path_promo_list )
+    | Some s ->
+        assert (List.is_empty path_promo_list);
+        (add new_map s, path_specific_list)
 
-     let new_path_uctx = LocalCtx.uctx_add_local_ctx new_path_ctx in
+  let new_old_block_args (new_blocks : t) (old_blocks : t) (args : Nt.t list) :
+      Block.t list Seq.t =
+    range (List.length args)
+    |> superset |> List.to_seq
+    |> Seq.flat_map (fun new_set ->
+           (* Loop from 0 to args.len - 1 to choose an index for the `new_blocks` *)
+           List.mapi
+             (fun j ty : Block.t list ->
+               if List.mem j new_set then get new_blocks ty |> BlockSet.to_list
+               else get old_blocks ty |> BlockSet.to_list)
+             args
+           |> n_cartesian_product |> List.to_seq)
 
-     let new_path_ut =
-       Termcheck.term_type_infer_with_rec_check new_path_uctx
-         { x = term.x; ty = block_id.ty }
-     in
-     match analyze_subtyping_result new_path_ut with
-     | Res new_ut ->
-         assert (ret_type == erase_rty new_ut.ty);
+  let req_req_args (required_blocks : t) (required_blocks2 : t)
+      (optional_blocks : t) (args : Nt.t list) : Block.t list Seq.t =
+    let n = List.length args in
+    arg_coloring n |> List.to_seq
+    |> Seq.flat_map (fun l : Block.t list Seq.t ->
+           List.mapi
+             (fun idx choice : Block.t list ->
+               let ty = List.nth args idx in
+               match choice with
+               | Some true -> get required_blocks ty |> BlockSet.to_list
+               | Some false -> get required_blocks2 ty |> BlockSet.to_list
+               | None -> get optional_blocks ty |> BlockSet.to_list)
+             l
+           |> n_cartesian_product |> List.to_seq)
 
-         if check_filter_type optional_filter_type new_path_uctx new_ut then (
-           print_endline "Didn't make path";
-           path_specific_list)
-         else (
-           print_endline "Found a path home";
-           block_added := true;
-           let new_path_ctx =
-             Typectx.add_to_right new_path_ctx { x = block_id.x; ty = new_ut.ty }
-           in
-           print_endline "going to add to path specific list";
-           _add_to_path_specifc_list path_specific_list path_ctx
-             (block_id, new_ut.ty, new_path_ctx)
-             ret_type)
-     | _ ->
-         print_endline "Other bad path cases";
-         path_specific_list *)
-
-  (* Promotable_paths should be empty if the new_blocks comes form a
-       specific path *)
-  (* Returns a block map for the new blocks... plus optionally a block map of
-     those promoted to a new path *)
-  (* Should we separate out the general and path specific cases? *)
-  let increment (new_blocks : t) (old_blocks : t)
+  let increment_by_args (block_args : Block.t list Seq.t)
       ((component, (args, ret_type)) : Pieces.component * (Nt.t list * Nt.t))
       (promotable_paths : LocalCtx.t list) (filter_type : _ option) :
       t * (LocalCtx.t, t) Hashtbl.t =
-    (* Loop from 0 to args.len - 1 to choose an index for the `new_blocks` *)
-    let res =
-      List.fold_left
-        (fun acc new_set ->
-          let all_possible_block_combinations =
-            List.mapi
-              (fun j ty : Block.t list ->
-                if List.mem j new_set then get new_blocks ty |> BlockSet.to_list
-                else get old_blocks ty |> BlockSet.to_list)
-              args
-            |> n_cartesian_product
+    let res : t * (LocalCtx.t, t) Hashtbl.t =
+      Seq.fold_left
+        (fun ((new_map, path_specific_list) : _ * (LocalCtx.t, t) Hashtbl.t)
+             (args : Block.t list) ->
+          let (general_block, path_promo_list)
+                : Block.t option * (LocalCtx.t * Block.t) list =
+            apply component args ret_type filter_type promotable_paths
           in
-
-          (* For each set of possible args of that combination of new/old*)
-          List.fold_left
-            (fun ((new_map, path_specific_list) : _ * (LocalCtx.t, t) Hashtbl.t)
-                 (args : Block.t list) ->
-              let (general_block, path_promo_list) :
-                  Block.t option * (LocalCtx.t * Block.t) list =
-                apply component args ret_type filter_type promotable_paths
-              in
-
-              match general_block with
-              | None ->
-                  ( new_map,
-                    List.fold_left
-                      (fun (acc : (LocalCtx.t, t) Hashtbl.t)
-                           ((x, y) : _ * Block.t) : (LocalCtx.t, t) Hashtbl.t ->
-                        match Hashtbl.find_opt acc x with
-                        | None ->
-                            Hashtbl.replace acc x (init [ y ]);
-                            acc
-                        | Some s ->
-                            Hashtbl.replace acc x (add s y);
-                            acc)
-                      path_specific_list path_promo_list )
-              | Some s ->
-                  assert (List.is_empty path_promo_list);
-                  (add new_map s, path_specific_list))
-            acc all_possible_block_combinations)
+          add_potential_block_to_maps general_block path_promo_list new_map
+            path_specific_list)
         (empty, Hashtbl.create 5)
-        (range (List.length args) |> superset)
+        block_args
     in
     print_endline "Finished increment";
     assert_valid (fst res);
@@ -352,7 +301,7 @@ module BlockCollection = struct
     match map with
     | [] -> coll
     | (ty, set) :: rest ->
-        let { new_blocks; old_blocks } : t =
+        let ({ new_blocks; old_blocks } : t) =
           add_map_with_cov_checked coll rest
         in
         let new_set = BlockMap.BlockSet.diff set (BlockMap.get old_blocks ty) in
@@ -389,25 +338,6 @@ module SynthesisCollection = struct
     |> Seq.iter (fun (local_ctx, block_collection) ->
            layout_typectx layout_rty local_ctx |> print_endline;
            BlockCollection.print general_coll)
-
-  (* First list must be a superset of the second in terms of local_ctx used*)
-  (* let merge_path_specific_maps
-       (path_specific : (LocalCtx.t * BlockCollection.t) list)
-       (path_specific_maps : (LocalCtx.t * BlockMap.t) list) :
-       (LocalCtx.t * BlockCollection.t) list =
-     List.iter
-       (fun (l, m) ->
-         BlockMap.assert_valid m;
-         assert (List.mem_assoc l path_specific))
-       path_specific_maps;
-
-     List.map
-       (fun (l, bc) ->
-         BlockCollection.assert_valid bc;
-         match List.assoc_opt l path_specific_maps with
-         | Some b -> (l, BlockCollection.add_map_with_cov_checked bc b)
-         | None -> (l, bc))
-       path_specific *)
 
   let merge_path_specific_maps
       (path_specific : (LocalCtx.t, BlockCollection.t) Hashtbl.t)
@@ -466,11 +396,21 @@ module SynthesisCollection = struct
         (fun { general_coll; path_specific } op ->
           print_endline
             ("Incrementing with op: " ^ Pieces.layout_component (fst op));
-          (* Iterate over sets of possible new maps *)
-          let new_map, path_specific_maps =
-            BlockMap.increment general_new_blocks general_old_blocks op
-              promotable_paths optional_filter_type
+
+          let args =
+            BlockMap.new_old_block_args general_new_blocks general_old_blocks
+              (op |> snd |> fst)
           in
+
+          let new_map, path_specific_maps =
+            BlockMap.increment_by_args args op promotable_paths
+              optional_filter_type
+          in
+          (* Iterate over sets of possible new maps *)
+          (* let new_map, path_specific_maps =
+               BlockMap.increment general_new_blocks general_old_blocks op
+                 promotable_paths optional_filter_type
+             in *)
           BlockCollection.assert_valid general_coll;
           print_endline "Constructing new collection";
           {
@@ -494,10 +434,52 @@ module SynthesisCollection = struct
                   ("Incrementing with op in path: "
                   ^ Pieces.layout_component (fst op));
 
+                let nt_args = op |> snd |> fst in
+
+                let set_of_args =
+                  BlockMap.union path_col.old_blocks general_old_blocks
+                in
+
+                if
+                  not
+                    (BlockMap.size set_of_args
+                    = BlockMap.size path_col.old_blocks
+                      + BlockMap.size general_old_blocks)
+                then (
+                  print_endline "union";
+                  BlockMap.print set_of_args;
+                  print_endline "path";
+                  BlockMap.print path_col.old_blocks;
+                  print_endline "general";
+                  BlockMap.print general_old_blocks;
+
+                  failwith "bad size")
+                else ();
+
+                (* This is the standard approach by looking at new path blocks *)
+                let standard_args =
+                  BlockMap.new_old_block_args path_col.new_blocks set_of_args
+                    nt_args
+                in
+
+                let args =
+                  if List.length nt_args = 1 then standard_args
+                  else
+                    (* Alternatively, look at new general blocks with old stuff *)
+                    let alternative_args =
+                      BlockMap.req_req_args
+                        (* First required set is the new general blocks*)
+                        general_new_blocks
+                        (* Second required is the path_blocks *)
+                        (BlockMap.union path_col.new_blocks path_col.old_blocks)
+                        (* Optional set is the old general blocks *)
+                        general_old_blocks nt_args
+                    in
+                    Seq.append standard_args alternative_args
+                in
+
                 let path_op_specific_map, promoted_blocks =
-                  BlockMap.increment path_col.new_blocks
-                    (BlockMap.union path_col.old_blocks general_old_blocks)
-                    op [] optional_filter_type
+                  BlockMap.increment_by_args args op [] optional_filter_type
                 in
                 assert (Hashtbl.is_empty promoted_blocks);
 

@@ -58,7 +58,7 @@ module type Block_intf = sig
   val is_sub_rty : uctx -> t -> t -> bool
 
   val combine_all_args :
-    t list -> identifier list * LocalCtx.t * identifier Seq.t
+    t list -> identifier list * LocalCtx.t * LocalCtx.mapping list
 end
 
 module ExistentializedBlock : sig
@@ -95,7 +95,7 @@ end = struct
     Relations.typed_relation uctx name.x #: ext_rty name'.x #: ext_rty'
 
   let combine_all_args (args : t list) :
-      identifier list * LocalCtx.t * identifier Seq.t =
+      identifier list * LocalCtx.t * LocalCtx.mapping list =
     failwith "unimplemented"
 
   let path_promotion (lc : LocalCtx.t) ((id, rt) : t) : t =
@@ -131,32 +131,71 @@ end = struct
 
   let get_local_ctx ((name, ut, ctx) : t) : LocalCtx.t = ctx
 
+  let existentialize ((name, ut, ctx) : t) : identifier * Nt.t rty =
+    (* Kind of awkward, we want to filter out the current blocks name from the
+       type(which would be redundant, unless that name is important) *)
+    let local_ctx =
+      Typectx.to_list ctx
+      |> List.filter (fun { x; ty } ->
+             if x = name.x then NameTracking.is_known x #: (erase_rty ty)
+             else true)
+    in
+    let ext_rty = exists_rtys_to_rty local_ctx ut in
+    (name, ext_rty)
+
   let is_sub_rty (uctx : uctx) (block : t) (block' : t) : bool =
     let id, target_ty, ctx = block in
     let id', ty, ctx' = block' in
+
+    assert (not (LocalCtx.contains_path_cond ctx));
+    assert (not (LocalCtx.contains_path_cond ctx'));
+
     let combined_ctx, mapping = LocalCtx.local_ctx_union_r ctx ctx' in
     let updated_ty = Pieces.ut_subst ty mapping in
 
-    Relations.is_sub_rty
-      (LocalCtx.uctx_add_local_ctx combined_ctx)
-      target_ty updated_ty
+    let res =
+      Relations.is_sub_rty
+        (LocalCtx.uctx_add_local_ctx combined_ctx)
+        target_ty updated_ty
+    in
+
+    LocalCtx.cleanup mapping ~recursive:false;
+
+    res
 
   let typing_relation (uctx : uctx) (target_block : t) (block : t) :
       Relations.relation =
     let target_id, target_ty, target_ctx = target_block in
     let id, ty, ctx = block in
 
-    let combined_ctx, mapping = LocalCtx.local_ctx_union_r target_ctx ctx in
-    let updated_ty = Pieces.ut_subst ty mapping in
+    if LocalCtx.contains_path_cond target_ctx || LocalCtx.contains_path_cond ctx
+    then
+      ExistentializedBlock.typing_relation uctx
+        (existentialize target_block)
+        (existentialize block)
+    else
+      let combined_ctx, mapping = LocalCtx.local_ctx_union_r target_ctx ctx in
+      let updated_ty = Pieces.ut_subst ty mapping in
 
-    Relations.typing_relation
-      (LocalCtx.uctx_add_local_ctx combined_ctx)
-      target_ty updated_ty
+      (* print_newline ();
+         LocalCtx.layout combined_ctx |> print_endline;
+         Printf.printf "target_ty: %s\n" (layout_rty target_ty);
+         Printf.printf "updated_ty: %s\n" (layout_rty updated_ty); *)
+      let res =
+        Relations.typing_relation
+          (LocalCtx.uctx_add_local_ctx combined_ctx)
+          target_ty updated_ty
+      in
+
+      LocalCtx.cleanup mapping ~recursive:false;
+
+      (*       Relations.layout res |> print_endline; *)
+      res
 
   (* Takes vars with their own locals variables and constructs a list of
      arguments with a singular local context *)
   let combine_all_args (args : t list) :
-      identifier list * LocalCtx.t * identifier Seq.t =
+      identifier list * LocalCtx.t * LocalCtx.mapping list =
     let arg_names = List.map (fun (id, _, _) -> id) args in
     let ctxs = List.map (fun (_, _, ctx) -> ctx) args in
     let unchanged_arg_name = List.hd arg_names in
@@ -164,8 +203,8 @@ end = struct
     List.fold_left2
       (fun ( (args : identifier list),
              (acc_context : LocalCtx.t),
-             (new_id_list : identifier Seq.t) ) (id : identifier) changed_ctx :
-           (identifier list * LocalCtx.t * identifier Seq.t) ->
+             (new_id_list : LocalCtx.mapping list) ) (id : identifier)
+           changed_ctx : (identifier list * LocalCtx.t * LocalCtx.mapping list) ->
         let new_ctx, mapping =
           LocalCtx.local_ctx_union_r acc_context changed_ctx
         in
@@ -185,39 +224,9 @@ end = struct
                   failwith "you messed up");
             ],
           new_ctx,
-          Seq.append new_id_list
-            (Hashtbl.to_seq mapping
-            |> Seq.filter_map (fun (k, v) -> if k = v.x then None else Some v)
-            |> Seq.filter (fun i ->
-                   Rename.has_been_uniqified i.x
-                   (* TODO: Can the next line be deleted now taht I have the
-                      filter map?*)
-                   && not (NameTracking.is_known i))) ))
-      ([ unchanged_arg_name ], unchanged_context, Seq.empty)
+          mapping :: new_id_list ))
+      ([ unchanged_arg_name ], unchanged_context, [])
       (List.tl arg_names) (List.tl ctxs)
-
-  (* let path_promotion (lc : LocalCtx.t) (id, rt, block_ctx) : t * 'a =
-     let new_context, mapping = NameTracking.freshen block_ctx in
-     let fresh_id = (Hashtbl.find mapping id.x) #: id.ty in
-     let fresh_rt = Pieces.ut_subst rt mapping in
-     NameTracking.add_ast fresh_id (NameTracking.get_ast id |> Option.get);
-
-     ( ( fresh_id,
-         fresh_rt,
-         LocalCtx.promote_ctx_to_path new_context ~promote_ctx:lc ),
-       mapping ) *)
-
-  let existentialize ((name, ut, ctx) : t) : identifier * Nt.t rty =
-    (* Kind of awkward, we want to filter out the current blocks name from the
-       type(which would be redundant, unless that name is important) *)
-    let local_ctx =
-      Typectx.to_list ctx
-      |> List.filter (fun { x; ty } ->
-             if x == name.x then NameTracking.is_known x #: (erase_rty ty)
-             else true)
-    in
-    let ext_rty = exists_rtys_to_rty local_ctx ut in
-    (name, ext_rty)
 end
 
 (* Take a term/block and see if it works inside of a path *)
@@ -234,7 +243,7 @@ let try_path path_ctx optional_filter_type ret_type (block_id, term, local_ctx)
 
   match TypeInference.infer_type new_path_uctx term with
   | Res new_ut ->
-      assert (ret_type == erase_rty new_ut.ty);
+      assert (ret_type = erase_rty new_ut.ty);
 
       if
         TypeInference.check_filter_type optional_filter_type new_path_uctx
@@ -289,7 +298,7 @@ let apply (component : Pieces.component) (args : Block.t list) (ret_type : Nt.t)
     if List.is_empty new_path_list then (
       print_endline "Block was not added";
       NameTracking.remove_ast block_id ~recursive:true;
-      Seq.iter (NameTracking.remove_ast ~recursive:false) newly_created_ids)
+      List.iter (LocalCtx.cleanup ~recursive:false) newly_created_ids)
     else print_endline "Block was added";
     new_path_list
   in
@@ -304,7 +313,7 @@ let apply (component : Pieces.component) (args : Block.t list) (ret_type : Nt.t)
   | NoCoverage ->
       print_endline "No coverage";
       NameTracking.remove_ast block_id ~recursive:true;
-      Seq.iter (NameTracking.remove_ast ~recursive:false) newly_created_ids;
+      List.iter (LocalCtx.cleanup ~recursive:false) newly_created_ids;
       (None, [])
   | FailedTyping when List.is_empty promotable_paths ->
       print_endline "Failed typing with no chance of promotion";
@@ -313,7 +322,7 @@ let apply (component : Pieces.component) (args : Block.t list) (ret_type : Nt.t)
       (* failed the new rec_check *)
       (None, try_add_paths ())
   | Res new_ut ->
-      assert (ret_type == erase_rty new_ut.ty);
+      assert (ret_type = erase_rty new_ut.ty);
       (* If you have a promotable path, and a filter type, just skip the
          general filter. Otherwise check filter *)
       if Option.is_some filter_type && not (List.is_empty promotable_paths) then
@@ -326,21 +335,20 @@ let apply (component : Pieces.component) (args : Block.t list) (ret_type : Nt.t)
         (* Ignore term if so *)
         print_endline "same as arg";
         NameTracking.remove_ast block_id ~recursive:true;
-        Seq.iter (NameTracking.remove_ast ~recursive:false) newly_created_ids;
+        List.iter (LocalCtx.cleanup ~recursive:false) newly_created_ids;
         (None, []))
       else if
-        (* TODO what do I want to do here??? *)
         TypeInference.check_filter_type filter_type new_uctx new_ut
       then (
         (* Ignore term if so *)
         print_endline "Filtered out by type";
         NameTracking.remove_ast block_id ~recursive:true;
-        Seq.iter (NameTracking.remove_ast ~recursive:false) newly_created_ids;
+        List.iter (LocalCtx.cleanup ~recursive:false) newly_created_ids;
         (None, []))
       else (
         print_endline "new";
         let new_ctx =
           Typectx.add_to_right joined_ctx { x = block_id.x; ty = new_ut.ty }
         in
-        assert (block_id.ty == ret_type);
+        assert (block_id.ty = ret_type);
         (Some (block_id, new_ut.ty, new_ctx), []))
