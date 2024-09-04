@@ -17,6 +17,24 @@ let get_global_uctx () : uctx =
 
 module LocalCtx = struct
   type t = Nt.t rty Typectx.ctx
+  type mapping = (string, identifier) Hashtbl.t
+
+  let cleanup (mapping : mapping) ~(recursive : bool) : unit =
+    Hashtbl.to_seq mapping
+    |> Seq.filter_map (fun (k, v) -> if k = v.x then None else Some v)
+    |> Seq.iter (fun i ->
+           if
+             Rename.has_been_uniqified i.x
+             (* TODO: Can the next line be deleted now that I have the
+                filter map?*)
+             && not (NameTracking.is_known i)
+           then NameTracking.remove_ast i ~recursive
+           else ())
+
+  let contains_path_cond (Typectx.Typectx ctx : t) : bool =
+    List.exists
+      (fun { x; _ } -> String.starts_with ~prefix:path_condition_prefix x)
+      ctx
 
   let eq (Typectx.Typectx l : t) (Typectx.Typectx r : t) : bool = l = r
 
@@ -25,8 +43,7 @@ module LocalCtx = struct
     |> String.concat "\n"
 
   (** Combining to local contexts together with renaming *)
-  let local_ctx_union_r (Typectx l : t) (r : t) :
-      t * (string, identifier) Hashtbl.t =
+  let local_ctx_union_r (Typectx l : t) (r : t) : t * mapping =
     map_fst
       (fun (Typectx.Typectx res) ->
         (* TODO: Duplicates *)
