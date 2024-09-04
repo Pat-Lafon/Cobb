@@ -22,7 +22,7 @@
  (depends
   dune
   (ocaml
-   (= "5.1.0"))
+   (= "4.14.0"))
   (pomap
    (= "4.1.1"))
   (core
@@ -36,13 +36,13 @@
   (qcheck
    (<= "0.21.3"))
   (z3
-   (<= "4.12.4"))
+   (<= "4.13.0"))
   (yojson
    (<= "1.7.0"))
   (ocamlformat
    (= "0.26.1"))
   (ocaml-lsp-server
-   (= "1.19")))
+   (= "1.15.1")))
  (tags
   (topics "to describe" your project)))
 
