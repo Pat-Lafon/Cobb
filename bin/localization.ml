@@ -120,7 +120,7 @@ let exn_map_list_match (f : 'a Term.match_case list -> 'b)
 
           match x.hole_variation with
           | CMatchcase { constructor; args; exp } when is_bot ->
-              let () = assert (List.length x.other == 1) in
+              let () = assert (List.length x.other = 1) in
               let _, _, c = List.hd x.other in
               CMatchcase
                 {
@@ -189,7 +189,7 @@ let rec term_exnify (body : (t, t term) typed) : (t, _) typed exn_variations =
       let exn_cases = List.map case_exnify match_cases in
       exn_map_list_match
         (fun l ->
-          assert (List.length l == List.length match_cases);
+          assert (List.length l = List.length match_cases);
           { x = CMatch { matched; match_cases = l }; ty = body.ty })
         exn_cases
 
@@ -204,7 +204,7 @@ and case_exnify (CMatchcase { constructor; args; exp } : _ match_case) :
   }
 
 let mk_path_var (phi : _ Prop.prop) : (t rty, string) typed =
-  let path_name = (Rename.unique "path_cond") #: Ty_unit in
+  let path_name = (Rename.unique path_condition_prefix) #: Ty_unit in
   (path_name |> NameTracking.known_var) #=> (fun l ->
   RtyBase { ou = false; cty = Cty { nty = Nt.Ty_unit; phi } })
 
@@ -304,7 +304,7 @@ module Localization = struct
            List.iter (fun x -> print_endline (layout_id_rty x)) local_vs)
          possible_props; *)
 
-    (* Check that on it's own, the inferred type is no sufficient *)
+    (* Check that on it's own, the inferred type is not sufficient *)
     assert (not (sub_rty_bool uctx (inferred_body.ty, target_ty)));
 
     ((* Check that with all path conditions negated, the inferred type is trivially sufficient *)
