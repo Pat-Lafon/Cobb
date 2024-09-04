@@ -111,16 +111,15 @@ let rec swap_in_body (code : (Nt.t, Nt.t value) typed) :
       fun x ->
         let b : _ -> (Nt.t, Nt.t value) typed = swap_in_body body in
         (VFix { fixname; fixarg; body = b x |> value_to_term }) #: code.ty
-  | VFix { fixname; fixarg; body } -> (
+  | VFix { fixname; fixarg; body } ->
       fun x : (Nt.t, Nt.t value) typed ->
-        (VFix { fixname; fixarg; body = x }) #: code.ty)
+        (VFix { fixname; fixarg; body = x }) #: code.ty
   | VLam { lamarg; body = { x = CVal body; ty } } ->
       fun x ->
         let b : _ -> (Nt.t, Nt.t value) typed = swap_in_body body in
         (VLam { lamarg; body = b x |> value_to_term }) #: code.ty
-  | VLam { lamarg; body } -> (
+  | VLam { lamarg; body } ->
       fun x : (Nt.t, Nt.t value) typed -> (VLam { lamarg; body = x }) #: code.ty
-      )
   | _ -> failwith "swap_in_body::failure"
 
 let get_args_rec_retty_body_from_source meta_config_file source_file =
@@ -511,6 +510,7 @@ let cobb_synth =
         anon ("program_name" %: Command.Arg_type.create (fun x -> x))
       in
       fun () ->
+        Memtrace.trace_if_requested ();
         let source_file = Core.Filename.concat benchmark_dir program_name in
         let meta_config_file =
           Core.Filename.concat benchmark_dir "meta-config.json"
