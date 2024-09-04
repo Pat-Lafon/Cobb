@@ -1,3 +1,5 @@
+let path_condition_prefix = "path_cond"
+
 type identifier = (Nt.t, string) Mtyped.typed
 
 (*** Replace the element at pos of l with a *)
@@ -63,3 +65,67 @@ let group_by f lst =
         aux new_acc f t
   in
   aux [] f lst
+
+module Hashtbl = struct
+  include Hashtbl
+
+  let is_empty (t : ('a, 'b) t) : bool = length t = 0
+
+  let map (f : 'a * 'b -> 'a * 'c) (t : ('a, 'b) t) : ('a, 'c) t =
+    let new_t = create (length t) in
+    iter
+      (fun k v ->
+        let k, v = f (k, v) in
+        replace new_t k v)
+      t;
+    new_t
+
+  let filter_map (f : 'a * 'b -> ('a * 'c) option) (t : ('a, 'b) t) : ('a, 'c) t
+      =
+    let new_t = create (length t) in
+    iter
+      (fun k v ->
+        match f (k, v) with Some (k, v) -> replace new_t k v | None -> ())
+      t;
+    new_t
+end
+
+module List = struct
+  include List
+
+  let is_empty = function [] -> true | _ -> false
+end
+
+let _stripe_fun (l : 'b option list) (n : int) (v : 'b option) =
+  range n
+  |> List.filter_map (fun x ->
+         if List.nth l x <> None then None
+         else Some (Zzdatatype.Zlist.List.replace_exn l x v))
+
+(* Not the most efficient but it works *)
+
+(** Given an n, make all possible combinations of lists of length n with the
+  condition that Some(true) and Some(false) occur atleast once *)
+let arg_coloring (n : int) : bool option list list =
+  assert (n >= 2);
+  let init = List.init n (fun _ -> None) in
+  let one = _stripe_fun init n (Some true) in
+  let two =
+    List.map (fun l -> _stripe_fun l n (Some false)) one |> List.flatten
+  in
+
+  if n = 2 then two
+  else
+    range (n - 2)
+    |> List.fold_left
+         (fun acc _ ->
+           List.map
+             (fun l ->
+               let l1 = _stripe_fun l n (Some true) in
+               let l2 = _stripe_fun l n (Some false) in
+               let l3 = _stripe_fun l n None in
+               List.flatten [ l1; l2; l3 ])
+             acc
+           |> List.flatten)
+         two
+    |> List.sort_uniq compare
