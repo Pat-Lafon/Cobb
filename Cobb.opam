@@ -22,6 +22,7 @@ depends: [
   "yojson" {<= "1.7.0"}
   "ocamlformat" {= "0.26.1"}
   "ocaml-lsp-server" {= "1.17.0"}
+  "memtrace" {= "0.2.3"}
   "odoc" {with-doc}
 ]
 build: [
