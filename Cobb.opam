@@ -11,7 +11,7 @@ doc: "https://url/to/documentation"
 bug-reports: "https://github.com/Pat-Lafon/Cobb/issues"
 depends: [
   "dune" {>= "3.9"}
-  "ocaml" {= "4.14.0"}
+  "ocaml" {= "4.14.2"}
   "pomap" {= "4.1.1"}
   "core" {<= "v0.16.2"}
   "core_unix" {<= "v0.16.0"}

@@ -22,7 +22,7 @@
  (depends
   dune
   (ocaml
-   (= "4.14.0"))
+   (= "4.14.2"))
   (pomap
    (= "4.1.1"))
   (core
