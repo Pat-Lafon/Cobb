@@ -39,7 +39,7 @@ module LocalCtx = struct
   let eq (Typectx.Typectx l : t) (Typectx.Typectx r : t) : bool = l = r
 
   let layout (Typectx l : t) : string =
-    List.map (fun { x; ty } -> x ^ " : " ^ (Rty.erase_rty ty |> Nt.layout)) l
+    List.map (fun { x; ty } -> x ^ " : " ^ layout_rty ty) l
     |> String.concat "\n"
 
   (** Combining to local contexts together with renaming *)
