@@ -1,4 +1,4 @@
-(lang dune 3.9)
+(lang dune 3.14)
 
 (name Cobb)
 
@@ -11,7 +11,7 @@
 
 (maintainers "Patrick LaFontaine")
 
-(license LICENSE)
+(license "MIT")
 
 (documentation https://url/to/documentation)
 
@@ -42,7 +42,8 @@
   (ocamlformat
    (= "0.26.1"))
   (ocaml-lsp-server
-   (= "1.17.0")))
+   (= "1.17.0"))
+  (memtrace))
  (tags
   (topics "to describe" your project)))
 
