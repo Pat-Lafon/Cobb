@@ -683,7 +683,16 @@ module Extraction = struct
       |> List.concat
     in
 
-    assert (sub_rty_bool uctx (unioned_rty_type2 res, target_ty));
+    assert (not (List.is_empty res));
+
+    if not (sub_rty_bool uctx (unioned_rty_type2 res, target_ty)) then (
+      List.iter
+        (fun (lc, _, eb, _) ->
+          LocalCtx.layout lc |> print_endline;
+          ExistentializedBlock.layout eb |> print_endline)
+        res;
+
+      failwith "Setup_type does not have enough");
     res
 
   (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
