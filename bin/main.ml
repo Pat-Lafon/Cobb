@@ -80,7 +80,8 @@ let get_synth_config_values meta_config_file =
   let res_ext = metaj |> member "resfile" |> to_string in
   let abd_ext = metaj |> member "abdfile" |> to_string in
   let syn_ext = metaj |> member "synfile" |> to_string in
-  (bound, timeout, res_ext, abd_ext, syn_ext)
+  let syn_rlimit = metaj |> member "syn_rlimit" |> to_int_option in
+  (bound, timeout, res_ext, abd_ext, syn_ext, syn_rlimit)
 
 let build_initial_typing_context meta_config_file : uctx =
   let prim_path = Env.get_prim_path () in
@@ -337,14 +338,23 @@ let run_benchmark source_file meta_config_file =
     Commands.Cre.type_infer_inner meta_config_file source_file ()
   in
 
-  (*   Printf.printf "Missing Coverage: %s\n" (layout_rty missing_coverage); *)
-  let bound, timeout, res_ext, abd_ext, syn_ext =
+  Printf.printf "Missing Coverage: %s\n" (layout_rty missing_coverage);
+
+  let bound, timeout, res_ext, abd_ext, syn_ext, rlimit =
     get_synth_config_values meta_config_file
   in
 
   (*   Env.sexp_of_meta_config (!Env.meta_config |> Option.value_exn) |> dbg_sexp; *)
   let () =
     Z3.Params.update_param_value Backend.Smtquery.ctx "timeout" timeout
+  in
+
+  let () =
+    Option.iter
+      (fun x ->
+        Z3.Params.update_param_value Backend.Smtquery.ctx "rlimit"
+          (string_of_int x))
+      rlimit
   in
 
   let uctx = build_initial_typing_context meta_config_file in
