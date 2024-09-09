@@ -21,7 +21,7 @@ depends: [
   "z3" {<= "4.13.0"}
   "yojson" {<= "1.7.0"}
   "ocamlformat" {= "0.26.1"}
-  "ocaml-lsp-server" {= "1.15.1"}
+  "ocaml-lsp-server" {= "1.17.0"}
   "odoc" {with-doc}
 ]
 build: [
