@@ -10,6 +10,7 @@ open Mtyped
 open Rty
 open Cty
 open Tracking
+module Env = Zzenv
 
 let rec unfold_rty_helper rty : _ typed list * _ rty =
   match rty with
