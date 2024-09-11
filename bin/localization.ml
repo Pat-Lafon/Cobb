@@ -167,7 +167,12 @@ let rec term_exnify (body : (t, t term) typed) : (t, _) typed exn_variations =
         hole_variation = body;
         other = [ (term_top body.ty, [], Rename.unique "Hole") ];
       }
-  | CApp _ -> failwith "unimplemented CApp: "
+  | CApp _ ->
+      {
+        full_exn = term_bot body.ty;
+        hole_variation = body;
+        other = [ (term_top body.ty, [], Rename.unique "Hole") ];
+      }
   | CAppOp _ ->
       {
         full_exn = term_bot body.ty;
@@ -175,6 +180,7 @@ let rec term_exnify (body : (t, t term) typed) : (t, _) typed exn_variations =
         other = [ (term_top body.ty, [], Rename.unique "Hole") ];
       }
   | CLetE { lhs; rhs; body } ->
+      print_endline lhs.x;
       term_exnify body
       |> exn_map
            (fun (x : (t, t term) typed) : (t, t term) typed ->
