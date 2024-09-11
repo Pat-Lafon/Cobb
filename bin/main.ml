@@ -29,47 +29,91 @@ let rec strip_lam (t : (t, t term) typed) : (t, t term) typed =
   | _ -> t
 
 (* Largely taken straight from value_type_check::VFix *)
+(* TODO: rename since it is no longer just the first arg but also sometimes the
+   second when it is an stlc term*)
 let handle_first_arg (a : (t, t value) typed) (rty : t rty) =
   assert (Nt.eq a.ty (Rty.erase_rty rty));
   match (a.x, rty) with
   | VFix { fixname; fixarg; body }, RtyBaseArr { argcty; arg; retty } ->
-      let retty = subst_rty_instance arg (AVar fixarg) retty in
-
       assert (String.equal fixarg.x arg);
-      let rec_constraint_cty = Termcheck.apply_rec_arg1 fixarg in
-      let () =
-        Termcheck.init_cur_rec_func_name (fixname.x, rec_constraint_cty)
-      in
-      let rty' =
-        let a = { x = Rename.unique fixarg.x; ty = fixarg.ty } in
-        RtyBaseArr
-          {
-            argcty = intersect_ctys [ argcty; rec_constraint_cty ];
-            arg = a.x;
-            retty =
-              subst_rty_instance arg (AVar (NameTracking.known_var a)) retty;
-          }
-      in
-      (*       Pp.printf "\nSubstituted Return Type: %s\n" (layout_rty retty_a); *)
-      (*       Pp.printf "\nRty A: %s\n" (layout_rty rty_a); *)
-      (*       Pp.printf "\nRty A: %s\n" (layout_rty rty_a); *)
-      let binding = fixarg.x #: (RtyBase { ou = true; cty = argcty }) in
-      (*       Pp.printf "\nBinding: %s\n" (layout_id_rty binding); *)
-      assert (String.equal arg fixarg.x);
-      (*
+
+      if
+        String.equal "stlc_term"
+          (Nt.destruct_arr_tp fixname.ty |> snd |> Nt.layout)
+      then
+        match (body.x, retty) with
+        | ( CVal { x = VLam { lamarg; body }; _ },
+            RtyBaseArr { argcty = argcty1; arg = arg1; retty } ) ->
+            let rty' =
+              let arg' = { x = Rename.unique arg; ty = fixarg.ty } in
+              let arg = arg #: fixarg.ty in
+              let arg1' = { x = Rename.unique arg1; ty = lamarg.ty } in
+              let arg1 = arg1 #: lamarg.ty in
+              let rec_constraint_cty = Termcheck.apply_rec_arg2 arg arg' arg1 in
+              RtyBaseArr
+                {
+                  argcty;
+                  arg = arg'.x;
+                  retty =
+                    RtyBaseArr
+                      {
+                        argcty = intersect_ctys [ argcty1; rec_constraint_cty ];
+                        arg = arg1'.x;
+                        retty =
+                          subst_rty_instance arg1.x (AVar arg1')
+                          @@ subst_rty_instance arg.x (AVar arg') retty;
+                      };
+                }
+            in
+            let binding = arg #: (RtyBase { ou = true; cty = argcty }) in
+            let binding1 = arg1 #: (RtyBase { ou = true; cty = argcty1 }) in
+            let body =
+              body
+              #-> (subst_term_instance fixarg.x (VVar arg #: fixarg.ty))
+              #-> (subst_term_instance lamarg.x (VVar arg1 #: fixarg.ty))
+            in
+
+            let rec_fix = fixname.x #: rty' in
+            ([ binding; binding1 ], rec_fix, strip_lam body)
+        | _ -> failwith "unexpected lack of second argument for stlc lam term"
+      else
+        let retty = subst_rty_instance arg (AVar fixarg) retty in
+
+        let rec_constraint_cty = Termcheck.apply_rec_arg1 fixarg in
+        (* Termcheck.apply_rec_arg2 *)
+        let () =
+          Termcheck.init_cur_rec_func_name (fixname.x, rec_constraint_cty)
+        in
+        let rty' =
+          let a = { x = Rename.unique fixarg.x; ty = fixarg.ty } in
+          RtyBaseArr
+            {
+              argcty = intersect_ctys [ argcty; rec_constraint_cty ];
+              arg = a.x;
+              retty =
+                subst_rty_instance arg (AVar (NameTracking.known_var a)) retty;
+            }
+        in
+        (*       Pp.printf "\nSubstituted Return Type: %s\n" (layout_rty retty_a); *)
+        (*       Pp.printf "\nRty A: %s\n" (layout_rty rty_a); *)
+        (*       Pp.printf "\nRty A: %s\n" (layout_rty rty_a); *)
+        let binding = fixarg.x #: (RtyBase { ou = true; cty = argcty }) in
+        (*       Pp.printf "\nBinding: %s\n" (layout_id_rty binding); *)
+        assert (String.equal arg fixarg.x);
+        (*
         So long as these are equal, the next line doesn't really do anything I
         think? I should double check. Otherwise, return this as the new type we
         are targetting
       *)
-      let _retty = subst_rty_instance arg (AVar fixarg) retty in
-      (*       Pp.printf "\nSubstituted Return Type: %s\n" (layout_rty _retty); *)
-      assert (
-        Core.Sexp.( = )
-          (Rty.sexp_of_rty Nt.sexp_of_t _retty)
-          (Rty.sexp_of_rty Nt.sexp_of_t retty));
-      let rec_fix = fixname.x #: rty' in
+        let _retty = subst_rty_instance arg (AVar fixarg) retty in
+        (*       Pp.printf "\nSubstituted Return Type: %s\n" (layout_rty _retty); *)
+        assert (
+          Core.Sexp.( = )
+            (Rty.sexp_of_rty Nt.sexp_of_t _retty)
+            (Rty.sexp_of_rty Nt.sexp_of_t retty));
+        let rec_fix = fixname.x #: rty' in
 
-      (binding, rec_fix, strip_lam body)
+        ([ binding ], rec_fix, strip_lam body)
   | _ -> failwith "Did not recieve a fixpoint value and a base arrow type"
 
 let get_synth_config_values meta_config_file =
@@ -180,9 +224,13 @@ let get_args_rec_retty_body_from_source meta_config_file source_file =
 
   let first_arg, rec_fix, body = handle_first_arg code synth_type in
   (* Pp.printf "Body: %s\n" (layout_typed_term body);
-     Pp.printf "\nFirst Arg: %s\n" (layout_id_rty first_arg);
+     List.iter (fun x -> Pp.printf "\nArg: %s\n" (layout_id_rty x)) first_arg;
      Pp.printf "\nRec Fix: %s\n" (layout_id_rty rec_fix); *)
-  let args = first_arg :: List.tl argtyps in
+  let args =
+    first_arg
+    @ List.sublist argtyps ~start_included:(List.length first_arg)
+        ~end_excluded:(List.length argtyps)
+  in
   (args, rec_fix, retty, body, reconstruct_code_with_new_body)
 
 let rec remove_excess_ast_aux (t : (Nt.t, Nt.t term) typed) =
