@@ -468,9 +468,9 @@ let run_benchmark source_file meta_config_file =
   (*   Printf.printf "Missing Coverage: %s\n" (layout_rty missing_coverage); *)
 
   (* Pp.printf "\nSeeds:\n%s\n"
-       (List.split_by "\n"
-          (fun (a, b) -> Block.layout a ^ " " ^ Nt.layout b)
-          seeds);
+          (List.split_by "\n"
+             (fun (a, b) -> Block.layout a ^ " " ^ Nt.layout b)
+             seeds);
 
      Pp.printf "\nComponents:\n%s\n"
        (List.split_by "\n"
@@ -479,6 +479,8 @@ let run_benchmark source_file meta_config_file =
             ^ List.split_by "," Nt.layout args
             ^ " -> " ^ Nt.layout ret)
           components); *)
+  (* failwith "stop here"; *)
+
   let inital_map = BlockMap.init seeds in
 
   let init_synth_col = SynthesisCollection.init inital_map context_maps in
@@ -539,9 +541,7 @@ let run_benchmark source_file meta_config_file =
   in
   Core.Out_channel.write_all results_file ~data:results_csv_contents;
   Core.Out_channel.write_all synthesis_file ~data:synthesized_program;
-  Core.Out_channel.write_all abduction_file
-    ~data:
-      (Rty.sexp_of_rty Nt.sexp_of_t missing_coverage |> Core.Sexp.to_string_hum);
+  Core.Out_channel.write_all abduction_file ~data:(layout_rty missing_coverage);
 
   print_endline "Finished Synthesis"
 

@@ -25,6 +25,7 @@ let type_to_generator_mapping : (Nt.t * string) list =
     (ty_intlist, "hidden_list_gen");
     (ty_inttree, "hidden_tree_gen");
     (ty_intrbtree, "hidden_rbtree_gen");
+    (ty_stlc_term, "hidden_stlc_term_gen");
   ]
 
 let term_bot (base_ty : Nt.t) : _ Mtyped.typed = Term.CErr #: base_ty
@@ -180,7 +181,6 @@ let rec term_exnify (body : (t, t term) typed) : (t, _) typed exn_variations =
         other = [ (term_top body.ty, [], Rename.unique "Hole") ];
       }
   | CLetE { lhs; rhs; body } ->
-      print_endline lhs.x;
       term_exnify body
       |> exn_map
            (fun (x : (t, t term) typed) : (t, t term) typed ->
@@ -206,7 +206,10 @@ and case_exnify (CMatchcase { constructor; args; exp } : _ match_case) :
   {
     full_exn = f full_exn;
     hole_variation = f hole_variation;
-    other = List.map (fun (a, b, c) -> (f a, b, c)) other;
+    other =
+      List.map
+        (fun (a, b, c) -> (f a, List.map promote_true_rty args @ b, c))
+        other;
   }
 
 let mk_path_var (phi : _ Prop.prop) : (t rty, string) typed =
@@ -303,12 +306,12 @@ module Localization = struct
              (Prop.Not phi, local_vs, s))
     in
 
-    (* print_endline "Possible props: ";
+    print_endline "Possible props: ";
        List.iter
          (fun (x, local_vs, s) ->
            print_endline (layout_prop x);
            List.iter (fun x -> print_endline (layout_id_rty x)) local_vs)
-         possible_props; *)
+         possible_props;
 
     (* Check that on it's own, the inferred type is not sufficient *)
     assert (not (sub_rty_bool uctx (inferred_body.ty, target_ty)));
@@ -392,12 +395,12 @@ module Localization = struct
         useful_props
     in
 
-    (* print_string "\nUseful path props and local vars: ";
-       remove_negations_in_props
-       |> Zzdatatype.Datatype.List.split_by_comma (fun (x, vs, _) ->
-              layout_prop x ^ " : "
-              ^ Zzdatatype.Datatype.List.split_by_comma layout_id_rty vs)
-       |> print_endline; *)
+    print_string "\nUseful path props and local vars: ";
+    remove_negations_in_props
+    |> Zzdatatype.Datatype.List.split_by_comma (fun (x, vs, _) ->
+           layout_prop x ^ " : "
+           ^ Zzdatatype.Datatype.List.split_by_comma layout_id_rty vs)
+    |> print_endline;
     let res =
       remove_negations_in_props
       |> List.map (fun (x, local_vs, s) ->
