@@ -1,4 +1,4 @@
-let path_condition_prefix = "path_cond"
+let path_condition_prefix = "pathcond"
 
 type identifier = (Nt.t, string) Mtyped.typed
 
