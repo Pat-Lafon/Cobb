@@ -125,8 +125,9 @@ let get_synth_config_values meta_config_file =
   let res_ext = metaj |> member "resfile" |> to_string in
   let abd_ext = metaj |> member "abdfile" |> to_string in
   let syn_ext = metaj |> member "synfile" |> to_string in
-  let syn_rlimit = metaj |> member "syn_rlimit" |> to_int_option in
-  (bound, timeout, res_ext, abd_ext, syn_ext, syn_rlimit)
+  let syn_rlimit = metaj |> member "synth_rlimit" |> to_int in
+  let collect_ext = metaj |> member "collectfile" |> to_string in
+  (bound, timeout, res_ext, abd_ext, syn_ext, syn_rlimit, collect_ext)
 
 let build_initial_typing_context meta_config_file : uctx =
   let prim_path = Env.get_prim_path () in
@@ -390,21 +391,21 @@ let run_benchmark source_file meta_config_file =
 
   Printf.printf "Missing Coverage: %s\n" (layout_rty missing_coverage);
 
-  let bound, timeout, res_ext, abd_ext, syn_ext, rlimit =
+  if Utils.rty_is_false missing_coverage then failwith "No missing coverage";
+
+  let bound, timeout, res_ext, abd_ext, syn_ext, rlimit, collect_ext =
     get_synth_config_values meta_config_file
   in
+
+  let collection_file = source_file ^ collect_ext in
 
   (*   Env.sexp_of_meta_config (!Env.meta_config |> Option.value_exn) |> dbg_sexp; *)
   let () =
     Z3.Params.update_param_value Backend.Smtquery.ctx "timeout" timeout
   in
-
   let () =
-    Option.iter
-      (fun x ->
-        Z3.Params.update_param_value Backend.Smtquery.ctx "rlimit"
-          (string_of_int x))
-      rlimit
+    Z3.Params.update_param_value Backend.Smtquery.ctx "rlimit"
+      (string_of_int rlimit)
   in
 
   let uctx = build_initial_typing_context meta_config_file in
@@ -480,13 +481,13 @@ let run_benchmark source_file meta_config_file =
             ^ " -> " ^ Nt.layout ret)
           components); *)
   (* failwith "stop here"; *)
-
   let inital_map = BlockMap.init seeds in
 
   let init_synth_col = SynthesisCollection.init inital_map context_maps in
 
   let synthesis_result =
     Synthesis.synthesis missing_coverage bound init_synth_col components
+      collection_file
   in
 
   (* NameTracking.debug (); *)

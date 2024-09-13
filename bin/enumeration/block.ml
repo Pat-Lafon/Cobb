@@ -239,6 +239,12 @@ let try_path path_ctx optional_filter_type ret_type (block_id, term, local_ctx)
     LocalCtx.promote_ctx_to_path local_ctx ~promote_ctx:path_ctx
   in
 
+  print_newline ();
+  print_endline "Local Context";
+  LocalCtx.layout local_ctx |> print_endline;
+  print_endline "New Path Context";
+  LocalCtx.layout new_path_ctx |> print_endline;
+
   let new_path_uctx = LocalCtx.uctx_add_local_ctx new_path_ctx in
 
   match TypeInference.infer_type new_path_uctx term with
@@ -275,6 +281,10 @@ let apply (component : Pieces.component) (args : Block.t list) (ret_type : Nt.t)
   in
 
   let block_id, term = Pieces.apply component arg_names in
+
+  print_endline "Block in question:";
+  LocalCtx.layout joined_ctx |> print_endline;
+  layout_typed_erased_term term |> print_endline;
 
   assert (block_id.ty = ret_type);
   assert (term.ty = block_id.ty);
@@ -319,14 +329,16 @@ let apply (component : Pieces.component) (args : Block.t list) (ret_type : Nt.t)
       print_endline "Failed typing with no chance of promotion";
       (None, [])
   | FailedTyping ->
+      print_endline "Failed typing with chance of promotion";
       (* failed the new rec_check *)
       (None, try_add_paths ())
   | Res new_ut ->
       assert (ret_type = erase_rty new_ut.ty);
       (* If you have a promotable path, and a filter type, just skip the
          general filter. Otherwise check filter *)
-      if Option.is_some filter_type && not (List.is_empty promotable_paths) then
-        (None, try_add_paths ())
+      if Option.is_some filter_type && not (List.is_empty promotable_paths) then (
+        print_endline "Has filter so check in branch";
+        (None, try_add_paths ()))
       else if
         (* Check if new term is coverage equivalent to one of it's
            arguments *)
@@ -337,9 +349,7 @@ let apply (component : Pieces.component) (args : Block.t list) (ret_type : Nt.t)
         NameTracking.remove_ast block_id ~recursive:true;
         List.iter (LocalCtx.cleanup ~recursive:false) newly_created_ids;
         (None, []))
-      else if
-        TypeInference.check_filter_type filter_type new_uctx new_ut
-      then (
+      else if TypeInference.check_filter_type filter_type new_uctx new_ut then (
         (* Ignore term if so *)
         print_endline "Filtered out by type";
         NameTracking.remove_ast block_id ~recursive:true;

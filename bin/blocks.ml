@@ -25,6 +25,7 @@ module BlockSetF (B : Block_intf) : sig
   val inter : t -> t -> t
   val diff : t -> t -> t
   val to_list : t -> B.t list
+  val layout : t -> string
   val print : t -> unit
   val print_ptset : t -> Ptset.t -> unit
   val is_empty : t -> bool
@@ -87,6 +88,12 @@ end = struct
     if P.cardinal r > P.cardinal l then P.inter r l else P.inter l r
 
   let diff (l : t) (r : t) : t = P.diff l r
+
+  let layout (pm : t) : string =
+    let res = Buffer.create 256 in
+    D.fprintf (Format.formatter_of_buffer res) pm;
+    Buffer.contents res
+
   let print (pm : t) : unit = D.printf pm
 
   let print_ptset (pm : t) (set : Ptset.t) : unit =
@@ -163,12 +170,13 @@ module BlockMapF (B : Block_intf) = struct
         let rest = union rest r_map in
         add_list rest terms ty
 
-  let print (map : t) : unit =
+  let layout (map : t) : string =
     let aux (ty, terms) =
-      Printf.printf "Type: %s\n" (layout_ty ty);
-      BlockSet.print terms
+      Printf.sprintf "Type: %s\n" (layout_ty ty) ^ BlockSet.layout terms
     in
-    List.iter aux map
+    List.fold_left (fun acc x -> acc ^ aux x) "" map
+
+  let print (map : t) : unit = print_endline (layout map)
 
   let rec _add_to_path_specifc_list (path_specific : (LocalCtx.t * t) list)
       (local_ctx : LocalCtx.t) (b : B.t) =
@@ -251,8 +259,8 @@ module BlockMap = struct
       Seq.fold_left
         (fun ((new_map, path_specific_list) : _ * (LocalCtx.t, t) Hashtbl.t)
              (args : Block.t list) ->
-          let (general_block, path_promo_list)
-                : Block.t option * (LocalCtx.t * Block.t) list =
+          let (general_block, path_promo_list) :
+              Block.t option * (LocalCtx.t * Block.t) list =
             apply component args ret_type filter_type promotable_paths
           in
           add_potential_block_to_maps general_block path_promo_list new_map
@@ -281,11 +289,11 @@ module BlockCollection = struct
     BlockMap.assert_valid new_blocks;
     BlockMap.assert_valid old_blocks
 
-  let print ({ new_blocks; old_blocks } : t) : unit =
-    Printf.printf "New Blocks:\n";
-    BlockMap.print new_blocks;
-    Printf.printf "Old Blocks:\n";
-    BlockMap.print old_blocks
+  let layout ({ new_blocks; old_blocks } : t) : string =
+    "New Blocks:\n" ^ BlockMap.layout new_blocks ^ "Old Blocks:\n"
+    ^ BlockMap.layout old_blocks
+
+  let print (coll : t) : unit = print_endline (layout coll)
 
   let make_new_old ({ new_blocks; old_blocks } : t) : t =
     assert_valid { new_blocks; old_blocks };
@@ -329,15 +337,22 @@ module SynthesisCollection = struct
 
     { general_coll; path_specific }
 
-  let print ({ general_coll; path_specific } : t) : unit =
-    Printf.printf "General Collection:\n";
-    BlockCollection.print general_coll;
-    Printf.printf "Path Specific Collection:\n";
+  let layout ({ general_coll; path_specific } : t) : string =
+    "General Collection:\n"
+    ^ BlockCollection.layout general_coll
+    ^ "Path Specific Collection:\n"
+    ^ (Hashtbl.to_seq path_specific
+      |> Seq.fold_left
+           (fun acc (local_ctx, block_collection) ->
+             let res =
+               layout_typectx layout_rty local_ctx
+               ^ "\n"
+               ^ BlockCollection.layout general_coll
+             in
+             acc)
+           "")
 
-    Hashtbl.to_seq path_specific
-    |> Seq.iter (fun (local_ctx, block_collection) ->
-           layout_typectx layout_rty local_ctx |> print_endline;
-           BlockCollection.print general_coll)
+  let print (coll : t) : unit = print_endline (layout coll)
 
   let merge_path_specific_maps
       (path_specific : (LocalCtx.t, BlockCollection.t) Hashtbl.t)
@@ -406,11 +421,21 @@ module SynthesisCollection = struct
             BlockMap.increment_by_args args op promotable_paths
               optional_filter_type
           in
+
           (* Iterate over sets of possible new maps *)
           (* let new_map, path_specific_maps =
                BlockMap.increment general_new_blocks general_old_blocks op
                  promotable_paths optional_filter_type
              in *)
+          print_endline "general new_map";
+          BlockMap.print new_map;
+          print_endline "path_specific promotions";
+          Hashtbl.iter
+            (fun l m ->
+              print_endline (layout_typectx layout_rty l);
+              BlockMap.print m)
+            path_specific_maps;
+
           BlockCollection.assert_valid general_coll;
           print_endline "Constructing new collection";
           {
@@ -926,8 +951,13 @@ end
 module Synthesis = struct
   let rec synthesis_helper (max_depth : int) (target_type : t rty)
       (collection : SynthesisCollection.t)
-      (operations : (Pieces.component * (t list * t)) list) :
-      (LocalCtx.t * _ list) list =
+      (operations : (Pieces.component * (t list * t)) list)
+      (collection_file : string) : (LocalCtx.t * _ list) list =
+    print_endline "Current Collection";
+    SynthesisCollection.print collection;
+    Core.Out_channel.write_all collection_file
+      ~data:(SynthesisCollection.layout collection);
+
     match max_depth with
     | 0 ->
         print_endline "Starting Extraction";
@@ -950,13 +980,14 @@ module Synthesis = struct
         synthesis_helper (depth - 1) target_type
           (SynthesisCollection.increment collection operations
              optional_filter_type)
-          operations
+          operations collection_file
 
   (** Given some initial setup, run the synthesis algorithm *)
   let synthesis (target_type : t rty) (max_depth : int)
       (inital_seeds : SynthesisCollection.t)
-      (operations : (Pieces.component * (t list * t)) list) :
-      (LocalCtx.t * _) list =
+      (operations : (Pieces.component * (t list * t)) list)
+      (collection_file : string) : (LocalCtx.t * _) list =
     (* SynthesisCollection.print inital_seeds; *)
     synthesis_helper max_depth target_type inital_seeds operations
+      collection_file
 end
