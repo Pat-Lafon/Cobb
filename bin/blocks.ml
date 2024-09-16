@@ -347,9 +347,9 @@ module SynthesisCollection = struct
              let res =
                layout_typectx layout_rty local_ctx
                ^ "\n"
-               ^ BlockCollection.layout general_coll
+               ^ BlockCollection.layout block_collection
              in
-             acc)
+             acc ^ res)
            "")
 
   let print (coll : t) : unit = print_endline (layout coll)
