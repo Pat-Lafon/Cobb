@@ -23,9 +23,7 @@ module LocalCtx = struct
     Hashtbl.to_seq mapping
     |> Seq.filter_map (fun (k, v) -> if k = v.x then None else Some v)
     |> Seq.iter (fun i ->
-           if
-             Rename.has_been_uniqified i.x
-           then (
+           if Rename.has_been_uniqified i.x then (
              assert (not (NameTracking.is_known i));
              NameTracking.remove_ast i ~recursive)
            else ())
@@ -45,7 +43,6 @@ module LocalCtx = struct
   let local_ctx_union_r (Typectx l : t) (r : t) : t * mapping =
     map_fst
       (fun (Typectx.Typectx res) ->
-        (* TODO: Duplicates *)
         Typectx.Typectx (l @ res))
       (NameTracking.freshen r)
 
