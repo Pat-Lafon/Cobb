@@ -770,8 +770,7 @@ module Extraction = struct
 
             List.append
               (BlockMap.existentialized_list new_blocks target_nty)
-              (BlockMap.existentialized_list old_blocks target_nty)
-            (* TODO: This get full_map does an expensive union *) ))
+              (BlockMap.existentialized_list old_blocks target_nty) ))
         collection.path_specific
     in
 
@@ -810,122 +809,91 @@ module Extraction = struct
             List.fold_left (fun acc b -> conditional_add acc b) res path_blocks
           in
 
-          (lc, res))
+          (lc, (path_target_ty, res)))
         path_specific_sets
     in
 
     Printf.printf "\n\n Path Specific collections we are interested in\n";
     Hashtbl.iter
-      (fun ctx set ->
-        let path_target_ty =
-          ExistentializedBlock.path_promotion ctx target_block
-        in
+      (fun ctx (path_target_ty, set) ->
         let set = BlockSetE.add_block set path_target_ty in
         Printf.printf "Path Specific Collection: %s\n"
           (layout_typectx layout_rty ctx);
         BlockSetE.print set)
       path_specific_sets;
 
-    print_endline "ready to match";
+    let block_options_in_each_path :
+        (LocalCtx.t * BlockSetE.t * ('a option * Ptset.t)) list =
+      Hashtbl.fold
+        (fun lc (path_target_block, set) acc ->
+          ExistentializedBlock.layout path_target_block |> print_endline;
 
-    (* We have one check that a component covers the full target *)
-    (* TODO: May have been made redundant/not worth the complexity*)
-    match
-      Hashtbl.to_seq path_specific_sets
-      |> Seq.find_map (fun (lc, path_set) ->
-             BlockSetE.find_block_opt path_set target_block
-             |> Option.map (fun b -> (lc, b)))
-      (* List.find_map
-         (fun (lc, path_set) ->
-           BlockSetE.find_block_opt path_set target_block
-           |> Option.map (fun b -> (lc, b)))
-         path_specific_sets *)
-    with
-    | Some s ->
-        print_endline "In the case where we have a match";
-        (* print_endline (layout_typectx layout_rty lc);
-           print_endline (Block.layout b);
-           print_endline "We just shortcircuit in this case"; *)
-        [ s ]
-    | _ ->
-        print_endline "In other case";
+          (* Does the target exist in this path? *)
+          match BlockSetE.find_block_opt set path_target_block with
+          | Some b ->
+              (* Yes: Return current bs, no preds, and the target_block *)
+              print_endline "Have a complete block for a path solution";
+              (lc, set, (Some b, Ptset.empty)) :: acc
+          | None ->
+              (* No: Return a new bs with the target block, any preds, and
+                 possibly a starting block from the succs *)
+              let bs = BlockSetE.add_block set path_target_block in
+              let p = BlockSetE.get_preds bs path_target_block in
+              let s = BlockSetE.get_succs bs path_target_block in
+              BlockSetE.print_ptset bs p;
 
-        let block_options_in_each_path :
-            (LocalCtx.t * BlockSetE.t * ('a option * Ptset.t)) list =
-          Hashtbl.fold
-            (fun lc set acc ->
-              let path_target_block =
-                ExistentializedBlock.path_promotion lc target_block
+              (* Smallest block that covers the target fully *)
+              let b =
+                Ptset.min_elt_opt s
+                |> Option.map (fun idx -> BlockSetE.get_idx bs idx)
               in
 
-              ExistentializedBlock.layout path_target_block |> print_endline;
+              (print_endline "Have a partial solution: ";
+               match b with
+               | Some b -> print_endline (ExistentializedBlock.layout b)
+               | None -> print_endline "None");
 
-              (* Does the target exist in this path? *)
-              match BlockSetE.find_block_opt set path_target_block with
-              | Some b ->
-                  (* Yes: Return current bs, no preds, and the target_block *)
-                  print_endline "Have a complete block for a path solution";
-                  (lc, set, (Some b, Ptset.empty)) :: acc
-              | None ->
-                  (* No: Return a new bs with the target block, any preds, and
-                     possibly a starting block from the succs *)
-                  let bs = BlockSetE.add_block set path_target_block in
-                  let p = BlockSetE.get_preds bs path_target_block in
-                  let s = BlockSetE.get_succs bs path_target_block in
-                  BlockSetE.print_ptset bs p;
+              (* Some paths might not get blocks that aid in getting the
+                 target? *)
+              if not (Ptset.is_empty p && Ptset.is_empty s) then (
+                print_endline "return a block";
+                (lc, bs, (b, p)) :: acc)
+              else (
+                print_endline "return nothing";
+                acc))
+        path_specific_sets []
+    in
 
-                  (* Smallest block that covers the target fully *)
-                  let b =
-                    Ptset.min_elt_opt s
-                    |> Option.map (fun idx -> BlockSetE.get_idx bs idx)
-                  in
+    print_endline
+      ("Num_starting_choices: "
+      ^ string_of_int (List.length block_options_in_each_path));
 
-                  (print_endline "Have a partial solution: ";
-                   match b with
-                   | Some b -> print_endline (ExistentializedBlock.layout b)
-                   | None -> print_endline "None");
+    let block_choices = setup_type block_options_in_each_path target_ty in
 
-                  (* Some paths might not get blocks that aid in getting the
-                     target? *)
-                  if not (Ptset.is_empty p && Ptset.is_empty s) then (
-                    print_endline "return a block";
-                    (lc, bs, (b, p)) :: acc)
-                  else (
-                    print_endline "return nothing";
-                    acc))
-            path_specific_sets []
-        in
+    Pp.printf "Target Type: %s\n" (layout_rty target_ty);
+    Pp.printf "Current Type: %s\n"
+      (layout_rty (unioned_rty_type2 block_choices));
+    List.iter
+      (fun (lc, _, b, _) ->
+        Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
+        Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
+      block_choices;
 
-        print_endline
-          ("Num_starting_choices: "
-          ^ string_of_int (List.length block_options_in_each_path));
+    let block_choices = minimize_type block_choices target_ty in
 
-        let block_choices = setup_type block_options_in_each_path target_ty in
+    Pp.printf "Improved Type: %s\n"
+      (layout_rty (unioned_rty_type2 block_choices));
+    List.iter
+      (fun (lc, _, b, _) ->
+        Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
+        Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
+      block_choices;
 
-        Pp.printf "Target Type: %s\n" (layout_rty target_ty);
-        Pp.printf "Current Type: %s\n"
-          (layout_rty (unioned_rty_type2 block_choices));
-        List.iter
-          (fun (lc, _, b, _) ->
-            Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
-            Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
-          block_choices;
+    let block_choices = minimize_num block_choices target_ty in
 
-        let block_choices = minimize_type block_choices target_ty in
-
-        Pp.printf "Improved Type: %s\n"
-          (layout_rty (unioned_rty_type2 block_choices));
-        List.iter
-          (fun (lc, _, b, _) ->
-            Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
-            Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
-          block_choices;
-
-        let block_choices = minimize_num block_choices target_ty in
-
-        (* When we are done, drop any remaining predesessors and the block
-           map *)
-        List.map (fun (lc, _, b, _) -> (lc, b)) block_choices
+    (* When we are done, drop any remaining predesessors and the block
+       map *)
+    List.map (fun (lc, _, b, _) -> (lc, b)) block_choices
 end
 
 module Synthesis = struct
