@@ -190,16 +190,6 @@ end
 module BlockMap = struct
   include BlockMapF (Block)
 
-  module BlockSet = struct
-    include BlockSet
-
-    (* TODO: make sure this expensive operation is necessary
-       let existentialize (pm : t) : BlockSetE.t =
-          fold
-            (fun acc n -> BlockSetE.add_block acc (Block.existentialize n))
-            BlockSetE.empty pm *)
-  end
-
   (** Gets the corresponding set or return  *)
   let get (map : t) (ty : Nt.t) : BlockSet.t =
     get_opt map ty |> Option.value ~default:BlockSet.empty
