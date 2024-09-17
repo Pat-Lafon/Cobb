@@ -29,9 +29,7 @@ let rec strip_lam (t : (t, t term) typed) : (t, t term) typed =
   | _ -> t
 
 (* Largely taken straight from value_type_check::VFix *)
-(* TODO: rename since it is no longer just the first arg but also sometimes the
-   second when it is an stlc term*)
-let handle_first_arg (a : (t, t value) typed) (rty : t rty) =
+let handle_recursion_args (a : (t, t value) typed) (rty : t rty) =
   assert (Nt.eq a.ty (Rty.erase_rty rty));
   match (a.x, rty) with
   | VFix { fixname; fixarg; body }, RtyBaseArr { argcty; arg; retty } ->
@@ -223,7 +221,7 @@ let get_args_rec_retty_body_from_source meta_config_file source_file =
       }
   in
 
-  let first_arg, rec_fix, body = handle_first_arg code synth_type in
+  let first_arg, rec_fix, body = handle_recursion_args code synth_type in
   (* Pp.printf "Body: %s\n" (layout_typed_term body);
      List.iter (fun x -> Pp.printf "\nArg: %s\n" (layout_id_rty x)) first_arg;
      Pp.printf "\nRec Fix: %s\n" (layout_id_rty rec_fix); *)
