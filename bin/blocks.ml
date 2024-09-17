@@ -755,214 +755,177 @@ module Extraction = struct
 
     let uctx = Context.get_global_uctx () in
 
-    (* The updated set is commented out because we don't to include the target
-       block in later calculations *)
-    (* TODO: doing an additional linear check hear seems very inefficient *)
-    (* let equal_block =
-         List.find_opt
-           (fun b ->
-             match ExistentializedBlock.typing_relation uctx b target_block with
-             | Relations.Equiv -> true
-             | _ -> false)
-           general_block_list
-       in *)
-    let equal_block = None in
-
     assert (Hashtbl.length collection.path_specific > 0);
 
-    match equal_block with
-    | Some b ->
-        print_endline "Handling the equal_block case";
-        let current : _ =
+    print_endline "Existentializing the path specific sets";
+    Relations.clear_cache ();
+
+    (* Get the sets for each path *)
+    let path_specific_sets =
+      Hashtbl.map
+        (fun (lc, bc) ->
+          LocalCtx.layout lc |> print_endline;
+          ( lc,
+            let ({ new_blocks; old_blocks } : BlockCollection.t) = bc in
+
+            List.append
+              (BlockMap.existentialized_list new_blocks target_nty)
+              (BlockMap.existentialized_list old_blocks target_nty)
+            (* TODO: This get full_map does an expensive union *) ))
+        collection.path_specific
+    in
+
+    (* We are going to do some normalization setup *)
+    (* All General terms are going to get pushed into paths *)
+    let path_specific_sets =
+      Hashtbl.map
+        (fun ((lc : LocalCtx.t), (path_blocks : _ list)) ->
+          let res = BlockSetE.empty in
+          (* TODO: We should only use this block once and enable caching *)
+          (* Existentialization should rename the block... Maybe still worth
+             it to clear cache lol just to not flood things*)
+          let path_target_ty =
+            ExistentializedBlock.path_promotion lc target_block
+          in
+
+          let conditional_add (bs : BlockSetE.t) (b : ExistentializedBlock.t) :
+              BlockSetE.t =
+            if ExistentializedBlock.is_sub_rty uctx b path_target_ty then
+              BlockSetE.add_block bs b
+            else if ExistentializedBlock.is_sub_rty uctx path_target_ty b then
+              BlockSetE.add_block bs b
+            else bs
+          in
+
+          (* Fold over general_terms for this path and path promote them *)
+          let res =
+            List.fold_left
+              (fun acc b ->
+                conditional_add acc (ExistentializedBlock.path_promotion lc b))
+              res general_block_list
+          in
+
+          (* Fold over path specific terms for this path *)
+          let res =
+            List.fold_left (fun acc b -> conditional_add acc b) res path_blocks
+          in
+
+          (lc, res))
+        path_specific_sets
+    in
+
+    Printf.printf "\n\n Path Specific collections we are interested in\n";
+    Hashtbl.iter
+      (fun ctx set ->
+        let path_target_ty =
+          ExistentializedBlock.path_promotion ctx target_block
+        in
+        let set = BlockSetE.add_block set path_target_ty in
+        Printf.printf "Path Specific Collection: %s\n"
+          (layout_typectx layout_rty ctx);
+        BlockSetE.print set)
+      path_specific_sets;
+
+    print_endline "ready to match";
+
+    (* We have one check that a component covers the full target *)
+    (* TODO: May have been made redundant/not worth the complexity*)
+    match
+      Hashtbl.to_seq path_specific_sets
+      |> Seq.find_map (fun (lc, path_set) ->
+             BlockSetE.find_block_opt path_set target_block
+             |> Option.map (fun b -> (lc, b)))
+      (* List.find_map
+         (fun (lc, path_set) ->
+           BlockSetE.find_block_opt path_set target_block
+           |> Option.map (fun b -> (lc, b)))
+         path_specific_sets *)
+    with
+    | Some s ->
+        print_endline "In the case where we have a match";
+        (* print_endline (layout_typectx layout_rty lc);
+           print_endline (Block.layout b);
+           print_endline "We just shortcircuit in this case"; *)
+        [ s ]
+    | _ ->
+        print_endline "In other case";
+
+        let block_options_in_each_path :
+            (LocalCtx.t * BlockSetE.t * ('a option * Ptset.t)) list =
           Hashtbl.fold
-            (fun lc _ acc ->
-              (* We already have our solution so we only need the set of paths *)
-              ( lc,
-                BlockSetE.empty,
-                ExistentializedBlock.path_promotion lc b,
-                Ptset.empty )
-              :: acc)
-            collection.path_specific []
-        in
-
-        let current = minimize_num current target_ty in
-
-        List.map (fun (lc, _, b, _) -> (lc, b)) current
-    | _ -> (
-        print_endline "Existentializing the path specific sets";
-        Relations.clear_cache ();
-
-        (* Get the sets for each path *)
-        let path_specific_sets =
-          Hashtbl.map
-            (fun (lc, bc) ->
-              LocalCtx.layout lc |> print_endline;
-              ( lc,
-                let ({ new_blocks; old_blocks } : BlockCollection.t) = bc in
-
-                List.append
-                  (BlockMap.existentialized_list new_blocks target_nty)
-                  (BlockMap.existentialized_list old_blocks target_nty)
-                (* TODO: This get full_map does an expensive union *) ))
-            collection.path_specific
-        in
-
-        (* We are going to do some normalization setup *)
-        (* All General terms are going to get pushed into paths *)
-        let path_specific_sets =
-          Hashtbl.map
-            (fun ((lc : LocalCtx.t), (path_blocks : _ list)) ->
-              let res = BlockSetE.empty in
-              (* TODO: We should only use this block once and enable caching *)
-              (* Existentialization should rename the block... Maybe still worth
-                 it to clear cache lol just to not flood things*)
-              let path_target_ty =
+            (fun lc set acc ->
+              let path_target_block =
                 ExistentializedBlock.path_promotion lc target_block
               in
 
-              let conditional_add (bs : BlockSetE.t)
-                  (b : ExistentializedBlock.t) : BlockSetE.t =
-                if ExistentializedBlock.is_sub_rty uctx b path_target_ty then
-                  BlockSetE.add_block bs b
-                else if ExistentializedBlock.is_sub_rty uctx path_target_ty b
-                then BlockSetE.add_block bs b
-                else bs
-              in
+              ExistentializedBlock.layout path_target_block |> print_endline;
 
-              (* Fold over general_terms for this path and path promote them *)
-              let res =
-                List.fold_left
-                  (fun acc b ->
-                    conditional_add acc
-                      (ExistentializedBlock.path_promotion lc b))
-                  res general_block_list
-              in
+              (* Does the target exist in this path? *)
+              match BlockSetE.find_block_opt set path_target_block with
+              | Some b ->
+                  (* Yes: Return current bs, no preds, and the target_block *)
+                  print_endline "Have a complete block for a path solution";
+                  (lc, set, (Some b, Ptset.empty)) :: acc
+              | None ->
+                  (* No: Return a new bs with the target block, any preds, and
+                     possibly a starting block from the succs *)
+                  let bs = BlockSetE.add_block set path_target_block in
+                  let p = BlockSetE.get_preds bs path_target_block in
+                  let s = BlockSetE.get_succs bs path_target_block in
+                  BlockSetE.print_ptset bs p;
 
-              (* Fold over path specific terms for this path *)
-              let res =
-                List.fold_left
-                  (fun acc b -> conditional_add acc b)
-                  res path_blocks
-              in
-
-              (lc, res))
-            path_specific_sets
-        in
-
-        Printf.printf "\n\n Path Specific collections we are interested in\n";
-        Hashtbl.iter
-          (fun ctx set ->
-            let path_target_ty =
-              ExistentializedBlock.path_promotion ctx target_block
-            in
-            let set = BlockSetE.add_block set path_target_ty in
-            Printf.printf "Path Specific Collection: %s\n"
-              (layout_typectx layout_rty ctx);
-            BlockSetE.print set)
-          path_specific_sets;
-
-        print_endline "ready to match";
-
-        (* We have one check that a component covers the full target *)
-        (* TODO: May have been made redundant/not worth the complexity*)
-        match
-          Hashtbl.to_seq path_specific_sets
-          |> Seq.find_map (fun (lc, path_set) ->
-                 BlockSetE.find_block_opt path_set target_block
-                 |> Option.map (fun b -> (lc, b)))
-          (* List.find_map
-             (fun (lc, path_set) ->
-               BlockSetE.find_block_opt path_set target_block
-               |> Option.map (fun b -> (lc, b)))
-             path_specific_sets *)
-        with
-        | Some s ->
-            print_endline "In the case where we have a match";
-            (* print_endline (layout_typectx layout_rty lc);
-               print_endline (Block.layout b);
-               print_endline "We just shortcircuit in this case"; *)
-            [ s ]
-        | _ ->
-            print_endline "In other case";
-
-            let block_options_in_each_path :
-                (LocalCtx.t * BlockSetE.t * ('a option * Ptset.t)) list =
-              Hashtbl.fold
-                (fun lc set acc ->
-                  let path_target_block =
-                    ExistentializedBlock.path_promotion lc target_block
+                  (* Smallest block that covers the target fully *)
+                  let b =
+                    Ptset.min_elt_opt s
+                    |> Option.map (fun idx -> BlockSetE.get_idx bs idx)
                   in
 
-                  ExistentializedBlock.layout path_target_block |> print_endline;
+                  (print_endline "Have a partial solution: ";
+                   match b with
+                   | Some b -> print_endline (ExistentializedBlock.layout b)
+                   | None -> print_endline "None");
 
-                  (* Does the target exist in this path? *)
-                  match BlockSetE.find_block_opt set path_target_block with
-                  | Some b ->
-                      (* Yes: Return current bs, no preds, and the target_block *)
-                      print_endline "Have a complete block for a path solution";
-                      (lc, set, (Some b, Ptset.empty)) :: acc
-                  | None ->
-                      (* No: Return a new bs with the target block, any preds, and
-                         possibly a starting block from the succs *)
-                      let bs = BlockSetE.add_block set path_target_block in
-                      let p = BlockSetE.get_preds bs path_target_block in
-                      let s = BlockSetE.get_succs bs path_target_block in
-                      BlockSetE.print_ptset bs p;
+                  (* Some paths might not get blocks that aid in getting the
+                     target? *)
+                  if not (Ptset.is_empty p && Ptset.is_empty s) then (
+                    print_endline "return a block";
+                    (lc, bs, (b, p)) :: acc)
+                  else (
+                    print_endline "return nothing";
+                    acc))
+            path_specific_sets []
+        in
 
-                      (* Smallest block that covers the target fully *)
-                      let b =
-                        Ptset.min_elt_opt s
-                        |> Option.map (fun idx -> BlockSetE.get_idx bs idx)
-                      in
+        print_endline
+          ("Num_starting_choices: "
+          ^ string_of_int (List.length block_options_in_each_path));
 
-                      (print_endline "Have a partial solution: ";
-                       match b with
-                       | Some b -> print_endline (ExistentializedBlock.layout b)
-                       | None -> print_endline "None");
+        let block_choices = setup_type block_options_in_each_path target_ty in
 
-                      (* Some paths might not get blocks that aid in getting the
-                         target? *)
-                      if not (Ptset.is_empty p && Ptset.is_empty s) then (
-                        print_endline "return a block";
-                        (lc, bs, (b, p)) :: acc)
-                      else (
-                        print_endline "return nothing";
-                        acc))
-                path_specific_sets []
-            in
+        Pp.printf "Target Type: %s\n" (layout_rty target_ty);
+        Pp.printf "Current Type: %s\n"
+          (layout_rty (unioned_rty_type2 block_choices));
+        List.iter
+          (fun (lc, _, b, _) ->
+            Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
+            Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
+          block_choices;
 
-            print_endline
-              ("Num_starting_choices: "
-              ^ string_of_int (List.length block_options_in_each_path));
+        let block_choices = minimize_type block_choices target_ty in
 
-            let block_choices =
-              setup_type block_options_in_each_path target_ty
-            in
+        Pp.printf "Improved Type: %s\n"
+          (layout_rty (unioned_rty_type2 block_choices));
+        List.iter
+          (fun (lc, _, b, _) ->
+            Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
+            Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
+          block_choices;
 
-            Pp.printf "Target Type: %s\n" (layout_rty target_ty);
-            Pp.printf "Current Type: %s\n"
-              (layout_rty (unioned_rty_type2 block_choices));
-            List.iter
-              (fun (lc, _, b, _) ->
-                Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
-                Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
-              block_choices;
+        let block_choices = minimize_num block_choices target_ty in
 
-            let block_choices = minimize_type block_choices target_ty in
-
-            Pp.printf "Improved Type: %s\n"
-              (layout_rty (unioned_rty_type2 block_choices));
-            List.iter
-              (fun (lc, _, b, _) ->
-                Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
-                Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
-              block_choices;
-
-            let block_choices = minimize_num block_choices target_ty in
-
-            (* When we are done, drop any remaining predesessors and the block
-               map *)
-            List.map (fun (lc, _, b, _) -> (lc, b)) block_choices)
+        (* When we are done, drop any remaining predesessors and the block
+           map *)
+        List.map (fun (lc, _, b, _) -> (lc, b)) block_choices
 end
 
 module Synthesis = struct
