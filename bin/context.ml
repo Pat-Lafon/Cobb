@@ -42,8 +42,7 @@ module LocalCtx = struct
   (** Combining to local contexts together with renaming *)
   let local_ctx_union_r (Typectx l : t) (r : t) : t * mapping =
     map_fst
-      (fun (Typectx.Typectx res) ->
-        Typectx.Typectx (l @ res))
+      (fun (Typectx.Typectx res) -> Typectx.Typectx (l @ res))
       (NameTracking.freshen r)
 
   (** Carefully adds the local context to uctx
@@ -61,8 +60,14 @@ module LocalCtx = struct
    only path constraints and local vars.
     must not be incompatible contexts *)
   let promote_ctx_to_path (local_ctx : t) ~promote_ctx =
-    (* TODO: How to assert that these contexts are not incompatible *)
-    Typectx.Typectx (Typectx.to_list local_ctx @ Typectx.to_list promote_ctx)
+    let local_ctx = Typectx.to_list local_ctx in
+    let promote_ctx = Typectx.to_list promote_ctx in
+    assert (
+      List.for_all
+        (fun { x; _ } -> List.for_all (fun { x = x'; _ } -> x' <> x) local_ctx)
+        promote_ctx);
+
+    Typectx.Typectx (local_ctx @ promote_ctx)
 
   let exists_rtys_to_rty (Typectx.Typectx ctx) rty = exists_rtys_to_rty ctx rty
 end
