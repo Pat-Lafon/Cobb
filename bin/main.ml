@@ -211,11 +211,9 @@ let get_args_rec_retty_body_from_source meta_config_file source_file =
 
   let reconstruct_code_with_new_body x =
     let b = swap_in_body code in
-    (* TODO how to find the correct type here?*)
-    (* Do I even care? *)
     Item.MFuncImp
       {
-        name = synth_name #: Nt.Ty_unit;
+        name = synth_name #: (erase_rty synth_type);
         if_rec = true;
         body = b x |> value_to_term;
       }
