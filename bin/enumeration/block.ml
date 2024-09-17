@@ -57,8 +57,6 @@ module type Block_intf = sig
   val typing_relation : uctx -> t -> t -> Relations.relation
   val is_sub_rty : uctx -> t -> t -> bool
 
-  val combine_all_args :
-    t list -> identifier list * LocalCtx.t * LocalCtx.mapping list
 end
 
 module ExistentializedBlock : sig
@@ -94,9 +92,6 @@ end = struct
       ((name', ext_rty') : t) : Relations.relation =
     Relations.typed_relation uctx name.x #: ext_rty name'.x #: ext_rty'
 
-  let combine_all_args (args : t list) :
-      identifier list * LocalCtx.t * LocalCtx.mapping list =
-    failwith "unimplemented"
 
   let path_promotion (lc : LocalCtx.t) ((id, rt) : t) : t =
     let fresh_id = (Rename.unique id.x) #: id.ty in
@@ -112,6 +107,9 @@ module Block : sig
   type t = identifier * Nt.t rty * LocalCtx.t
 
   include Block_intf with type t := t
+
+  val combine_all_args :
+    t list -> identifier list * LocalCtx.t * LocalCtx.mapping list
 
   val existentialize : t -> ExistentializedBlock.t
 end = struct
