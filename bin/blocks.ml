@@ -193,10 +193,11 @@ module BlockMap = struct
   module BlockSet = struct
     include BlockSet
 
-    let existentialize (pm : t) : BlockSetE.t =
-      fold
-        (fun acc n -> BlockSetE.add_block acc (Block.existentialize n))
-        BlockSetE.empty pm
+    (* TODO: make sure this expensive operation is necessary
+       let existentialize (pm : t) : BlockSetE.t =
+          fold
+            (fun acc n -> BlockSetE.add_block acc (Block.existentialize n))
+            BlockSetE.empty pm *)
   end
 
   (** Gets the corresponding set or return  *)
@@ -272,6 +273,12 @@ module BlockMap = struct
     assert_valid (fst res);
     Hashtbl.iter (fun l m -> assert_valid m) (snd res);
     res
+
+  let existentialized_list (map : t) (ty : Nt.t) : ExistentializedBlock.t list =
+    get_opt map ty
+    |> Option.map BlockSet.to_list
+    |> Option.value ~default:[]
+    |> List.map Block.existentialize
 end
 
 module BlockCollection = struct
@@ -298,6 +305,8 @@ module BlockCollection = struct
   let make_new_old ({ new_blocks; old_blocks } : t) : t =
     assert_valid { new_blocks; old_blocks };
     { new_blocks = []; old_blocks = BlockMap.union new_blocks old_blocks }
+
+  (* TODO: This seems very expensive *)
 
   (** For the block inference
     * Returns a mapping of all blocks, new and old *)
@@ -461,6 +470,7 @@ module SynthesisCollection = struct
 
                 let nt_args = op |> snd |> fst in
 
+                (* todo: this is potentially expensive/unnecesary*)
                 let set_of_args =
                   BlockMap.union path_col.old_blocks general_old_blocks
                 in
@@ -734,23 +744,29 @@ module Extraction = struct
     print_endline "Existentializing the general set";
     (* Get all blocks from the general collection *)
     let general_block_list =
-      BlockCollection.get_full_map collection.general_coll |> fun x ->
-      BlockMap.get x target_nty |> BlockSet.to_list
-      |> List.map Block.existentialize
+      let ({ new_blocks; old_blocks } : BlockCollection.t) =
+        collection.general_coll
+      in
+
+      List.append
+        (BlockMap.existentialized_list new_blocks target_nty)
+        (BlockMap.existentialized_list old_blocks target_nty)
     in
 
     let uctx = Context.get_global_uctx () in
 
     (* The updated set is commented out because we don't to include the target
        block in later calculations *)
-    let equal_block =
-      List.find_opt
-        (fun b ->
-          match ExistentializedBlock.typing_relation uctx b target_block with
-          | Relations.Equiv -> true
-          | _ -> false)
-        general_block_list
-    in
+    (* TODO: doing an additional linear check hear seems very inefficient *)
+    (* let equal_block =
+         List.find_opt
+           (fun b ->
+             match ExistentializedBlock.typing_relation uctx b target_block with
+             | Relations.Equiv -> true
+             | _ -> false)
+           general_block_list
+       in *)
+    let equal_block = None in
 
     assert (Hashtbl.length collection.path_specific > 0);
 
@@ -782,11 +798,12 @@ module Extraction = struct
             (fun (lc, bc) ->
               LocalCtx.layout lc |> print_endline;
               ( lc,
-                BlockCollection.get_full_map bc |> fun x ->
-                BlockMap.get_opt x target_nty
-                |> Option.map BlockSet.to_list
-                |> Option.value ~default:[]
-                |> List.map Block.existentialize ))
+                let ({ new_blocks; old_blocks } : BlockCollection.t) = bc in
+
+                List.append
+                  (BlockMap.existentialized_list new_blocks target_nty)
+                  (BlockMap.existentialized_list old_blocks target_nty)
+                (* TODO: This get full_map does an expensive union *) ))
             collection.path_specific
         in
 
