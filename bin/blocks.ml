@@ -475,27 +475,50 @@ module SynthesisCollection = struct
                   BlockMap.union path_col.old_blocks general_old_blocks
                 in
 
-                if
-                  not
-                    (BlockMap.size set_of_args
-                    = BlockMap.size path_col.old_blocks
-                      + BlockMap.size general_old_blocks)
-                then (
-                  print_endline "union";
-                  BlockMap.print set_of_args;
-                  print_endline "path";
-                  BlockMap.print path_col.old_blocks;
-                  print_endline "general";
-                  BlockMap.print general_old_blocks;
+                assert (
+                  if
+                    not
+                      (BlockMap.size set_of_args
+                      = BlockMap.size path_col.old_blocks
+                        + BlockMap.size general_old_blocks)
+                  then (
+                    print_endline "union";
+                    BlockMap.print set_of_args;
+                    print_endline "path";
+                    BlockMap.print path_col.old_blocks;
+                    print_endline "general";
+                    BlockMap.print general_old_blocks;
 
-                  failwith "bad size")
-                else ();
+                    failwith "bad size")
+                  else true);
 
                 (* This is the standard approach by looking at new path blocks *)
                 let standard_args =
                   BlockMap.new_old_block_args path_col.new_blocks set_of_args
                     nt_args
                 in
+
+                let set_of_path_args =
+                  BlockMap.union path_col.new_blocks path_col.old_blocks
+                in
+
+                assert (
+                  if
+                    not
+                      (BlockMap.size set_of_path_args
+                      = BlockMap.size path_col.new_blocks
+                        + BlockMap.size path_col.old_blocks)
+                  then (
+                    print_endline "union";
+                    BlockMap.print set_of_path_args;
+                    print_endline "new";
+                    BlockMap.print path_col.new_blocks;
+                    print_endline "old";
+                    BlockMap.print path_col.old_blocks;
+
+                    failwith "bad size";
+                    false)
+                  else true);
 
                 let args =
                   if List.length nt_args = 1 then standard_args
@@ -506,7 +529,7 @@ module SynthesisCollection = struct
                         (* First required set is the new general blocks*)
                         general_new_blocks
                         (* Second required is the path_blocks *)
-                        (BlockMap.union path_col.new_blocks path_col.old_blocks)
+                        set_of_path_args
                         (* Optional set is the old general blocks *)
                         general_old_blocks nt_args
                     in
@@ -577,12 +600,12 @@ module Extraction = struct
 
       print_endline (layout_rty target_ty);
 
-      (* Assert that current min passes subtyping check *)
-      assert (sub_rty_bool uctx (unioned_rty_type2 x, target_ty));
-
       let current_min = unioned_rty_type2 x in
 
-      print_endline (unioned_rty_type2 x |> layout_rty);
+      (* Assert that current min passes subtyping check *)
+      assert (sub_rty_bool uctx (current_min, target_ty));
+
+      print_endline (current_min |> layout_rty);
 
       let res =
         List.fold_left
