@@ -25,10 +25,9 @@ module LocalCtx = struct
     |> Seq.iter (fun i ->
            if
              Rename.has_been_uniqified i.x
-             (* TODO: Can the next line be deleted now that I have the
-                filter map?*)
-             && not (NameTracking.is_known i)
-           then NameTracking.remove_ast i ~recursive
+           then (
+             assert (not (NameTracking.is_known i));
+             NameTracking.remove_ast i ~recursive)
            else ())
 
   let contains_path_cond (Typectx.Typectx ctx : t) : bool =
