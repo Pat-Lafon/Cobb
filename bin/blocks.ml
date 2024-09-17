@@ -306,13 +306,6 @@ module BlockCollection = struct
     assert_valid { new_blocks; old_blocks };
     { new_blocks = []; old_blocks = BlockMap.union new_blocks old_blocks }
 
-  (* TODO: This seems very expensive *)
-
-  (** For the block inference
-    * Returns a mapping of all blocks, new and old *)
-  let get_full_map ({ new_blocks; old_blocks } : t) : BlockMap.t =
-    BlockMap.union new_blocks old_blocks
-
   let rec add_map_with_cov_checked coll (map : BlockMap.t) =
     BlockMap.assert_valid map;
     match map with
@@ -470,7 +463,6 @@ module SynthesisCollection = struct
 
                 let nt_args = op |> snd |> fst in
 
-                (* todo: this is potentially expensive/unnecesary*)
                 let set_of_args =
                   BlockMap.union path_col.old_blocks general_old_blocks
                 in
