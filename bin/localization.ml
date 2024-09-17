@@ -307,11 +307,11 @@ module Localization = struct
     in
 
     print_endline "Possible props: ";
-       List.iter
-         (fun (x, local_vs, s) ->
-           print_endline (layout_prop x);
-           List.iter (fun x -> print_endline (layout_id_rty x)) local_vs)
-         possible_props;
+    List.iter
+      (fun (x, local_vs, s) ->
+        print_endline (layout_prop x);
+        List.iter (fun x -> print_endline (layout_id_rty x)) local_vs)
+      possible_props;
 
     (* Check that on it's own, the inferred type is not sufficient *)
     assert (not (sub_rty_bool uctx (inferred_body.ty, target_ty)));
@@ -337,11 +337,10 @@ module Localization = struct
           possible_props
       in
 
-      (* todo, maybe refactor this out since it is used twice *)
-      let modified_target_ty = add_props_to_base target_ty local_free_subset in
       (* TODO: Not worried about timeout here I think? *)
       let subtyping_res =
-        sub_rty_bool uctx (inferred_body.ty, modified_target_ty)
+        sub_rty_bool uctx
+          (inferred_body.ty, add_props_to_base target_ty local_free_subset)
       in
 
       if subtyping_res then local_free_subset else possible_props
@@ -368,7 +367,7 @@ module Localization = struct
                |> Zzdatatype.Datatype.List.split_by_comma layout_prop
                |> print_endline; *)
 
-            (* Does the check work without this prop?*)
+            (* todo: Does the check work without this prop?*)
             let modified_target_ty =
               add_props_to_base target_ty (List.concat [ acc; rest_props ])
             in
