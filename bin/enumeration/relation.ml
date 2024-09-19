@@ -84,6 +84,7 @@ end = struct
       let implied_by_target =
         Timeout.sub_rty_bool_or_timeout ctx (target_ty, ty)
       in
+
       match (implies_target, implied_by_target) with
       (*       | Timeout, _ | _, Timeout -> Timeout *)
       | Result true, Result true -> Equiv

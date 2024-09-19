@@ -332,9 +332,10 @@ let apply (component : Pieces.component) (args : Block.t list) (ret_type : Nt.t)
       (None, try_add_paths ())
   | Res new_ut ->
       assert (ret_type = erase_rty new_ut.ty);
-      (* If you have a promotable path, and a filter type, just skip the
-         general filter. Otherwise check filter *)
-      if Option.is_some filter_type && not (List.is_empty promotable_paths) then (
+      if
+        Option.is_some filter_type && not (List.is_empty promotable_paths)
+        (* TODO: Possible optimization *) (* && (TypeInference.check_filter_type filter_type new_uctx new_ut) *)
+      then (
         print_endline "Has filter so check in branch";
         (None, try_add_paths ()))
       else if
