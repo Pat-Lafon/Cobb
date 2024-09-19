@@ -119,13 +119,14 @@ let get_synth_config_values meta_config_file =
   let open Yojson.Basic.Util in
   let metaj = load_json meta_config_file in
   let bound = metaj |> member "synth_bound" |> to_int in
-  let timeout = metaj |> member "synth_timeout" |> to_string in
+  let timeout = metaj |> member "synth_timeout" |> to_string_option in
+  assert (timeout = None);
   let res_ext = metaj |> member "resfile" |> to_string in
   let abd_ext = metaj |> member "abdfile" |> to_string in
   let syn_ext = metaj |> member "synfile" |> to_string in
   let syn_rlimit = metaj |> member "synth_rlimit" |> to_int in
   let collect_ext = metaj |> member "collectfile" |> to_string in
-  (bound, timeout, res_ext, abd_ext, syn_ext, syn_rlimit, collect_ext)
+  (bound, res_ext, abd_ext, syn_ext, syn_rlimit, collect_ext)
 
 let build_initial_typing_context meta_config_file : uctx =
   let prim_path = Env.get_prim_path () in
@@ -389,16 +390,13 @@ let run_benchmark source_file meta_config_file =
 
   if Utils.rty_is_false missing_coverage then failwith "No missing coverage";
 
-  let bound, timeout, res_ext, abd_ext, syn_ext, rlimit, collect_ext =
+  let bound, res_ext, abd_ext, syn_ext, rlimit, collect_ext =
     get_synth_config_values meta_config_file
   in
 
   let collection_file = source_file ^ collect_ext in
 
   (*   Env.sexp_of_meta_config (!Env.meta_config |> Option.value_exn) |> dbg_sexp; *)
-  let () =
-    Z3.Params.update_param_value Backend.Smtquery.ctx "timeout" timeout
-  in
   let () =
     Z3.Params.update_param_value Backend.Smtquery.ctx "rlimit"
       (string_of_int rlimit)
@@ -531,8 +529,8 @@ let run_benchmark source_file meta_config_file =
 
   let results_csv_contents =
     Printf.sprintf
-      "Result, Bounds, SMT Timeout, Queries, Total Time\n%b, %d, %s, %d, %.2f"
-      result bound timeout
+      "Result, Bounds, Resource Limit, Queries, Total Time\n\
+       %b, %d, %d, %d, %.2f" result bound rlimit
       !Backend.Check.query_counter
       total_time
   in
