@@ -56,7 +56,6 @@ module type Block_intf = sig
   val get_local_ctx : t -> LocalCtx.t
   val typing_relation : uctx -> t -> t -> Relations.relation
   val is_sub_rty : uctx -> t -> t -> bool
-
 end
 
 module ExistentializedBlock : sig
@@ -91,7 +90,6 @@ end = struct
   let typing_relation (uctx : uctx) ((name, ext_rty) : t)
       ((name', ext_rty') : t) : Relations.relation =
     Relations.typed_relation uctx name.x #: ext_rty name'.x #: ext_rty'
-
 
   let path_promotion (lc : LocalCtx.t) ((id, rt) : t) : t =
     let fresh_id = (Rename.unique id.x) #: id.ty in
@@ -253,7 +251,7 @@ let try_path path_ctx optional_filter_type ret_type (block_id, term, local_ctx)
         TypeInference.check_filter_type optional_filter_type new_path_uctx
           new_ut
       then (
-        print_endline "Didn't make path";
+        print_endline "Didn't make path because of filter";
         None)
       else (
         print_endline "Found a path home";
