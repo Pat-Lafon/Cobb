@@ -199,12 +199,13 @@ module Pieces = struct
         | _ -> failwith "components_from_args::Other::unimplemented")
       ctx_list
 
-  let seeds_and_components (Typectx ctx_list : t rty Typectx.ctx) :
+  let seeds_and_components (Typectx ctx_list : t rty Typectx.ctx)
+      (component_list : string list) :
       (identifier * t rty * t rty Typectx.ctx) list
       * (component * (t list * t)) list =
     List.fold_left
       (fun (seeds, components) { x; ty } ->
-        if String.starts_with ~prefix:"hidden_" x then (seeds, components)
+        if not (List.mem x component_list) then (seeds, components)
         else
           let nt = erase_rty ty in
           match ty with

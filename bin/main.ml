@@ -114,7 +114,17 @@ let handle_recursion_args (a : (t, t value) typed) (rty : t rty) =
         ([ binding ], rec_fix, strip_lam body)
   | _ -> failwith "Did not recieve a fixpoint value and a base arrow type"
 
-let get_synth_config_values meta_config_file =
+type config = {
+  bound : int;
+  res_ext : string;
+  abd_ext : string;
+  syn_ext : string;
+  rlimit : int;
+  collect_ext : string;
+  component_list : string list;
+}
+
+let get_synth_config_values meta_config_file : config =
   let open Json in
   let open Yojson.Basic.Util in
   let metaj = load_json meta_config_file in
@@ -124,9 +134,17 @@ let get_synth_config_values meta_config_file =
   let res_ext = metaj |> member "resfile" |> to_string in
   let abd_ext = metaj |> member "abdfile" |> to_string in
   let syn_ext = metaj |> member "synfile" |> to_string in
-  let syn_rlimit = metaj |> member "synth_rlimit" |> to_int in
+  let rlimit = metaj |> member "synth_rlimit" |> to_int in
   let collect_ext = metaj |> member "collectfile" |> to_string in
-  (bound, res_ext, abd_ext, syn_ext, syn_rlimit, collect_ext)
+  let comp_path = metaj |> member "comp_path" |> to_string in
+
+  let comp_path =
+    Filename.concat (Filename.dirname meta_config_file) comp_path
+  in
+
+  let component_list = Core.In_channel.read_lines comp_path in
+
+  { bound; res_ext; abd_ext; syn_ext; rlimit; collect_ext; component_list }
 
 let build_initial_typing_context meta_config_file : uctx =
   let prim_path = Env.get_prim_path () in
@@ -386,20 +404,20 @@ let run_benchmark source_file meta_config_file =
     Commands.Cre.type_infer_inner meta_config_file source_file ()
   in
 
+  let config = get_synth_config_values meta_config_file in
+
+
   Printf.printf "Missing Coverage: %s\n" (layout_rty missing_coverage);
 
   if Utils.rty_is_false missing_coverage then failwith "No missing coverage";
 
-  let bound, res_ext, abd_ext, syn_ext, rlimit, collect_ext =
-    get_synth_config_values meta_config_file
-  in
 
-  let collection_file = source_file ^ collect_ext in
+  let collection_file = source_file ^ config.collect_ext in
 
   (*   Env.sexp_of_meta_config (!Env.meta_config |> Option.value_exn) |> dbg_sexp; *)
   let () =
     Z3.Params.update_param_value Backend.Smtquery.ctx "rlimit"
-      (string_of_int rlimit)
+      (string_of_int config.rlimit)
   in
 
   let uctx = build_initial_typing_context meta_config_file in
@@ -433,7 +451,7 @@ let run_benchmark source_file meta_config_file =
 
   let ( (seeds : Block.t list),
         (components : (Pieces.component * (t list * t)) list) ) =
-    Pieces.seeds_and_components uctx.builtin_ctx
+    Pieces.seeds_and_components uctx.builtin_ctx config.component_list
   in
 
   let seeds = List.concat [ seeds; Pieces.seeds_from_args uctx.local_ctx ] in
@@ -480,7 +498,7 @@ let run_benchmark source_file meta_config_file =
   let init_synth_col = SynthesisCollection.init inital_map context_maps in
 
   let synthesis_result =
-    Synthesis.synthesis missing_coverage bound init_synth_col components
+    Synthesis.synthesis missing_coverage config.bound init_synth_col components
       collection_file
   in
 
@@ -523,14 +541,14 @@ let run_benchmark source_file meta_config_file =
     final_program_to_string reconstruct_code_with_new_body new_body
   in
 
-  let abduction_file = source_file ^ abd_ext in
-  let synthesis_file = source_file ^ syn_ext in
-  let results_file = source_file ^ res_ext ^ ".csv" in
+  let abduction_file = source_file ^ config.abd_ext in
+  let synthesis_file = source_file ^ config.syn_ext in
+  let results_file = source_file ^ config.res_ext ^ ".csv" in
 
   let results_csv_contents =
     Printf.sprintf
       "Result, Bounds, Resource Limit, Queries, Total Time\n\
-       %b, %d, %d, %d, %.2f" result bound rlimit
+       %b, %d, %d, %d, %.2f" result config.bound config.rlimit
       !Backend.Check.query_counter
       total_time
   in
