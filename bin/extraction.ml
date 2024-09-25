@@ -31,22 +31,22 @@ module Extraction = struct
       List.concat (inner lst)
 
   (* Helper function to get the current rty of terms under consideration *)
-  let unioned_rty_type (l : (LocalCtx.t * (identifier * rty) * Ptset.t) list) :
-      rty =
+  let unioned_rty_type
+      (l : (LocalCtx.t * ExistentializedBlock.t * Ptset.t) list) : rty =
     List.map (fun (_, (_, rt), _) -> rt) l |> union_rtys
 
   (* Helper function to get the current rty of terms under consideration *)
   let unioned_rty_type2
-      (l : (LocalCtx.t * BlockSetE.t * (identifier * rty) * Ptset.t) list) : rty
-      =
+      (l : (LocalCtx.t * BlockSetE.t * ExistentializedBlock.t * Ptset.t) list) :
+      rty =
     assert (not (List.is_empty l));
     List.map (fun (_, _, (_, rt), _) -> rt) l |> union_rtys
 
   (* Try to find the largest block that can be removed *)
   let minimize_once
-      (x : (LocalCtx.t * BlockSetE.t * (identifier * rty) * Ptset.t) list)
+      (x : (LocalCtx.t * BlockSetE.t * ExistentializedBlock.t * Ptset.t) list)
       (target_ty : rty) :
-      (LocalCtx.t * BlockSetE.t * (identifier * rty) * Ptset.t) list =
+      (LocalCtx.t * BlockSetE.t * ExistentializedBlock.t * Ptset.t) list =
     if List.length x = 1 then x
     else
       let () = assert (List.length x > 1) in
@@ -162,9 +162,11 @@ module Extraction = struct
 
   (* Try to increase the coverage of a specific term to satisfy
      the target type *)
-  let setup_type (x : (LocalCtx.t * BlockSetE.t * ('a option * Ptset.t)) list)
-      (target_ty : rty) :
-      (LocalCtx.t * BlockSetE.t * (identifier * rty) * Ptset.t) list =
+  let setup_type
+      (x :
+        (LocalCtx.t * BlockSetE.t * (ExistentializedBlock.t option * Ptset.t))
+        list) (target_ty : rty) :
+      (LocalCtx.t * BlockSetE.t * ExistentializedBlock.t * Ptset.t) list =
     print_endline "Setup type";
     assert (not (List.is_empty x));
     let uctx = !global_uctx |> Option.get in
