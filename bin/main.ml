@@ -2,6 +2,7 @@ open Typing
 open Term
 open Pieces
 open Blocks
+open Blockmap
 open Block
 open Localization
 open Language.FrontendTyped
@@ -10,6 +11,7 @@ open Mtyped
 open Rty
 open Cty
 open Tracking
+open Synthesiscollection
 module Env = Zzenv
 
 let rec unfold_rty_helper rty : _ typed list * _ rty =
@@ -146,12 +148,10 @@ let get_synth_config_values meta_config_file : config =
 
   { bound; res_ext; abd_ext; syn_ext; rlimit; collect_ext; component_list }
 
-let build_initial_typing_context meta_config_file : uctx =
+let build_initial_typing_context () : uctx =
   let prim_path = Env.get_prim_path () in
 
-  let predefine =
-    Commands.Cre.preproress meta_config_file prim_path.coverage_typing ()
-  in
+  let predefine = Commands.Cre.preprocess prim_path.coverage_typing () in
 
   (*   Pp.printf "\nPredefined:\n%s\n" (layout_structure predefine); *)
   let builtin_ctx = Typing.Itemcheck.gather_uctx predefine in
@@ -159,7 +159,7 @@ let build_initial_typing_context meta_config_file : uctx =
   (*   Pp.printf "\nBuiltin Context:\n%s\n" (layout_typectx layout_rty builtin_ctx); *)
   assert (List.length predefine = List.length (Typectx.to_list builtin_ctx));
 
-  let lemmas = Commands.Cre.preproress meta_config_file prim_path.axioms () in
+  let lemmas = Commands.Cre.preprocess prim_path.axioms () in
 
   (* Pp.printf "\nLemmas:\n%s\n" (layout_structure lemmas); *)
   let axioms =
@@ -187,10 +187,8 @@ let rec swap_in_body (code : (Nt.t, Nt.t value) typed) :
       )
   | _ -> failwith "swap_in_body::failure"
 
-let get_args_rec_retty_body_from_source meta_config_file source_file =
-  let processed_file =
-    Commands.Cre.preproress meta_config_file source_file ()
-  in
+let get_args_rec_retty_body_from_source source_file =
+  let processed_file = Commands.Cre.preprocess source_file () in
 
   assert (List.length processed_file = 2);
 
@@ -406,11 +404,11 @@ let run_benchmark source_file meta_config_file =
 
   let config = get_synth_config_values meta_config_file in
 
+  print_endline ("Components" ^ String.concat "," config.component_list);
 
   Printf.printf "Missing Coverage: %s\n" (layout_rty missing_coverage);
 
   if Utils.rty_is_false missing_coverage then failwith "No missing coverage";
-
 
   let collection_file = source_file ^ config.collect_ext in
 
@@ -420,13 +418,18 @@ let run_benchmark source_file meta_config_file =
       (string_of_int config.rlimit)
   in
 
-  let uctx = build_initial_typing_context meta_config_file in
+  let uctx = build_initial_typing_context () in
 
   let args, rec_fix, retty, body, reconstruct_code_with_new_body =
-    get_args_rec_retty_body_from_source meta_config_file source_file
+    get_args_rec_retty_body_from_source source_file
   in
 
   let uctx = add_to_rights uctx (rec_fix :: args) in
+
+  Pp.printf "\nBuiltinTypingContext Before Synthesis:\n%s\n"
+    (Frontend_opt.To_typectx.layout_typectx layout_rty uctx.builtin_ctx);
+  Pp.printf "\nLocalTypingContext Before Synthesis:\n%s\n"
+    (Frontend_opt.To_typectx.layout_typectx layout_rty uctx.local_ctx);
 
   (match Typing.Termcheck.term_type_check uctx body retty with
   | None -> ()

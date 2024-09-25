@@ -8,10 +8,10 @@ open Subtyping.Subrty
 open Utils
 open Cty
 open Block
-open Blocks
 open Tracking
 open Pieces
 open Context
+open Blockmap
 
 type 'a exn_variations = {
   full_exn : 'a;

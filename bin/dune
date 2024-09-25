@@ -34,7 +34,11 @@
   pieces
   pomap
   block
-  relation)
+  extraction
+  relation
+  blockset
+  blockmap
+  blockcollection)
  (modules blocks)
  (preprocess
   (pps ppx_optcomp ppx_compare ppx_sexp_conv)))
@@ -75,6 +79,17 @@
  (name utils)
  (modules utils)
  (libraries core underapproximation_type.typing language_utils.zzdatatype))
+
+(library
+ (name extraction)
+ (modules extraction)
+ (libraries
+  blockmap
+  context
+  pomap
+  blockcollection
+  tracking
+  synthesiscollection))
 
 (env
  (dev

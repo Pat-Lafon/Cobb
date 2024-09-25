@@ -11,3 +11,23 @@
  (modules block)
  (preprocess
   (pps ppx_optcomp ppx_compare ppx_sexp_conv)))
+
+(library
+ (name blockset)
+ (libraries block relation pomap)
+ (modules blockset))
+
+(library
+ (name blockmap)
+ (libraries block blockset context)
+ (modules blockmap))
+
+(library
+ (name blockcollection)
+ (libraries block blockmap)
+ (modules blockcollection))
+
+(library
+ (name synthesiscollection)
+ (libraries block blockmap blockset context blockcollection)
+ (modules synthesiscollection))

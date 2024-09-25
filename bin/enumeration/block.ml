@@ -329,6 +329,13 @@ let apply (component : Pieces.component) (args : Block.t list) (ret_type : Nt.t)
       (* failed the new rec_check *)
       (None, try_add_paths ())
   | Res new_ut ->
+      (match component with
+      | Op { x = DtConstructor "SAFETY_Rbtnode"; _ } ->
+          if Subtyping.Subrty.is_nonempty_rty new_uctx new_ut.ty then
+            print_endline "Nonempty"
+          else print_endline "Empty"
+      | _ -> ());
+
       assert (ret_type = erase_rty new_ut.ty);
       if
         Option.is_some filter_type && not (List.is_empty promotable_paths)
