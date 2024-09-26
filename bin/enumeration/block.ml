@@ -59,50 +59,49 @@ module type Block_intf = sig
 end
 
 module ExistentializedBlock : sig
-  type t = identifier * Nt.t rty
+  type t = { id : identifier; ty : Nt.t rty }
 
   val path_promotion : LocalCtx.t -> t -> t
 
   include Block_intf with type t := t
 end = struct
-  type t = identifier * Nt.t rty
+  type t = { id : identifier; ty : Nt.t rty }
 
-  let to_typed_term ((name, ut) : t) : (Nt.t, Nt.t term) typed =
-    NameTracking.get_term name
+  let to_typed_term ({ id; ty } : t) : (Nt.t, Nt.t term) typed =
+    NameTracking.get_term id
 
-  let to_nty ((name, _) : t) : Nt.t = name.ty
+  let to_nty (x : t) : Nt.t = x.id.ty
 
-  let layout ((name, ut) : t) : string =
+  let layout ({ id; ty } : t) : string =
     Printf.sprintf "%s : %s :\n%s\n"
-      (NameTracking.get_term name |> layout_typed_erased_term)
-      (layout_ty name.ty) (layout_rty ut)
+      (NameTracking.get_term id |> layout_typed_erased_term)
+      (layout_ty id.ty) (layout_rty ty)
 
-  (* In the case of an existentialized block, the only thing in context is itself*)
-  let get_local_ctx ((name, ext_rty) : t) : LocalCtx.t =
-    Typectx.Typectx [ name.x #: ext_rty ]
+  (* In the case of an existentialiszed block, the only thing in context is itself*)
+  let get_local_ctx ({ id; ty } : t) : LocalCtx.t =
+    Typectx.Typectx [ id.x #: ty ]
 
-  let new_X (x : identifier) (ty : Nt.t rty) : t = (x, ty)
+  let new_X (id : identifier) (ty : Nt.t rty) : t = { id; ty }
 
-  let is_sub_rty (uctx : uctx) ((name, ext_rty) : t) ((name', ext_rty') : t) :
-      bool =
-    Relations.is_sub_rty uctx ext_rty ext_rty'
+  let is_sub_rty (uctx : uctx) ({ ty; _ } : t) ({ ty = ty'; _ } : t) : bool =
+    Relations.is_sub_rty uctx ty ty'
 
-  let typing_relation (uctx : uctx) ((name, ext_rty) : t)
-      ((name', ext_rty') : t) : Relations.relation =
-    Relations.typed_relation uctx name.x #: ext_rty name'.x #: ext_rty'
+  let typing_relation (uctx : uctx) ({ id; ty } : t)
+      ({ id = id'; ty = ty' } : t) : Relations.relation =
+    Relations.typed_relation uctx id.x #: ty id'.x #: ty'
 
-  let path_promotion (lc : LocalCtx.t) ((id, rt) : t) : t =
+  let path_promotion (lc : LocalCtx.t) ({ id; ty } : t) : t =
     let fresh_id = (Rename.unique id.x) #: id.ty in
     NameTracking.add_ast fresh_id (NameTracking.get_ast id |> Option.get);
-    let fresh_rty = LocalCtx.exists_rtys_to_rty lc rt in
+    let fresh_rty = LocalCtx.exists_rtys_to_rty lc ty in
 
-    assert (fresh_rty != rt);
+    assert (fresh_rty != ty);
 
-    (fresh_id, fresh_rty)
+    { id = fresh_id; ty = fresh_rty }
 end
 
 module Block : sig
-  type t = identifier * Nt.t rty * LocalCtx.t
+  type t = block_record
 
   include Block_intf with type t := t
 
@@ -111,48 +110,47 @@ module Block : sig
 
   val existentialize : t -> ExistentializedBlock.t
 end = struct
-  type t = identifier * Nt.t rty * LocalCtx.t
+  type t = block_record
 
-  let to_typed_term ((name, ut, ctx) : t) : (Nt.t, Nt.t term) typed =
-    NameTracking.get_term name
+  let to_typed_term ({ id; _ } : t) : (Nt.t, Nt.t term) typed =
+    NameTracking.get_term id
 
-  let to_nty ((name, _, _) : t) : Nt.t = name.ty
+  let to_nty ({ id; _ } : t) : Nt.t = id.ty
 
-  let layout ((name, ut, ctx) : t) : string =
+  let layout ({ id; ty; lc } : t) : string =
     Printf.sprintf "%s ⊢ %s : %s :\n%s\n"
-      (layout_typectx layout_rty ctx
-      ^ if List.is_empty (Typectx.to_list ctx) then "" else " \n")
-      (NameTracking.get_term name |> layout_typed_erased_term)
-      (layout_ty name.ty) (layout_rty ut)
+      (layout_typectx layout_rty lc
+      ^ if List.is_empty (Typectx.to_list lc) then "" else " \n")
+      (NameTracking.get_term id |> layout_typed_erased_term)
+      (layout_ty id.ty) (layout_rty ty)
 
-  let get_local_ctx ((name, ut, ctx) : t) : LocalCtx.t = ctx
+  let get_local_ctx ({ id; ty; lc } : t) : LocalCtx.t = lc
 
-  let existentialize ((name, ut, ctx) : t) : identifier * Nt.t rty =
+  let existentialize ({ id; ty; lc } : t) : ExistentializedBlock.t =
     (* Kind of awkward, we want to filter out the current blocks name from the
        type(which would be redundant, unless that name is important) *)
     let local_ctx =
-      Typectx.to_list ctx
+      Typectx.to_list lc
       |> List.filter (fun { x; ty } ->
-             if x = name.x then NameTracking.is_known x #: (erase_rty ty)
+             if x = id.x then NameTracking.is_known x #: (erase_rty ty)
              else true)
     in
-    let ext_rty = exists_rtys_to_rty local_ctx ut in
-    (name, ext_rty)
+    let ext_rty = exists_rtys_to_rty local_ctx ty in
+    { id; ty = ext_rty }
 
   let is_sub_rty (uctx : uctx) (block : t) (block' : t) : bool =
-    let id, target_ty, ctx = block in
-    let id', ty, ctx' = block' in
+    (* let id, target_ty, ctx = block in
+       let id', ty, ctx' = block' in *)
+    assert (not (LocalCtx.contains_path_cond block.lc));
+    assert (not (LocalCtx.contains_path_cond block'.lc));
 
-    assert (not (LocalCtx.contains_path_cond ctx));
-    assert (not (LocalCtx.contains_path_cond ctx'));
-
-    let combined_ctx, mapping = LocalCtx.local_ctx_union_r ctx ctx' in
-    let updated_ty = Pieces.ut_subst ty mapping in
+    let combined_ctx, mapping = LocalCtx.local_ctx_union_r block.lc block'.lc in
+    let updated_ty = Pieces.ut_subst block'.ty mapping in
 
     let res =
       Relations.is_sub_rty
         (LocalCtx.uctx_add_local_ctx combined_ctx)
-        target_ty updated_ty
+        block.ty updated_ty
     in
 
     LocalCtx.cleanup mapping ~recursive:false;
@@ -161,17 +159,21 @@ end = struct
 
   let typing_relation (uctx : uctx) (target_block : t) (block : t) :
       Relations.relation =
-    let target_id, target_ty, target_ctx = target_block in
-    let id, ty, ctx = block in
-
-    if LocalCtx.contains_path_cond target_ctx || LocalCtx.contains_path_cond ctx
+    (* let target_id, target_ty, target_ctx = target_block in
+       let id, ty, ctx = block in
+    *)
+    if
+      LocalCtx.contains_path_cond target_block.lc
+      || LocalCtx.contains_path_cond block.lc
     then
       ExistentializedBlock.typing_relation uctx
         (existentialize target_block)
         (existentialize block)
     else
-      let combined_ctx, mapping = LocalCtx.local_ctx_union_r target_ctx ctx in
-      let updated_ty = Pieces.ut_subst ty mapping in
+      let combined_ctx, mapping =
+        LocalCtx.local_ctx_union_r target_block.lc block.lc
+      in
+      let updated_ty = Pieces.ut_subst block.ty mapping in
 
       (* print_newline ();
          LocalCtx.layout combined_ctx |> print_endline;
@@ -180,7 +182,7 @@ end = struct
       let res =
         Relations.typing_relation
           (LocalCtx.uctx_add_local_ctx combined_ctx)
-          target_ty updated_ty
+          target_block.ty updated_ty
       in
 
       LocalCtx.cleanup mapping ~recursive:false;
@@ -192,8 +194,8 @@ end = struct
      arguments with a singular local context *)
   let combine_all_args (args : t list) :
       identifier list * LocalCtx.t * LocalCtx.mapping list =
-    let arg_names = List.map (fun (id, _, _) -> id) args in
-    let ctxs = List.map (fun (_, _, ctx) -> ctx) args in
+    let arg_names = List.map (fun x -> x.id) args in
+    let ctxs = List.map (fun x -> x.lc) args in
     let unchanged_arg_name = List.hd arg_names in
     let unchanged_context = List.hd ctxs in
     List.fold_left2
@@ -228,7 +230,7 @@ end
 (* Take a term/block and see if it works inside of a path *)
 (* Should probably only be used to promote a block to a path *)
 let try_path path_ctx optional_filter_type ret_type (block_id, term, local_ctx)
-    =
+    : Block.t option =
   assert (term.ty = block_id.ty);
 
   let new_path_ctx =
@@ -258,7 +260,7 @@ let try_path path_ctx optional_filter_type ret_type (block_id, term, local_ctx)
         let new_path_ctx =
           Typectx.add_to_right new_path_ctx { x = block_id.x; ty = new_ut.ty }
         in
-        Some (block_id, new_ut.ty, new_path_ctx)
+        Some { id = block_id; ty = new_ut.ty; lc = new_path_ctx }
         (* _add_to_path_specifc_list path_specific_list path_ctx
            (block_id, new_ut.ty, new_path_ctx)
            ret_type *))
@@ -267,7 +269,8 @@ let try_path path_ctx optional_filter_type ret_type (block_id, term, local_ctx)
       None
 
 let apply (component : Pieces.component) (args : Block.t list) (ret_type : Nt.t)
-    (filter_type : Nt.t rty option) (promotable_paths : LocalCtx.t list) =
+    (filter_type : Nt.t rty option) (promotable_paths : LocalCtx.t list) :
+    Block.t option * 'a =
   (* Correct joining of contexts? *)
   let ( (arg_names : identifier list),
         (joined_ctx : LocalCtx.t),
@@ -366,4 +369,4 @@ let apply (component : Pieces.component) (args : Block.t list) (ret_type : Nt.t)
           Typectx.add_to_right joined_ctx { x = block_id.x; ty = new_ut.ty }
         in
         assert (block_id.ty = ret_type);
-        (Some (block_id, new_ut.ty, new_ctx), []))
+        (Some { id = block_id; ty = new_ut.ty; lc = new_ctx }, []))

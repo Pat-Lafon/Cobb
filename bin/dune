@@ -45,7 +45,7 @@
 
 (library
  (name pieces)
- (libraries underapproximation_type.typing utils tracking)
+ (libraries underapproximation_type.typing utils tracking context)
  (modules pieces))
 
 (library

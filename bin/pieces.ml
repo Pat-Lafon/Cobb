@@ -5,6 +5,9 @@ open Utils
 open Term
 open Mtyped
 open Tracking
+open Context
+
+type block_record = { id : identifier; ty : Nt.t rty; lc : LocalCtx.t }
 
 let rec typed_term_replace_block_body (t : (_, _ term) typed) replacement_body :
     (_, _ term) typed =
@@ -94,7 +97,7 @@ module Pieces = struct
     assert (List.length args >= 1);
     let res =
       List.fold_left
-        (fun (resid, aterm) arg ->
+        (fun ((resid : _ typed), aterm) arg ->
           assert (not (Nt.is_base_tp resid.ty));
           let id, new_app = mk_let_app ~record:true resid arg in
           let x = typed_term_replace_block_body aterm new_app in
@@ -138,7 +141,7 @@ module Pieces = struct
     in
     renamed_ty
 
-  type new_seed = identifier * t rty * t rty Typectx.ctx
+  type new_seed = block_record
 
   let selfification (x : string) (nt : t) =
     let new_name = (Rename.name ()) #: nt in
@@ -164,8 +167,13 @@ module Pieces = struct
         }
     in
     let new_seed : new_seed =
-      (new_name, new_rty_type, Typectx [ new_name.x #: new_rty_type ])
+      {
+        id = new_name;
+        ty = new_rty_type;
+        lc = Typectx [ new_name.x #: new_rty_type ];
+      }
     in
+
     new_seed
 
   let seeds_from_args (Typectx ctx_list : t rty Typectx.ctx) : new_seed list =
@@ -201,8 +209,7 @@ module Pieces = struct
 
   let seeds_and_components (Typectx ctx_list : t rty Typectx.ctx)
       (component_list : string list) :
-      (identifier * t rty * t rty Typectx.ctx) list
-      * (component * (t list * t)) list =
+      new_seed list * (component * (t list * t)) list =
     List.fold_left
       (fun (seeds, components) { x; ty } ->
         if not (List.mem x component_list) then (seeds, components)
@@ -213,7 +220,9 @@ module Pieces = struct
               NameTracking.known_ast x #: nt
                 (mk_appop (Op.DtConstructor x) #: nt []);
               let name, _ = mk_let ~record:true x #: nt in
-              let new_seed : new_seed = (name, ty, Typectx [ name.x #: ty ]) in
+              let new_seed : new_seed =
+                { id = name; ty; lc = Typectx [ name.x #: ty ] }
+              in
               (new_seed :: seeds, components)
           | RtyBaseArr
               {
@@ -226,8 +235,9 @@ module Pieces = struct
               let nt_ty = erase_rty retty in
               let name, _ = mk_let_app_const ~record:true x #: nt Constant.U in
               let new_seed : new_seed =
-                (name, retty, Typectx [ name.x #: retty ])
+                { id = name; ty = retty; lc = Typectx [ name.x #: retty ] }
               in
+
               (new_seed :: seeds, components)
           | RtyBaseArr _ ->
               let new_component : component * (t list * t) =

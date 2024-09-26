@@ -35,12 +35,14 @@ module Extraction = struct
       (l : (LocalCtx.t * BlockSetE.t * ExistentializedBlock.t * Ptset.t) list) :
       rty =
     assert (not (List.is_empty l));
-    List.map (fun (_, _, (_, rt), _) -> rt) l |> union_rtys
+    List.map (fun (_, _, ({ ty; _ } : ExistentializedBlock.t), _) -> ty) l
+    |> union_rtys
 
   (* Helper function to get the current rty of terms under consideration *)
   let unioned_rty_type3 (l : (LocalCtx.t * ExistentializedBlock.t) list) : rty =
     assert (not (List.is_empty l));
-    List.map (fun (_, (_, rt)) -> rt) l |> union_rtys
+    List.map (fun (_, ({ ty; _ } : ExistentializedBlock.t)) -> ty) l
+    |> union_rtys
 
   (* Try to find the largest block that can be removed *)
   let minimize_once (x : (LocalCtx.t * ExistentializedBlock.t) list)
@@ -96,10 +98,11 @@ module Extraction = struct
       let idx = Ptset.choose remaining_set in
       let remaining_set = Ptset.remove idx remaining_set in
       let new_term = BlockSetE.get_idx map idx in
-      let id, rty = new_term in
 
-      let new_thing : LocalCtx.t * BlockSetE.t * (identifier * rty) * Ptset.t =
-        (lc, map, (id, rty), BlockSetE.get_preds map new_term)
+      (*       let id, rty = new_term in *)
+      let new_thing :
+          LocalCtx.t * BlockSetE.t * ExistentializedBlock.t * Ptset.t =
+        (lc, map, new_term, BlockSetE.get_preds map new_term)
       in
 
       let new_covered_rty = unioned_rty_type2 (new_thing :: acc) in
@@ -134,7 +137,7 @@ module Extraction = struct
             Core.List.drop x idx |> List.destruct_opt |> Option.get
           in
 
-          let lc, map, (_, _), ptset = current_term in
+          let lc, map, _, ptset = current_term in
 
           if Ptset.is_empty ptset then
             (* Bail out if there are no other possible options*)
@@ -170,9 +173,8 @@ module Extraction = struct
     let res =
       match current_block with
       | Some i ->
-          let id, rty = i in
           print_endline "This block";
-          [ (lc, map, (id, rty), under_set) ]
+          [ (lc, map, i, under_set) ]
       | None ->
           Ptset.fold
             (fun idx acc ->
@@ -246,7 +248,7 @@ module Extraction = struct
           print_endline "return a block";
           let starting_point = (lc, bs, (b, p)) in
 
-          let target_path_ty = snd target_path_block in
+          let target_path_ty = target_path_block.ty in
 
           let block_choices = setup_type starting_point target_path_ty in
 
@@ -280,8 +282,10 @@ module Extraction = struct
 
     (* Create a target block that we are missing *)
     let target_block : ExistentializedBlock.t =
-      ( (Rename.unique "missing") #: target_nty |> NameTracking.known_var,
-        target_ty )
+      {
+        id = (Rename.unique "missing") #: target_nty |> NameTracking.known_var;
+        ty = target_ty;
+      }
     in
 
     print_endline "Existentializing the general set";

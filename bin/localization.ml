@@ -300,7 +300,7 @@ module Localization = struct
     let possible_props =
       List.split inferred_program_types
       |> snd
-      |> List.map (fun (x, local_vs, s) ->
+      |> List.map (fun ((x : _ typed), local_vs, s) ->
              (x.ty |> assume_base_rty |> snd, local_vs, s))
       |> List.map (fun (Cty { phi; _ }, local_vs, s) ->
              (Prop.Not phi, local_vs, s))
@@ -415,15 +415,17 @@ module Localization = struct
              let block_map =
                BlockMap.init
                  (List.map
-                    (fun local_v ->
+                    (fun (local_v : _ typed) ->
                       let nty = erase_rty local_v.ty in
                       let block : Block.t =
-                        ( local_v.x #: nty |> NameTracking.known_var,
-                          local_v.ty,
+                        {
+                          id = local_v.x #: nty |> NameTracking.known_var;
+                          ty = local_v.ty;
                           (* We intentionally want to add the variables before the
                              current local_ctx as we want them available to fill holes
                              from remove_local_vars_from_prop *)
-                          local_ctx )
+                          lc = local_ctx;
+                        }
                       in
                       Block.layout block |> print_endline;
 
