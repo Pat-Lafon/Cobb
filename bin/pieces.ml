@@ -7,7 +7,12 @@ open Mtyped
 open Tracking
 open Context
 
-type block_record = { id : identifier; ty : Nt.t rty; lc : LocalCtx.t }
+type block_record = {
+  id : identifier;
+  ty : Nt.t rty;
+  lc : LocalCtx.t;
+  cost : int;
+}
 
 let rec typed_term_replace_block_body (t : (_, _ term) typed) replacement_body :
     (_, _ term) typed =
@@ -82,6 +87,17 @@ module Pieces = struct
 
   type component = Fun of identifier | Op of (Nt.t, Op.op) typed
 
+  (* vars 1, consts 2, rec 3, fun 4 *)
+  let component_cost = function
+    | Fun f
+      when Option.map
+             (fun (n, _) -> String.equal n f.x)
+             !Typing.Termcheck._cur_rec_func_name
+           |> Option.value ~default:false ->
+        3
+    | Fun _ -> 4
+    | Op _ -> 4
+
   let layout_component (c : component) : string =
     match c with
     | Fun f -> f.x
@@ -112,14 +128,19 @@ module Pieces = struct
     let aterm = mk_let_appops ~record:true ctor args in
     aterm
 
-  let apply (comp : component) (args : identifier list) : identifier * _ typed =
+  let apply (comp : component) (args : (identifier * int) list) :
+      identifier * _ typed * int =
+    let cost =
+      List.fold_left (fun acc (_, c) -> acc + c) (component_cost comp) args
+    in
+    let args = List.map (fun (x, _) -> x) args in
     let resid, aterm =
       match comp with
       | Fun f -> mk_app f args id_to_term
       | Op op -> mk_op op args id_to_term
     in
     (*  let () = Hashtbl.add asts resid term in *)
-    (resid, aterm)
+    (resid, aterm, cost)
 
   let ut_subst (ut : t rty) (ht : (string, identifier) Hashtbl.t) : t rty =
     let renamed_ty =
@@ -171,6 +192,7 @@ module Pieces = struct
         id = new_name;
         ty = new_rty_type;
         lc = Typectx [ new_name.x #: new_rty_type ];
+        cost = 1;
       }
     in
 
@@ -221,7 +243,7 @@ module Pieces = struct
                 (mk_appop (Op.DtConstructor x) #: nt []);
               let name, _ = mk_let ~record:true x #: nt in
               let new_seed : new_seed =
-                { id = name; ty; lc = Typectx [ name.x #: ty ] }
+                { id = name; ty; lc = Typectx [ name.x #: ty ]; cost = 2 }
               in
               (new_seed :: seeds, components)
           | RtyBaseArr
@@ -235,7 +257,12 @@ module Pieces = struct
               let nt_ty = erase_rty retty in
               let name, _ = mk_let_app_const ~record:true x #: nt Constant.U in
               let new_seed : new_seed =
-                { id = name; ty = retty; lc = Typectx [ name.x #: retty ] }
+                {
+                  id = name;
+                  ty = retty;
+                  lc = Typectx [ name.x #: retty ];
+                  cost = 1;
+                }
               in
 
               (new_seed :: seeds, components)

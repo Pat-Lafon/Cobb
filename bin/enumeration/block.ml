@@ -117,16 +117,16 @@ end = struct
 
   let to_nty ({ id; _ } : t) : Nt.t = id.ty
 
-  let layout ({ id; ty; lc } : t) : string =
+  let layout ({ id; ty; lc; _ } : t) : string =
     Printf.sprintf "%s ⊢ %s : %s :\n%s\n"
       (layout_typectx layout_rty lc
       ^ if List.is_empty (Typectx.to_list lc) then "" else " \n")
       (NameTracking.get_term id |> layout_typed_erased_term)
       (layout_ty id.ty) (layout_rty ty)
 
-  let get_local_ctx ({ id; ty; lc } : t) : LocalCtx.t = lc
+  let get_local_ctx ({ lc; _ } : t) : LocalCtx.t = lc
 
-  let existentialize ({ id; ty; lc } : t) : ExistentializedBlock.t =
+  let existentialize ({ id; ty; lc; _ } : t) : ExistentializedBlock.t =
     (* Kind of awkward, we want to filter out the current blocks name from the
        type(which would be redundant, unless that name is important) *)
     let local_ctx =
@@ -229,8 +229,8 @@ end
 
 (* Take a term/block and see if it works inside of a path *)
 (* Should probably only be used to promote a block to a path *)
-let try_path path_ctx optional_filter_type ret_type (block_id, term, local_ctx)
-    : Block.t option =
+let try_path path_ctx optional_filter_type ret_type
+    (block_id, term, local_ctx, cost) : Block.t option =
   assert (term.ty = block_id.ty);
 
   let new_path_ctx =
@@ -260,7 +260,7 @@ let try_path path_ctx optional_filter_type ret_type (block_id, term, local_ctx)
         let new_path_ctx =
           Typectx.add_to_right new_path_ctx { x = block_id.x; ty = new_ut.ty }
         in
-        Some { id = block_id; ty = new_ut.ty; lc = new_path_ctx }
+        Some { id = block_id; ty = new_ut.ty; lc = new_path_ctx; cost }
         (* _add_to_path_specifc_list path_specific_list path_ctx
            (block_id, new_ut.ty, new_path_ctx)
            ret_type *))
@@ -279,7 +279,11 @@ let apply (component : Pieces.component) (args : Block.t list) (ret_type : Nt.t)
     Block.combine_all_args args
   in
 
-  let block_id, term = Pieces.apply component arg_names in
+  let arg_names_and_cost =
+    List.combine arg_names (List.map (fun x -> x.cost) args)
+  in
+
+  let block_id, term, cost = Pieces.apply component arg_names_and_cost in
 
   print_endline "Block in question:";
   LocalCtx.layout joined_ctx |> print_endline;
@@ -296,7 +300,8 @@ let apply (component : Pieces.component) (args : Block.t list) (ret_type : Nt.t)
     let new_path_list =
       List.filter_map
         (fun path_ctx ->
-          try_path path_ctx filter_type ret_type (block_id, term, joined_ctx)
+          try_path path_ctx filter_type ret_type
+            (block_id, term, joined_ctx, cost)
           |> Option.map (fun ty -> (path_ctx, ty)))
         promotable_paths
     in
@@ -369,4 +374,4 @@ let apply (component : Pieces.component) (args : Block.t list) (ret_type : Nt.t)
           Typectx.add_to_right joined_ctx { x = block_id.x; ty = new_ut.ty }
         in
         assert (block_id.ty = ret_type);
-        (Some { id = block_id; ty = new_ut.ty; lc = new_ctx }, []))
+        (Some { id = block_id; ty = new_ut.ty; lc = new_ctx; cost }, []))
