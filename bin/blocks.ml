@@ -5,8 +5,121 @@ open Zzdatatype.Datatype
 open Language
 open Context
 open Block
+open Blockset
+open Blockmap
 open Extraction
 open Synthesiscollection
+
+(* module PathPriorityQueue = struct
+     type t = (LocalCtx.t, BBQueue.t) Hashtbl.t
+
+     let init (num : int) : t = Hashtbl.create num
+   end *)
+
+let check_paths_for_solution (target_block : ExistentializedBlock.t)
+    (collection : PrioritySynthesisCollection.t) : (LocalCtx.t * _) list =
+  let nty = ExistentializedBlock.to_nty target_block in
+  Hashtbl.fold
+    (fun lc (_, bmap) acc ->
+      (* todo better *)
+      let s = BlockMap.existentialized_list bmap nty |> BlockSetE.init in
+      let path_target_block =
+        ExistentializedBlock.path_promotion lc target_block
+      in
+      let res = Extraction.extract_for_path lc path_target_block s in
+      List.append res acc)
+    collection.path_specific []
+
+let check_and_remove_finished_paths (coll : PrioritySynthesisCollection.t)
+    (target_type : rty) : (LocalCtx.t * _) list =
+  (* todo eventually have the target blocks included in the collection *)
+  let target_block = ExistentializedBlock.create_target target_type in
+  let paths_finished_by_seeds = check_paths_for_solution target_block coll in
+
+  let completed_contexts =
+    List.map fst paths_finished_by_seeds
+    |> List.fold_left (fun acc x -> if List.mem x acc then acc else x :: acc) []
+  in
+
+  PrioritySynthesisCollection.remove_finished_contexts coll completed_contexts;
+  paths_finished_by_seeds
+
+module PrioritySynthesis = struct
+  let rec synthesis_helper (target_type : rty) (max_cost : int)
+      (current_cost : int)
+      (*      (priority_queue : PathPriorityQueue.t) *)
+        (collection : PrioritySynthesisCollection.t)
+      (operations : (Pieces.component * (t list * t)) list)
+      (collection_file : string) (acc : (LocalCtx.t * _) list) :
+      (LocalCtx.t * _) list =
+    if max_cost < current_cost then failwith "Max cost exceeded"
+    else print_endline "Current Collection";
+    PrioritySynthesisCollection.print collection;
+    Core.Out_channel.write_all collection_file
+      ~data:(PrioritySynthesisCollection.layout collection);
+
+    let _ =
+      List.fold_left
+        (fun acc component ->
+          PrioritySynthesisCollection.increment_by_component acc component
+            current_cost;
+          acc)
+        collection operations
+    in
+
+    let path_solutions =
+      check_and_remove_finished_paths collection target_type
+    in
+
+    let acc = path_solutions @ acc in
+
+    if Hashtbl.length collection.path_specific = 0 then acc
+    else if
+      (not (List.is_empty path_solutions))
+      && Extraction.check_types_against_target
+           (List.map (fun (_, (b : ExistentializedBlock.t)) -> b.ty) acc)
+           target_type
+    then acc
+    else
+      let enumeration_result =
+        synthesis_helper target_type max_cost (current_cost + 1) collection
+          operations collection_file acc
+      in
+      enumeration_result
+
+  (* todo is max_cost even necessary anymore??*)
+  let synthesis (target_type : rty) (max_cost : int)
+      (inital_seeds : SynthesisCollection.t)
+      (operations : (Pieces.component * (t list * t)) list)
+      (collection_file : string) : (LocalCtx.t * (t, t term) typed list) list =
+    let inital_seeds =
+      PrioritySynthesisCollection.from_synth_coll inital_seeds
+    in
+
+    print_endline "Initial seeds";
+    PrioritySynthesisCollection.print inital_seeds;
+    Core.Out_channel.write_all collection_file
+      ~data:(PrioritySynthesisCollection.layout inital_seeds);
+
+    let paths_finished_by_seeds =
+      check_and_remove_finished_paths inital_seeds target_type
+    in
+
+    (* TODO: With the result, we may want to minimize
+       `minimize_num extracted_blocks target_ty`*)
+    (if Hashtbl.length inital_seeds.path_specific = 0 then
+       paths_finished_by_seeds
+     else
+       (* let priority_queue : PathPriorityQueue.t =
+            PathPriorityQueue.init
+              (Hashtbl.to_seq_keys inital_seeds.path_specific |> Seq.length)
+          in *)
+       synthesis_helper target_type max_cost 4 (* priority_queue *) inital_seeds
+         operations collection_file paths_finished_by_seeds)
+    |> List.map (fun (lc, b) -> (lc, ExistentializedBlock.to_typed_term b))
+    |> group_by (fun (x, y) -> x)
+    |> List.map (fun (x, y) -> (x, List.map snd y))
+end
 
 module Synthesis = struct
   let rec synthesis_helper (max_depth : int) (target_type : rty)

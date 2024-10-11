@@ -155,6 +155,18 @@ module NameTracking = struct
         new_name.x #: renamed_ty)
       ctx
 
+  let rename (id : identifier) : identifier =
+    if is_known id then id
+    else
+      let new_name = (Rename.unique id.x) #: id.ty in
+      assert (not (Hashtbl.mem asts new_name));
+      let () =
+        match get_ast id with
+        | None -> failwith id.x
+        | Some x -> add_ast new_name x
+      in
+      new_name
+
   let freshen (Typectx lst : t rty Typectx.ctx) =
     let ctx = Typectx.Typectx lst in
     let ht : (string, identifier) Hashtbl.t =

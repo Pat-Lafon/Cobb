@@ -6,6 +6,8 @@ open Frontend_opt.To_typectx
 open Language.FrontendTyped
 open Pieces
 open Language
+open Block
+open Blockqueue
 
 module SynthesisCollection = struct
   type t = {
@@ -106,10 +108,12 @@ module SynthesisCollection = struct
           let args =
             BlockMap.new_old_block_args general_new_blocks general_old_blocks
               (op |> snd |> fst)
+            |> Seq.map (fun args ->
+                   PreBlock.create (fst op) args (snd op |> snd))
           in
 
           let new_map, path_specific_maps =
-            BlockMap.increment_by_args args op promotable_paths
+            BlockMap.increment_by_args args promotable_paths
               optional_filter_type
           in
 
@@ -217,8 +221,14 @@ module SynthesisCollection = struct
                     Seq.append standard_args alternative_args
                 in
 
+                let args =
+                  Seq.map
+                    (fun args -> PreBlock.create (fst op) args (snd op |> snd))
+                    args
+                in
+
                 let path_op_specific_map, promoted_blocks =
-                  BlockMap.increment_by_args args op [] optional_filter_type
+                  BlockMap.increment_by_args args [] optional_filter_type
                 in
                 assert (Hashtbl.is_empty promoted_blocks);
 
@@ -240,4 +250,146 @@ module SynthesisCollection = struct
       path_specific =
         merge_path_specific_maps new_collection.path_specific path_specific_maps;
     }
+end
+
+module PrioritySynthesisCollection = struct
+  type t = {
+    path_specific : (LocalCtx.t, PriorityBBMap.t * BlockMap.t) Hashtbl.t;
+  }
+
+  let assert_valid (t : t) : unit =
+    Hashtbl.iter
+      (fun _ (pbbm, bm) ->
+        PriorityBBMap.assert_valid pbbm;
+        BlockMap.assert_valid bm)
+      t.path_specific
+
+  (* TODO: Instead use lists not maps*)
+  let init (inital_seeds : BlockMap.t)
+      (path_specific_seeds : (LocalCtx.t, BlockMap.t) Hashtbl.t) : t =
+    let inital_seeds = BlockMap.to_list inital_seeds in
+    let path_specific =
+      Hashtbl.map
+        (fun (p, seeds) ->
+          let path_seeds =
+            List.append (BlockMap.to_list seeds)
+              (List.map
+                 (fun ({ lc; _ } as b : block_record) : block_record ->
+                   let new_path_ctx =
+                     LocalCtx.promote_ctx_to_path lc ~promote_ctx:p
+                   in
+                   { b with lc = new_path_ctx })
+                 inital_seeds)
+          in
+          (p, (PriorityBBMap.init path_seeds, BlockMap.init path_seeds)))
+        path_specific_seeds
+    in
+
+    { path_specific }
+
+  (* todo: eventually deprecate *)
+  let from_synth_coll ({ general_coll; path_specific } : SynthesisCollection.t)
+      : t =
+    let { new_blocks = new_general_blocks; old_blocks } : BlockCollection.t =
+      general_coll
+    in
+    let new_general_blocks = BlockMap.to_list new_general_blocks in
+
+    assert (BlockMap.is_empty old_blocks);
+    let path_specific =
+      Hashtbl.map
+        (fun (lc, ({ new_blocks; old_blocks } : BlockCollection.t)) ->
+          assert (BlockMap.is_empty old_blocks);
+
+          let path_general_blocks =
+            List.map (fun b -> Block.path_promotion lc b) new_general_blocks
+          in
+
+          let combined_block_map, added_blocks =
+            List.fold_left
+              (fun (acc_map, acc_list) pgb ->
+                let og_size = BlockMap.size acc_map in
+                let acc_map = BlockMap.add acc_map pgb in
+                if og_size = BlockMap.size acc_map then (acc_map, acc_list)
+                else (acc_map, pgb :: acc_list))
+              (new_blocks, []) path_general_blocks
+          in
+          ( lc,
+            ( PriorityBBMap.init
+                (List.append added_blocks (BlockMap.to_list new_blocks)),
+              combined_block_map ) ))
+        path_specific
+    in
+    let res = { path_specific } in
+    assert_valid res;
+    res
+
+  let layout ({ path_specific } : t) : string =
+    "Path Specific Collection:\n"
+    ^ (Hashtbl.to_seq path_specific
+      |> Seq.fold_left
+           (fun acc (local_ctx, (block_collection, _)) ->
+             let res =
+               "In Path:\n"
+               ^ layout_typectx layout_rty local_ctx
+               ^ "\n"
+               ^ PriorityBBMap.layout block_collection
+             in
+             acc ^ res)
+           "")
+
+  let print (t : t) : unit = print_endline (layout t)
+
+  let remove_finished_contexts (t : t) (lc_list : LocalCtx.t list) : unit =
+    List.iter
+      (fun lc ->
+        assert (Hashtbl.mem t.path_specific lc);
+        Hashtbl.remove t.path_specific lc)
+      lc_list
+
+  let increment_by_path (lc : LocalCtx.t)
+      ((pmap, bmap) : PriorityBBMap.t * BlockMap.t)
+      ((component, (args_nty, ret_ty)) : Pieces.component * (Nt.t list * Nt.t))
+      (cost : int) : PriorityBBMap.t * BlockMap.t =
+    print_endline ("Incrementing with op in path:\n" ^ LocalCtx.layout lc);
+    let component_cost = Pieces.component_cost component in
+    let possible_args =
+      PriorityBBMap.get_args pmap (cost - component_cost) args_nty
+    in
+
+    let bmap =
+      List.fold_left
+        (fun bmap args ->
+          let pb = PreBlock.create component args ret_ty in
+
+          print_endline "New PreBlock";
+          print_endline (PreBlock.layout pb);
+
+          let new_block = PreBlock.apply pb in
+
+          match new_block with
+          | None -> bmap
+          | Some b ->
+              let size = BlockMap.size bmap in
+              let bmap = BlockMap.add bmap b in
+              if size = BlockMap.size bmap then ()
+              else (
+                print_endline "New Block Added";
+                print_endline (Block.layout b);
+                PriorityBBMap.add pmap b);
+              ();
+              bmap)
+        bmap possible_args
+    in
+    (pmap, bmap)
+
+  let increment_by_component ({ path_specific } : t)
+      (component : Pieces.component * (Nt.t list * Nt.t)) (cost : int) =
+    print_endline
+      ("Incrementing with op: " ^ Pieces.layout_component (fst component));
+    Hashtbl.iter
+      (fun lc path_maps ->
+        let pmap, bmap = increment_by_path lc path_maps component cost in
+        Hashtbl.replace path_specific lc (pmap, bmap))
+      path_specific
 end

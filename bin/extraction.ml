@@ -5,7 +5,6 @@ open Block
 open Blockset
 open Blockmap
 open Blockcollection
-open Tracking
 open Utils
 open Zzdatatype.Datatype
 open Language.FrontendTyped
@@ -159,6 +158,25 @@ module Extraction = struct
     assert (sub_rty_bool uctx (unioned_rty_type2 res, target_ty));
     res
 
+  let check_types_against_target (tys : t Rty.rty list) (target_ty : t Rty.rty)
+      : bool =
+    let uctx = !global_uctx |> Option.get in
+    sub_rty_bool uctx (union_rtys tys, target_ty)
+
+  let pset_is_sufficient_coverage (map : BlockSetE.t) (pset : Ptset.t)
+      (target_ty : rty) : bool =
+    let block_candidates =
+      Ptset.fold
+        (fun idx acc ->
+          let b = BlockSetE.get_idx map idx in
+          print_endline "current block";
+          ExistentializedBlock.layout b |> print_endline;
+          b.ty :: acc)
+        pset []
+    in
+    if List.is_empty block_candidates then false
+    else check_types_against_target block_candidates target_ty
+
   (* Try to increase the coverage of a specific term to satisfy
      the target type *)
   let setup_type
@@ -232,45 +250,54 @@ module Extraction = struct
         BlockSetE.print_ptset bs p;
 
         (* Smallest block that covers the target fully *)
-        let b =
-          Ptset.min_elt_opt s
-          |> Option.map (fun idx -> BlockSetE.get_idx bs idx)
-        in
+        (* let b =
+             Ptset.min_elt_opt s
+             |> Option.map (fun idx -> BlockSetE.get_idx bs idx)
+           in
 
-        (print_endline "Have a partial solution: ";
-         match b with
-         | Some b -> print_endline (ExistentializedBlock.layout b)
-         | None -> print_endline "None");
+           (print_endline "Have a partial solution: ";
+            match b with
+            | Some b -> print_endline (ExistentializedBlock.layout b)
+            | None -> print_endline "None"); *)
+        (* TODO, we are going to avoid blocks that are too large for the moment *)
+        let b = None in
 
         (* Some paths might not get blocks that aid in getting the
            target? *)
-        if not (Ptset.is_empty p && Ptset.is_empty s) then (
-          print_endline "return a block";
-          let starting_point = (lc, bs, (b, p)) in
+        if not (Ptset.is_empty p && Ptset.is_empty s) then
+          if
+            Option.is_none b
+            && not (pset_is_sufficient_coverage bs p target_path_block.ty)
+          then (
+            print_endline "return nothing2";
+            [])
+          else (
+            print_endline "return a block";
+            let starting_point = (lc, bs, (b, p)) in
 
-          let target_path_ty = target_path_block.ty in
+            let target_path_ty = target_path_block.ty in
 
-          let block_choices = setup_type starting_point target_path_ty in
+            let block_choices = setup_type starting_point target_path_ty in
 
-          let block_choices = minimize_type block_choices target_path_ty in
+            let block_choices = minimize_type block_choices target_path_ty in
 
-          Pp.printf "Improved Type: %s\n"
-            (layout_rty (unioned_rty_type2 block_choices));
-          List.iter
-            (fun (lc, _, b, _) ->
-              Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
-              Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
-            block_choices;
+            Pp.printf "Improved Type: %s\n"
+              (layout_rty (unioned_rty_type2 block_choices));
+            List.iter
+              (fun (lc, _, b, _) ->
+                Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
+                Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
+              block_choices;
 
-          let block_choices =
-            List.map (fun (lc, _, b, _) -> (lc, b)) block_choices
-          in
+            let block_choices =
+              List.map (fun (lc, _, b, _) -> (lc, b)) block_choices
+            in
 
-          let block_choices = minimize_num block_choices target_path_ty in
+            let block_choices = minimize_num block_choices target_path_ty in
 
-          (* When we are done, drop any remaining predesessors and the block
-             map *)
-          block_choices)
+            (* When we are done, drop any remaining predesessors and the block
+               map *)
+            block_choices)
         else (
           print_endline "return nothing";
           [])
@@ -280,12 +307,8 @@ module Extraction = struct
       (LocalCtx.t * ExistentializedBlock.t) list =
     let target_nty = erase_rty target_ty in
 
-    (* Create a target block that we are missing *)
     let target_block : ExistentializedBlock.t =
-      {
-        id = (Rename.unique "missing") #: target_nty |> NameTracking.known_var;
-        ty = target_ty;
-      }
+      ExistentializedBlock.create_target target_ty
     in
 
     print_endline "Existentializing the general set";

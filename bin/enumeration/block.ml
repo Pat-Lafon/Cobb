@@ -62,6 +62,7 @@ module ExistentializedBlock : sig
   type t = { id : identifier; ty : Nt.t rty }
 
   val path_promotion : LocalCtx.t -> t -> t
+  val create_target : Nt.t rty -> t
 
   include Block_intf with type t := t
 end = struct
@@ -82,6 +83,19 @@ end = struct
     Typectx.Typectx [ id.x #: ty ]
 
   let new_X (id : identifier) (ty : Nt.t rty) : t = { id; ty }
+
+  let create_target (target_ty : Nt.t rty) : t =
+    (* Create a target block that we are missing *)
+    {
+      id =
+        (Rename.unique "missing") #: (erase_rty target_ty)
+        |> NameTracking.known_var;
+      ty = target_ty;
+    }
+
+  (* let id = Rename.name () #: ty in
+     NameTracking.known_ast id (id_to_term id);
+     { id; ty } *)
 
   let is_sub_rty (uctx : uctx) ({ ty; _ } : t) ({ ty = ty'; _ } : t) : bool =
     Relations.is_sub_rty uctx ty ty'
@@ -109,6 +123,7 @@ module Block : sig
     t list -> identifier list * LocalCtx.t * LocalCtx.mapping list
 
   val existentialize : t -> ExistentializedBlock.t
+  val path_promotion : LocalCtx.t -> t -> t
 end = struct
   type t = block_record
 
@@ -118,9 +133,10 @@ end = struct
   let to_nty ({ id; _ } : t) : Nt.t = id.ty
 
   let layout ({ id; ty; lc; _ } : t) : string =
-    Printf.sprintf "%s ⊢ %s : %s :\n%s\n"
+    Printf.sprintf "%s ⊢ %s as %s : %s :\n%s\n"
       (layout_typectx layout_rty lc
       ^ if List.is_empty (Typectx.to_list lc) then "" else " \n")
+      id.x
       (NameTracking.get_term id |> layout_typed_erased_term)
       (layout_ty id.ty) (layout_rty ty)
 
@@ -219,12 +235,110 @@ end = struct
                   List.iter
                     (fun l -> layout_typectx layout_rty l |> print_endline)
                     ctxs;
+
+                  NameTracking.debug ();
+
                   failwith "you messed up");
             ],
           new_ctx,
           mapping :: new_id_list ))
       ([ unchanged_arg_name ], unchanged_context, [])
       (List.tl arg_names) (List.tl ctxs)
+
+  let path_promotion (lc : LocalCtx.t) (block : t) : t =
+    let lc = LocalCtx.promote_ctx_to_path block.lc ~promote_ctx:lc in
+
+    let id = NameTracking.rename block.id in
+    let lc = LocalCtx.update_name lc block.id.x id.x in
+
+    { block with lc; id }
+end
+
+module PreBlock = struct
+  type t = {
+    cost : int;
+    component : Pieces.component;
+    args : Block.t list;
+    ret_type : Nt.t;
+  }
+
+  let layout (t : t) : string =
+    Printf.sprintf "Cost: %d\nComponent: %s\nArgs: %s\nReturn Type: %s\n" t.cost
+      (Pieces.layout_component t.component)
+      (List.map Block.layout t.args |> String.concat "\n")
+      (layout_ty t.ret_type)
+
+  let create (component : Pieces.component) (args : Block.t list)
+      (ret_type : Nt.t) : t =
+    let cost =
+      List.fold_left
+        (fun acc (x : Block.t) -> acc + x.cost)
+        (Pieces.component_cost component)
+        args
+    in
+
+    { cost; component; args; ret_type }
+
+  let apply (pre_block : t) : Block.t option =
+    (* Correct joining of contexts? *)
+    let ( (arg_names : identifier list),
+          (joined_ctx : LocalCtx.t),
+          (* That will need to be cleaned up *)
+          (newly_created_ids : _) ) =
+      Block.combine_all_args pre_block.args
+    in
+
+    let cost = pre_block.cost in
+    let ret_type = pre_block.ret_type in
+    let block_id, term = Pieces.apply pre_block.component arg_names in
+
+    print_endline "Block in question:";
+    LocalCtx.layout joined_ctx |> print_endline;
+    NameTracking.get_term block_id |> layout_typed_erased_term |> print_endline;
+
+    assert (block_id.ty = ret_type);
+    assert (term.ty = block_id.ty);
+
+    let new_uctx : uctx = LocalCtx.uctx_add_local_ctx joined_ctx in
+
+    match TypeInference.infer_type new_uctx term with
+    | NoCoverage ->
+        print_endline "No coverage";
+        NameTracking.remove_ast block_id ~recursive:true;
+        List.iter (LocalCtx.cleanup ~recursive:false) newly_created_ids;
+        None
+    | FailedTyping ->
+        print_endline "Failed typing";
+        (* failed the new rec_check *)
+        NameTracking.remove_ast block_id ~recursive:true;
+        List.iter (LocalCtx.cleanup ~recursive:false) newly_created_ids;
+        None
+    | Res new_ut ->
+        (* (match component with
+           | Op { x = DtConstructor "SAFETY_Rbtnode"; _ } ->
+               if Subtyping.Subrty.is_nonempty_rty new_uctx new_ut.ty then
+                 print_endline "Nonempty"
+               else print_endline "Empty"
+           | _ -> ()); *)
+        assert (ret_type = erase_rty new_ut.ty);
+        if
+          (* Check if new term is coverage equivalent to one of it's
+             arguments *)
+          Relations.check_coverage_with_args new_uctx block_id new_ut.ty
+            arg_names
+        then (
+          (* Ignore term if so *)
+          print_endline "same as arg";
+          NameTracking.remove_ast block_id ~recursive:true;
+          List.iter (LocalCtx.cleanup ~recursive:false) newly_created_ids;
+          None)
+        else (
+          print_endline "new";
+          let new_ctx =
+            Typectx.add_to_right joined_ctx { x = block_id.x; ty = new_ut.ty }
+          in
+          assert (block_id.ty = ret_type);
+          Some { id = block_id; ty = new_ut.ty; lc = new_ctx; cost })
 end
 
 (* Take a term/block and see if it works inside of a path *)
@@ -268,22 +382,19 @@ let try_path path_ctx optional_filter_type ret_type
       print_endline "Other bad path cases";
       None
 
-let apply (component : Pieces.component) (args : Block.t list) (ret_type : Nt.t)
-    (filter_type : Nt.t rty option) (promotable_paths : LocalCtx.t list) :
-    Block.t option * 'a =
+let apply (pre_block : PreBlock.t) (filter_type : Nt.t rty option)
+    (promotable_paths : LocalCtx.t list) : Block.t option * 'a =
   (* Correct joining of contexts? *)
   let ( (arg_names : identifier list),
         (joined_ctx : LocalCtx.t),
         (* That will need to be cleaned up *)
         (newly_created_ids : _) ) =
-    Block.combine_all_args args
+    Block.combine_all_args pre_block.args
   in
 
-  let arg_names_and_cost =
-    List.combine arg_names (List.map (fun x -> x.cost) args)
-  in
-
-  let block_id, term, cost = Pieces.apply component arg_names_and_cost in
+  let cost = pre_block.cost in
+  let ret_type = pre_block.ret_type in
+  let block_id, term = Pieces.apply pre_block.component arg_names in
 
   print_endline "Block in question:";
   LocalCtx.layout joined_ctx |> print_endline;
@@ -337,13 +448,12 @@ let apply (component : Pieces.component) (args : Block.t list) (ret_type : Nt.t)
       (* failed the new rec_check *)
       (None, try_add_paths ())
   | Res new_ut ->
-      (match component with
-      | Op { x = DtConstructor "SAFETY_Rbtnode"; _ } ->
-          if Subtyping.Subrty.is_nonempty_rty new_uctx new_ut.ty then
-            print_endline "Nonempty"
-          else print_endline "Empty"
-      | _ -> ());
-
+      (* (match component with
+         | Op { x = DtConstructor "SAFETY_Rbtnode"; _ } ->
+             if Subtyping.Subrty.is_nonempty_rty new_uctx new_ut.ty then
+               print_endline "Nonempty"
+             else print_endline "Empty"
+         | _ -> ()); *)
       assert (ret_type = erase_rty new_ut.ty);
       if
         Option.is_some filter_type && not (List.is_empty promotable_paths)

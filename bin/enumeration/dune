@@ -29,5 +29,13 @@
 
 (library
  (name synthesiscollection)
- (libraries block blockmap blockset context blockcollection)
+ (libraries block blockmap blockset context blockcollection blockqueue)
  (modules synthesiscollection))
+
+(library
+ (name blockqueue)
+ (libraries core block core_kernel.pairing_heap blockmap blockset utils)
+ (modules blockqueue)
+ (preprocess
+  (pps ppx_inline_test ppx_assert ppx_compare))
+ (inline_tests))

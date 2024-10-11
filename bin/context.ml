@@ -70,4 +70,14 @@ module LocalCtx = struct
     Typectx.Typectx (local_ctx @ promote_ctx)
 
   let exists_rtys_to_rty (Typectx.Typectx ctx) rty = exists_rtys_to_rty ctx rty
+
+  (* Only allowed when the old_name is not used in any other types *)
+  let update_name (Typectx.Typectx ctx : t) old_name new_name =
+    Typectx.Typectx
+      (List.map
+         (fun { x; ty } ->
+           (* Assert that the old name is not a free variable in any type *)
+           assert (not (List.mem old_name (Rty.fv_rty_id ty)));
+           if x = old_name then { x = new_name; ty } else { x; ty })
+         ctx)
 end

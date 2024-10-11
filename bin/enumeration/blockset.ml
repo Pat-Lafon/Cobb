@@ -8,6 +8,7 @@ module BlockSetF (B : Block_intf) : sig
   val empty : t
   val size : t -> int
   val singleton : B.t -> t
+  val init : B.t list -> t
   val add_block : t -> B.t -> t
   val find_block_opt : t -> B.t -> B.t option
   val get_idx : t -> Ptset.elt -> B.t
@@ -64,6 +65,10 @@ end = struct
   let singleton (x : P.key) : t = P.singleton x ()
   let add_block (pm : t) x : t = P.add x () pm
 
+  let init (inital_seeds : B.t list) : t =
+    let aux (b_map : t) term = add_block b_map term in
+    List.fold_left aux empty inital_seeds
+
   let find_block_opt (pm : t) (x : P.key) : P.key option =
     try Some (P.find x pm |> snd |> P.get_key) with Not_found -> None
 
@@ -105,4 +110,5 @@ end = struct
     P.find b pm |> snd |> P.get_prds
 end
 
+module BlockSet = BlockSetF (Block)
 module BlockSetE = BlockSetF (ExistentializedBlock)

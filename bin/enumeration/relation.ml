@@ -25,6 +25,7 @@ module Relations : sig
     uctx -> identifier -> t rty -> identifier list -> bool
 
   val check_cache : string -> string -> relation option
+  val assert_string_not_in_cache : string -> unit
   val clear_cache : unit -> unit
 end = struct
   type relation = Equiv | ImpliesTarget | ImpliedByTarget | None | Timeout
@@ -61,6 +62,13 @@ end = struct
     not (erase_rty l = erase_rty r)
 
   let check_cache = RelationCache.check
+
+  let assert_string_not_in_cache (l : string) : unit =
+    assert (
+      Hashtbl.fold
+        (fun (k1, k2) _ acc -> acc && not (k1 = l || k2 = l))
+        RelationCache.cache true)
+
   let clear_cache () = RelationCache.reset_cache ()
 
   let is_sub_rty uctx l r =

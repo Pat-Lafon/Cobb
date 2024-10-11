@@ -7,7 +7,7 @@ clean:
 	dune clean
 
 test:
-	dune runtest bin
+	dune runtest bin --always-show-command-line
 
 sync:
 	git submodule sync

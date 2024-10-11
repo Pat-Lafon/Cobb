@@ -3,7 +3,6 @@ open Blockset
 open Context
 open Utils
 open Typing.Termcheck
-open Pieces
 
 module BlockMapF (B : Block_intf) = struct
   module BlockSet = BlockSetF (B)
@@ -11,6 +10,9 @@ module BlockMapF (B : Block_intf) = struct
   type t = (Nt.t * BlockSet.t) list
 
   let empty : t = []
+
+  let to_list (map : t) : B.t list =
+    List.map (fun (_, s) -> BlockSet.to_list s) map |> List.flatten
 
   let size (map : t) : int =
     List.fold_left (fun acc (_, set) -> acc + BlockSet.size set) 0 map
@@ -130,17 +132,16 @@ module BlockMap = struct
              l
            |> n_cartesian_product |> List.to_seq)
 
-  let increment_by_args (block_args : Block.t list Seq.t)
-      ((component, (args, ret_type)) : Pieces.component * (Nt.t list * Nt.t))
+  let increment_by_args (block_args : PreBlock.t Seq.t)
       (promotable_paths : LocalCtx.t list) (filter_type : _ option) :
       t * (LocalCtx.t, t) Hashtbl.t =
     let res : t * (LocalCtx.t, t) Hashtbl.t =
       Seq.fold_left
         (fun ((new_map, path_specific_list) : _ * (LocalCtx.t, t) Hashtbl.t)
-             (args : Block.t list) ->
+             (pre_block : PreBlock.t) ->
           let (general_block, path_promo_list) :
               Block.t option * (LocalCtx.t * Block.t) list =
-            apply component args ret_type filter_type promotable_paths
+            apply pre_block filter_type promotable_paths
           in
           add_potential_block_to_maps general_block path_promo_list new_map
             path_specific_list)

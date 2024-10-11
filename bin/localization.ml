@@ -425,7 +425,7 @@ module Localization = struct
                              current local_ctx as we want them available to fill holes
                              from remove_local_vars_from_prop *)
                           lc = local_ctx;
-                          cost = 2;
+                          cost = 1;
                         }
                       in
                       Block.layout block |> print_endline;

@@ -128,19 +128,14 @@ module Pieces = struct
     let aterm = mk_let_appops ~record:true ctor args in
     aterm
 
-  let apply (comp : component) (args : (identifier * int) list) :
-      identifier * _ typed * int =
-    let cost =
-      List.fold_left (fun acc (_, c) -> acc + c) (component_cost comp) args
-    in
-    let args = List.map (fun (x, _) -> x) args in
+  let apply (comp : component) (args : identifier list) : identifier * _ typed =
     let resid, aterm =
       match comp with
       | Fun f -> mk_app f args id_to_term
       | Op op -> mk_op op args id_to_term
     in
     (*  let () = Hashtbl.add asts resid term in *)
-    (resid, aterm, cost)
+    (resid, aterm)
 
   let ut_subst (ut : t rty) (ht : (string, identifier) Hashtbl.t) : t rty =
     let renamed_ty =
@@ -241,7 +236,9 @@ module Pieces = struct
           | RtyBase _ ->
               NameTracking.known_ast x #: nt
                 (mk_appop (Op.DtConstructor x) #: nt []);
-              let name, _ = mk_let ~record:true x #: nt in
+              let name, _ = mk_let ~record:false x #: nt in
+              NameTracking.known_ast name (x #: nt |> id_to_term);
+              (* ?? *)
               let new_seed : new_seed =
                 { id = name; ty; lc = Typectx [ name.x #: ty ]; cost = 2 }
               in

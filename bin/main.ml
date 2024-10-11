@@ -501,14 +501,14 @@ let run_benchmark source_file meta_config_file =
   let init_synth_col = SynthesisCollection.init inital_map context_maps in
 
   let synthesis_result =
-    Synthesis.synthesis missing_coverage config.bound init_synth_col components
-      collection_file
+    PrioritySynthesis.synthesis missing_coverage config.bound init_synth_col
+      components collection_file
   in
 
   (* NameTracking.debug (); *)
   let synthesis_result =
     synthesis_result
-    |> List.map (fun (a, b) -> (a, nd_join_list (List.map (fun (_, b) -> b) b)))
+    |> List.map (fun (a, b) -> (a, nd_join_list (List.map (fun b -> b) b)))
   in
 
   let new_body =
