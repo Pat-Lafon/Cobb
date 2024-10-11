@@ -35,3 +35,5 @@ _opam/
 
 # Output logging files
 *.log
+
+*.dot
