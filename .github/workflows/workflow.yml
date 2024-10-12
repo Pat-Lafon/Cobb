@@ -23,3 +23,5 @@ jobs:
             - run: opam install . --deps-only --with-test
 
             - run: opam exec -- dune build
+
+            - run: make test
