@@ -38,19 +38,4 @@ jobs:
               with:
                 submodules: recursive
 
-            - uses: coq-community/docker-coq-action@v1
-              with:
-                before_script: |
-                  startGroup "Workaround permission issue"
-                    sudo chown -R coq:coq .  # <--
-                  endGroup
-                script: |
-                  startGroup "Build project"
-                    make -j2
-                  endGroup
-                uninstall: |
-                  startGroup "Clean project"
-                    make clean
-                  endGroup
-
             - run: make proof
