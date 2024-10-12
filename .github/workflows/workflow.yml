@@ -23,10 +23,6 @@ jobs:
 
             - run: opam install . --deps-only --with-test
 
-            - run: eval $(opam env)
-
-            - run: eval $(opam config env)
-
-            - run: opam exec -- dune build
+            - run: make build
 
             - run: make test
