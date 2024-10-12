@@ -26,3 +26,18 @@ jobs:
             - run: make build
 
             - run: make test
+
+    proof:
+        name: Proof
+
+        runs-on: ubuntu-22.04
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                submodules: recursive
+
+            - uses: coq-community/docker-coq-action@v1
+
+            - run: make proof
