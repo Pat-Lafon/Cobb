@@ -32,3 +32,7 @@ or
 `MEMTRACE=trace.ctf dune exec Cobb --no-buffer -- synthesis data/validation/sortedlist prog3.ml > test.log`
 
 `memtrace-viewer trace.ctf`
+
+## Getting the list of axioms as Coq
+
+`dune exec -- bin/main.exe coq-axioms meta-config.json`
