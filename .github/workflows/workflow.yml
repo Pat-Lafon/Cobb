@@ -25,6 +25,8 @@ jobs:
 
             - run: eval $(opam env)
 
+            - run: eval $(opam config env)
+
             - run: opam exec -- dune build
 
             - run: make test
