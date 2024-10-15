@@ -67,6 +67,7 @@ module PrioritySynthesis = struct
         collection operations
     in
 
+    (* todo: only check in paths that have gotten something new lol *)
     let path_solutions =
       check_and_remove_finished_paths collection target_type
     in
