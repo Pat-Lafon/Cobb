@@ -1,16 +1,19 @@
 import sys
+import argparse
 import os
 import subprocess
+import shutil
+import locale
 import re
 from pathlib import Path
 
-cmd_prefix = ["dune", "exec", "Cobb", "--no-buffer", "--"]
+cmd_prefix = ["dune", "exec", "--no-buffer", "--", "bin/main.exe", "subtype-check"]
 config_file = "meta-config.json"
 workdir = "underapproximation_type"
 verbose = True
 
+# Set up the local environment to avoid the global lock
 my_env = os.environ.copy()
-# "DUNE_CONFIG__GLOBAL_LOCK=disabled",
 my_env["DUNE_CONFIG__GLOBAL_LOCK"] = "disabled"
 
 
@@ -29,29 +32,27 @@ def invoc_cmd(verbose, cmd, output_file, cwd=None):
         if verbose:
             print(" ".join(cmd))
         try:
-            subprocess.run(cmd, cwd=cwd, env=my_env)
+            p = subprocess.run(cmd, cwd, env=my_env, capture_output=True, text=True)
+            if "Result: true" not in p.stdout:
+                print("Error: subtype-check failed")
+                print(cmd)
+                raise Exception("subtype-check failed")
         except subprocess.CalledProcessError as e:
             print(e.output)
             raise e
 
 
-""" def run_synthesis_aux(meta_config_file, f):
-    cmd = cmd_prefix + ["synthesis", meta_config_file, f]
-    invoc_cmd(verbose, cmd, None) """
-
-
 def run_synthesis_aux(dir_str, f):
-    cmd = cmd_prefix + ["synthesis", dir_str, f]
+    cmd = cmd_prefix + [config_file, dir_str + "/" + f]
+
     invoc_cmd(verbose, cmd, None, cwd=None)
 
 
 def run_synthesis(dir_str):
-    meta_config_file = "{}/{}".format(dir_str, config_file)
+    meta_config_file = config_file
     if not (os.path.exists(meta_config_file)):
-        for f in os.listdir(dir_str):
-            pp = "{}/{}".format(dir_str, f)
-            if os.path.isdir(pp):
-                run_synthesis(pp)
+        print("Error: meta-config.json not found in {}".format(dir_str))
+        exit(1)
     else:
         from multiprocessing import Pool
 
@@ -59,12 +60,8 @@ def run_synthesis(dir_str):
 
         multiple_res = []
         for filename in os.listdir(dir_str):
-            matches = re.search(r"prog[0-9]+\.ml$", filename, re.MULTILINE)
-            if matches:
-                # run_synthesis_aux(meta_config_file, "{}/{}".format(dir_str,
-                # filename))
-                res = pool.apply_async(run_synthesis_aux, args=(dir_str, filename))
-                multiple_res.append(res)
+            res = pool.apply_async(run_synthesis_aux, args=(dir_str, filename))
+            multiple_res.append(res)
 
         [res.get() for res in multiple_res]
 

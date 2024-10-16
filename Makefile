@@ -9,8 +9,14 @@ clean:
 test:
 	opam exec -- dune runtest bin --always-show-command-line
 
+axioms:
+	cd underapproximation_type && dune exec -- bin/main.exe coq-axioms meta-config.json > test.v
+
 proof:
 	cd underapproximation_type/data/validation/proofs && make
+
+subck:
+	python3 scripts/subtype_check.py underapproximation_type/data/subtyping/
 
 sync:
 	git submodule sync

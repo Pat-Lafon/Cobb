@@ -27,6 +27,8 @@ jobs:
 
             - run: make test
 
+            - run: make subck
+
     proof:
         name: Proof
 
