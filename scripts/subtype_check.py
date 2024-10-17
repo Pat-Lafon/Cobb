@@ -7,7 +7,17 @@ import locale
 import re
 from pathlib import Path
 
-cmd_prefix = ["dune", "exec", "--no-buffer", "--", "bin/main.exe", "subtype-check"]
+cmd_prefix = [
+    "opam",
+    "exec",
+    "--",
+    "dune",
+    "exec",
+    "--no-buffer",
+    "--",
+    "bin/main.exe",
+    "subtype-check",
+]
 config_file = "meta-config.json"
 workdir = "underapproximation_type"
 verbose = True
