@@ -2,20 +2,13 @@ import sys
 import os
 import subprocess
 import re
-from pathlib import Path
 
-cmd_prefix = "opam exec -- dune exec Cobb --no-buffer --".split(" ")
+from runner import invoc_cmd, run_for_dir_from_cli, rescode_non_zero
+
+cmd_prefix = "opam exec -- dune exec Cobb --no-buffer -- config".split(" ")
 config_file = "meta-config.json"
 workdir = "underapproximation_type"
 verbose = True
-
-
-from runner import invoc_cmd
-
-
-def run_check_config_aux(file_name):
-    cmd = cmd_prefix + ["config", file_name]
-    invoc_cmd(verbose, cmd, None, cwd=None)
 
 
 def run_config_check(dir_str):
@@ -27,22 +20,12 @@ def run_config_check(dir_str):
                 run_config_check(pp)
     else:
         for filename in os.listdir(dir_str):
-            matches = re.search(r"prog.ml", filename, re.MULTILINE)
+            matches = re.search(r"prog\.ml", filename, re.MULTILINE)
+            filename = "{}/{}".format(dir_str, filename)
             if matches:
-                run_check_config_aux("{}/{}".format(dir_str, filename))
+                cmd = cmd_prefix + [filename]
+                invoc_cmd(verbose, cmd, rescode_non_zero, None, cwd=None)
 
 
 if __name__ == "__main__":
-    dir_str = sys.argv[1]
-
-    directory = Path(dir_str)
-    assert directory.is_dir()
-
-    working_dir = Path(workdir)
-    assert working_dir.is_dir()
-
-    assert directory.is_relative_to(working_dir)
-    os.chdir(working_dir)
-    directory = os.path.relpath(directory, working_dir)
-
-    run_config_check(directory)
+    run_for_dir_from_cli(workdir, run_config_check)
