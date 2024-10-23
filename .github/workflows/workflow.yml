@@ -23,6 +23,8 @@ jobs:
 
             - run: opam install . --deps-only --with-test
 
+            - run: make config
+
             - run: make build
 
             - run: make test

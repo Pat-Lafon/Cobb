@@ -121,7 +121,8 @@ type config = {
   res_ext : string;
   abd_ext : string;
   syn_ext : string;
-  rlimit : int;
+  syn_rlimit : int;
+  abd_rlimit : int;
   collect_ext : string;
   component_list : string list;
 }
@@ -136,7 +137,8 @@ let get_synth_config_values meta_config_file : config =
   let res_ext = metaj |> member "resfile" |> to_string in
   let abd_ext = metaj |> member "abdfile" |> to_string in
   let syn_ext = metaj |> member "synfile" |> to_string in
-  let rlimit = metaj |> member "synth_rlimit" |> to_int in
+  let syn_rlimit = metaj |> member "synth_rlimit" |> to_int in
+  let abd_rlimit = metaj |> member "abduce_rlimit" |> to_int in
   let collect_ext = metaj |> member "collectfile" |> to_string in
   let comp_path = metaj |> member "comp_path" |> to_string in
 
@@ -146,7 +148,16 @@ let get_synth_config_values meta_config_file : config =
 
   let component_list = Core.In_channel.read_lines comp_path in
 
-  { bound; res_ext; abd_ext; syn_ext; rlimit; collect_ext; component_list }
+  {
+    bound;
+    res_ext;
+    abd_ext;
+    syn_ext;
+    abd_rlimit;
+    syn_rlimit;
+    collect_ext;
+    component_list;
+  }
 
 let build_initial_typing_context () : uctx =
   let prim_path = Env.get_prim_path () in
@@ -395,14 +406,43 @@ let final_program_to_string (reconstruct_code_with_new_body : _ -> _) new_body :
 
   Frontend_opt.To_item.layout_item new_frontend_prog
 
-let run_benchmark source_file meta_config_file =
-  let start_time = Sys.time () in
+let set_z3_rlimit rlimit =
+  Z3.Params.update_param_value Backend.Smtquery.ctx "rlimit"
+    (string_of_int rlimit)
+
+let check_config _ meta_config_file =
+  let _ = get_synth_config_values meta_config_file in
+  ()
+
+let abduce_benchmark source_file meta_config_file =
+  let config = get_synth_config_values meta_config_file in
+
+  set_z3_rlimit config.abd_rlimit;
 
   let missing_coverage =
     Commands.Cre.type_infer_inner meta_config_file source_file ()
   in
 
+  let abduction_file = source_file ^ config.abd_ext in
+
+  if Sys_unix.is_file_exn abduction_file then
+    let previous_coverage = Core.In_channel.read_all abduction_file in
+    let current_coverage = layout_rty missing_coverage in
+    assert (String.equal previous_coverage current_coverage)
+  else
+    Core.Out_channel.write_all abduction_file
+      ~data:(layout_rty missing_coverage)
+
+let synthesis_benchmark source_file meta_config_file =
   let config = get_synth_config_values meta_config_file in
+
+  let start_time = Sys.time () in
+
+  set_z3_rlimit config.abd_rlimit;
+
+  let missing_coverage =
+    Commands.Cre.type_infer_inner meta_config_file source_file ()
+  in
 
   print_endline ("Components" ^ String.concat "," config.component_list);
 
@@ -410,14 +450,11 @@ let run_benchmark source_file meta_config_file =
 
   if Utils.rty_is_false missing_coverage then failwith "No missing coverage";
 
+    set_z3_rlimit config.syn_rlimit;
+
   let collection_file = source_file ^ config.collect_ext in
 
   (*   Env.sexp_of_meta_config (!Env.meta_config |> Option.value_exn) |> dbg_sexp; *)
-  let () =
-    Z3.Params.update_param_value Backend.Smtquery.ctx "rlimit"
-      (string_of_int config.rlimit)
-  in
-
   let uctx = build_initial_typing_context () in
 
   let args, rec_fix, retty, body, reconstruct_code_with_new_body =
@@ -505,7 +542,6 @@ let run_benchmark source_file meta_config_file =
       components collection_file
   in
 
-  (* NameTracking.debug (); *)
   let synthesis_result =
     synthesis_result
     |> List.map (fun (a, b) -> (a, nd_join_list (List.map (fun b -> b) b)))
@@ -526,13 +562,8 @@ let run_benchmark source_file meta_config_file =
     |> remove_excess_ast_aux
   in
 
-  (* Utils.dbg_sexp
-     (Mtyped.sexp_of_typed Nt.sexp_of_t
-        (Term.sexp_of_term Nt.sexp_of_t)
-        new_body); *)
   print_endline ("New_body :\n" ^ layout_typed_term new_body);
 
-  (* NameTracking.debug (); *)
   let result =
     Typing.Termcheck.term_type_check uctx new_body retty |> Option.is_some
   in
@@ -551,7 +582,7 @@ let run_benchmark source_file meta_config_file =
   let results_csv_contents =
     Printf.sprintf
       "Result, Bounds, Resource Limit, Queries, Total Time\n\
-       %b, %d, %d, %d, %.2f" result config.bound config.rlimit
+       %b, %d, %d, %d, %.2f" result config.bound config.syn_rlimit
       !Backend.Check.query_counter
       total_time
   in
@@ -563,12 +594,12 @@ let run_benchmark source_file meta_config_file =
 
 (** Benchmarks can be provided as a command line argument
   * Default is "sizedlist" *)
-(* let regular_file =
-   Command.Arg_type.create (fun filename ->
-       match Sys_unix.is_file filename with
-       | `Yes -> filename
-       | `No -> failwith "Not a regular file"
-       | `Unknown -> failwith "Could not determine if this was a regular file") *)
+let regular_file =
+  Command.Arg_type.create (fun filename ->
+      match Sys_unix.is_file filename with
+      | `Yes -> filename
+      | `No -> failwith "Not a regular file"
+      | `Unknown -> failwith "Could not determine if this was a regular file")
 
 let regular_directory =
   Command.Arg_type.create (fun directory ->
@@ -578,23 +609,30 @@ let regular_directory =
       | `Unknown ->
           failwith "Could not determine if this was a regular directory")
 
-let cobb_synth =
+let cobb (f : string -> string -> unit) =
   Command.basic ~summary:"The Cobb synthesizer which leverages coverage types"
     Command.Let_syntax.(
-      let%map_open benchmark_dir = anon ("benchmark_dir" %: regular_directory)
-      and program_name =
-        anon ("program_name" %: Command.Arg_type.create (fun x -> x))
-      in
+      (* let%map_open benchmark_dir = anon ("benchmark_dir" %: regular_directory)
+         and program_name =
+           anon ("program_name" %: Command.Arg_type.create (fun x -> x))
+         in *)
+      let%map_open source_file = anon ("program" %: regular_file) in
       fun () ->
         Memtrace.trace_if_requested ();
-        let source_file = Core.Filename.concat benchmark_dir program_name in
+        let benchmark_dir = Core.Filename.dirname source_file in
         let meta_config_file =
           Core.Filename.concat benchmark_dir "meta-config.json"
         in
-        let _ = run_benchmark source_file meta_config_file in
-        ())
+        f source_file meta_config_file)
 
-let prog = Command.group ~summary:"Cobb" [ ("synthesis", cobb_synth) ]
+let prog =
+  Command.group ~summary:"Cobb"
+    [
+      ("synthesis", cobb synthesis_benchmark);
+      ("abduction", cobb abduce_benchmark);
+      ("config", cobb check_config);
+    ]
+
 let () = Command_unix.run prog
 
 (* let () =

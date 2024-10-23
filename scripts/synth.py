@@ -1,38 +1,14 @@
 import sys
 import os
-import subprocess
 import re
 from pathlib import Path
 
+from runner import invoc_cmd
+
 cmd_prefix = ["dune", "exec", "Cobb", "--no-buffer", "--"]
 config_file = "meta-config.json"
-workdir = "underapproximation_type"
+working_dir = "underapproximation_type"
 verbose = True
-
-my_env = os.environ.copy()
-# "DUNE_CONFIG__GLOBAL_LOCK=disabled",
-my_env["DUNE_CONFIG__GLOBAL_LOCK"] = "disabled"
-
-
-def invoc_cmd(verbose, cmd, output_file, cwd=None):
-    if output_file is not None:
-        # print("{}:{}".format(output_file, type(output_file)))
-        if verbose:
-            print(" ".join(cmd + [">>", output_file]))
-        with open(output_file, "a+") as ofile:
-            try:
-                subprocess.run(cmd, cwd=cwd, env=my_env, stdout=ofile)
-            except subprocess.CalledProcessError as e:
-                print(e.output)
-                raise e
-    else:
-        if verbose:
-            print(" ".join(cmd))
-        try:
-            subprocess.run(cmd, cwd=cwd, env=my_env)
-        except subprocess.CalledProcessError as e:
-            print(e.output)
-            raise e
 
 
 """ def run_synthesis_aux(meta_config_file, f):
@@ -40,12 +16,12 @@ def invoc_cmd(verbose, cmd, output_file, cwd=None):
     invoc_cmd(verbose, cmd, None) """
 
 
-def run_synthesis_aux(dir_str, f):
-    cmd = cmd_prefix + ["synthesis", dir_str, f]
+def run_synthesis_aux(file_name: str):
+    cmd = cmd_prefix + ["synthesis", file_name]
     invoc_cmd(verbose, cmd, None, cwd=None)
 
 
-def run_synthesis(dir_str):
+def run_synthesis(dir_str: str):
     meta_config_file = "{}/{}".format(dir_str, config_file)
     if not (os.path.exists(meta_config_file)):
         for f in os.listdir(dir_str):
@@ -63,7 +39,9 @@ def run_synthesis(dir_str):
             if matches:
                 # run_synthesis_aux(meta_config_file, "{}/{}".format(dir_str,
                 # filename))
-                res = pool.apply_async(run_synthesis_aux, args=(dir_str, filename))
+
+                filename = dir_str + "/" + filename
+                res = pool.apply_async(run_synthesis_aux, args=(filename,))
                 multiple_res.append(res)
 
         [res.get() for res in multiple_res]
@@ -75,7 +53,7 @@ if __name__ == "__main__":
     directory = Path(dir_str)
     assert directory.is_dir()
 
-    working_dir = Path(workdir)
+    working_dir = Path(working_dir)
     assert working_dir.is_dir()
 
     assert directory.is_relative_to(working_dir)

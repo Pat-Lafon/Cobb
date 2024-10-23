@@ -15,6 +15,9 @@ axioms:
 proof:
 	cd underapproximation_type/data/validation/proofs && make
 
+config:
+	python3 scripts/check_config.py underapproximation_type/data/validation
+
 subck:
 	python3 scripts/subtype_check.py underapproximation_type/data/subtyping/
 
