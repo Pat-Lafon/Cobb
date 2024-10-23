@@ -4,7 +4,7 @@ import subprocess
 import re
 from pathlib import Path
 
-cmd_prefix = "dune exec Cobb --no-buffer --".split(" ")
+cmd_prefix = "opam exec -- dune exec Cobb --no-buffer --".split(" ")
 config_file = "meta-config.json"
 workdir = "underapproximation_type"
 verbose = True
