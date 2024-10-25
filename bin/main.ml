@@ -123,6 +123,7 @@ type config = {
   syn_ext : string;
   syn_rlimit : int;
   abd_rlimit : int;
+  use_missing_coverage_file : bool;
   collect_ext : string;
   component_list : string list;
 }
@@ -141,6 +142,14 @@ let get_synth_config_values meta_config_file : config =
   let abd_rlimit = metaj |> member "abduce_rlimit" |> to_int in
   let collect_ext = metaj |> member "collectfile" |> to_string in
   let comp_path = metaj |> member "comp_path" |> to_string in
+  let use_missing_coverage_file =
+    metaj
+    |> member "use_missing_coverage_file"
+    |> to_bool_option
+    |> Option.value ~default:false
+  in
+
+  assert (abd_rlimit >= syn_rlimit);
 
   let comp_path =
     Filename.concat (Filename.dirname meta_config_file) comp_path
@@ -157,6 +166,7 @@ let get_synth_config_values meta_config_file : config =
     syn_rlimit;
     collect_ext;
     component_list;
+    use_missing_coverage_file;
   }
 
 let build_initial_typing_context () : uctx =
@@ -438,10 +448,35 @@ let synthesis_benchmark source_file meta_config_file =
 
   let start_time = Sys.time () in
 
-  set_z3_rlimit config.abd_rlimit;
-
   let missing_coverage =
-    Commands.Cre.type_infer_inner meta_config_file source_file ()
+    if config.use_missing_coverage_file then (
+      let open Language in
+      (* Basically do all of the initialization since we aren't running the
+         abduction algorithm to do this for us *)
+      let () = Env.load_meta meta_config_file in
+      let prim_path = Env.get_prim_path () in
+      let templates = Commands.Cre.preprocess prim_path.templates () in
+      let templates = Commands.Cre.handle_template templates in
+      let missing_type_filename = source_file ^ ".missing" in
+
+      (* Process actual file*)
+      let missing_type_code =
+        Commands.Cre.preprocess missing_type_filename ()
+      in
+
+      assert (List.length missing_type_code == 1);
+
+      let _, missing_rty = get_rty_by_name missing_type_code "missing_ty" in
+
+      print_endline
+        "Pulled a missing coverage type from file because of config flag";
+      print_endline (layout_rty missing_rty);
+
+      unfold_rty_helper missing_rty |> snd)
+    else (
+      set_z3_rlimit config.abd_rlimit;
+
+      Commands.Cre.type_infer_inner meta_config_file source_file ())
   in
 
   print_endline ("Components" ^ String.concat "," config.component_list);
@@ -450,7 +485,7 @@ let synthesis_benchmark source_file meta_config_file =
 
   if Utils.rty_is_false missing_coverage then failwith "No missing coverage";
 
-    set_z3_rlimit config.syn_rlimit;
+  set_z3_rlimit config.syn_rlimit;
 
   let collection_file = source_file ^ config.collect_ext in
 
@@ -563,6 +598,8 @@ let synthesis_benchmark source_file meta_config_file =
   in
 
   print_endline ("New_body :\n" ^ layout_typed_term new_body);
+
+  set_z3_rlimit config.abd_rlimit;
 
   let result =
     Typing.Termcheck.term_type_check uctx new_body retty |> Option.is_some
