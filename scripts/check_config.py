@@ -20,7 +20,7 @@ def run_config_check(dir_str):
                 run_config_check(pp)
     else:
         for filename in os.listdir(dir_str):
-            matches = re.search(r"prog\.ml", filename, re.MULTILINE)
+            matches = re.search(r"prog\.ml$", filename, re.MULTILINE)
             filename = "{}/{}".format(dir_str, filename)
             if matches:
                 cmd = cmd_prefix + [filename]

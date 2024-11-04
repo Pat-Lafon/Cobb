@@ -38,7 +38,7 @@ def navigate_dir_and_run(dir_str, config_file_name):
 
         multiple_res = []
         for filename in os.listdir(dir_str):
-            matches = re.search(r".*\.ml", filename, re.MULTILINE)
+            matches = re.search(r".*\.ml$", filename, re.MULTILINE)
             filename = "{}/{}".format(dir_str, filename)
             if matches:
                 cmd = cmd_prefix + [meta_config_file, filename]
