@@ -448,7 +448,7 @@ let synthesis_benchmark source_file meta_config_file =
 
   let start_time = Sys.time () in
 
-  let missing_coverage =
+  let missing_coverage, abd_time =
     if config.use_missing_coverage_file then (
       let open Language in
       (* Basically do all of the initialization since we aren't running the
@@ -472,11 +472,15 @@ let synthesis_benchmark source_file meta_config_file =
         "Pulled a missing coverage type from file because of config flag";
       print_endline (layout_rty missing_rty);
 
-      unfold_rty_helper missing_rty |> snd)
+      (unfold_rty_helper missing_rty |> snd, 0.0))
     else (
       set_z3_rlimit config.abd_rlimit;
 
-      Commands.Cre.type_infer_inner meta_config_file source_file ())
+      let missing_coverage =
+        Commands.Cre.type_infer_inner meta_config_file source_file ()
+      in
+      let abd_time = Sys.time () -. start_time in
+      (missing_coverage, abd_time))
   in
 
   print_endline ("Components" ^ String.concat "," config.component_list);
@@ -486,6 +490,8 @@ let synthesis_benchmark source_file meta_config_file =
   if Utils.rty_is_false missing_coverage then failwith "No missing coverage";
 
   set_z3_rlimit config.syn_rlimit;
+
+  let synth_start_time = Sys.time () in
 
   let collection_file = source_file ^ config.collect_ext in
 
@@ -599,6 +605,7 @@ let synthesis_benchmark source_file meta_config_file =
 
   print_endline ("New_body :\n" ^ layout_typed_term new_body);
 
+  (*   print_endline ("Return Type: \n" ^ layout_rty retty); *)
   set_z3_rlimit config.abd_rlimit;
 
   let result =
@@ -606,7 +613,9 @@ let synthesis_benchmark source_file meta_config_file =
   in
   if not result then failwith "Failed to type check result";
 
-  let total_time = Sys.time () -. start_time in
+  let end_time = Sys.time () in
+  let synth_time = end_time -. synth_start_time in
+  let total_time = end_time -. start_time in
 
   let synthesized_program =
     final_program_to_string reconstruct_code_with_new_body new_body
@@ -618,10 +627,10 @@ let synthesis_benchmark source_file meta_config_file =
 
   let results_csv_contents =
     Printf.sprintf
-      "Result, Bounds, Resource Limit, Queries, Total Time\n\
-       %b, %d, %d, %d, %.2f" result config.bound config.syn_rlimit
+      "Result, Bounds, Resource Limit, Queries, Abd Time, Synth Time, Total Time\n\
+       %b, %d, %d, %d, %.2f, %.2f, %.2f" result config.bound config.syn_rlimit
       !Backend.Check.query_counter
-      total_time
+      abd_time synth_time total_time
   in
   Core.Out_channel.write_all results_file ~data:results_csv_contents;
   Core.Out_channel.write_all synthesis_file ~data:synthesized_program;
