@@ -39,8 +39,14 @@ if __name__ == "__main__":
                         for row in reader:
                             print(row[" Queries"])
                             stats["#Queries"] = row[" Queries"]
+                            print(row[" Abd Time"])
+                            stats["Abduction Time(s)"] = row[" Abd Time"]
+
+                            print(row[" Synth Time"])
+                            stats["Synthesis Time(s)"] = row[" Synth Time"]
+
                             print(row[" Total Time"])
-                            stats["Time(s)"] = row[" Total Time"]
+                            stats["Total Time(s)"] = row[" Total Time"]
                     benchmark_stats.append(stats)
             # print(benchmark_stats)
             """ print(
