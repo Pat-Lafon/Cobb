@@ -94,9 +94,9 @@ module Pieces = struct
              (fun (n, _) -> String.equal n f.x)
              !Typing.Termcheck._cur_rec_func_name
            |> Option.value ~default:false ->
-        3
-    | Fun _ -> 4
-    | Op _ -> 4
+        1
+    | Fun _ -> 5
+    | Op _ -> 5
 
   let layout_component (c : component) : string =
     match c with
@@ -240,7 +240,7 @@ module Pieces = struct
               NameTracking.known_ast name (x #: nt |> id_to_term);
               (* ?? *)
               let new_seed : new_seed =
-                { id = name; ty; lc = Typectx [ name.x #: ty ]; cost = 2 }
+                { id = name; ty; lc = Typectx [ name.x #: ty ]; cost = 5 }
               in
               (new_seed :: seeds, components)
           | RtyBaseArr
