@@ -21,6 +21,9 @@ config:
 subck:
 	python3 scripts/subtype_check.py underapproximation_type/data/subtyping/
 
+results:
+	python3 scripts/results.py
+
 sync:
 	git submodule sync
 	git submodule update --remote
