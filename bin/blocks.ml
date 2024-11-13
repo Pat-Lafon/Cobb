@@ -18,9 +18,7 @@ let check_paths_for_solution (collection : PrioritySynthesisCollection.t) :
       (* todo better *)
       let s = BlockMap.existentialized_list bmap nty |> BlockSetE.init in
 
-      let res =
-        Extraction.extract_precise_blocks_for_path lc path_target_block s
-      in
+      let res = Extraction.extract_for_path lc path_target_block s in
       List.append res acc)
     collection.path_specific []
 
