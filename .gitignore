@@ -38,3 +38,5 @@ _opam/
 
 *.dot
 *.pyc
+
+.DS_Store
