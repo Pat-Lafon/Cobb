@@ -246,6 +246,16 @@ let remove_local_vars_from_prop (phi : _ Prop.prop) (local_vars : _ list) :
   in
   remove_local_vars_from_prop' phi
 
+let prop_eq_up_to_non_det_choice p1 p2 : bool =
+  let p1' = Prop.simplify p1 in
+  let p2' = Prop.simplify p2 in
+
+  print_endline "Props under question";
+  print_endline (layout_prop p1');
+  print_endline (layout_prop p2');
+
+  Prop.eq_prop_under_alpha_equivalence p1' p2'
+
 module Localization = struct
   let add_props_to_base (base : _ rty) (props : (_ Prop.prop * _ * _) list) :
       _ rty =
@@ -382,6 +392,38 @@ module Localization = struct
         (range (List.length possible_props))
     in
 
+    print_endline "Useful props: ";
+    List.iter
+      (fun (x, local_vs, s) ->
+        print_endline (layout_prop x);
+        List.iter (fun x -> print_endline (layout_id_rty x)) local_vs)
+      useful_props;
+
+    (* Lets filter out props that are equivalent
+        (Often as a result of a non-deterministic choice with local vars in
+        path)*)
+    let useful_props =
+      if List.length useful_props > 1 then
+        List.filteri
+          (fun i (p, _, _) : bool ->
+            List.find_mapi
+              (fun i2 (p2, _, _) : _ option ->
+                if i >= i2 then None
+                else if prop_eq_up_to_non_det_choice p p2 then Some ()
+                else None)
+              useful_props
+            |> Option.is_none)
+          useful_props
+      else useful_props
+    in
+
+    print_endline "Final set of props: ";
+    List.iter
+      (fun (x, local_vs, s) ->
+        print_endline (layout_prop x);
+        List.iter (fun x -> print_endline (layout_id_rty x)) local_vs)
+      useful_props;
+
     (* Zzdatatype.Datatype.List.split_by_comma layout_prop useful_props
        |> print_endline;
     *)
@@ -398,7 +440,8 @@ module Localization = struct
     remove_negations_in_props
     |> Zzdatatype.Datatype.List.split_by_comma (fun (x, vs, _) ->
            layout_prop x ^ " : "
-           ^ Zzdatatype.Datatype.List.split_by_comma layout_id_rty vs)
+           ^ Zzdatatype.Datatype.List.split_by_comma layout_id_rty vs
+           ^ "\n")
     |> print_endline;
     let res =
       remove_negations_in_props
