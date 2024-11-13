@@ -221,6 +221,91 @@ module Extraction = struct
 
   (** Lets try and simplify the extraction process by only considering one path
     at a time *)
+  let extract_precise_blocks_for_path (lc : LocalCtx.t)
+      (target_path_block : ExistentializedBlock.t) (bset : BlockSetE.t) :
+      (LocalCtx.t * ExistentializedBlock.t) list =
+    Printf.printf
+      "\n\n Extracting from path-specific collections we are interested in\n";
+
+    print_endline "Target block";
+    ExistentializedBlock.layout target_path_block |> print_endline;
+
+    (* (let set = BlockSetE.add_block bset target_path_block in
+       Printf.printf "Path Specific Collection: %s\n"
+         (layout_typectx layout_rty lc);
+       BlockSetE.print set); *)
+
+    (* Does the target exist in this path? *)
+    match BlockSetE.find_block_opt bset target_path_block with
+    | Some b ->
+        (* Yes: Return current bs, no preds, and the target_block *)
+        print_endline "Have a complete block for a path solution";
+        (lc, b) :: []
+    | None ->
+        print_endline "No solution from this path";
+        []
+  (* (* No: Return a new bs with the target block, any preds, and
+        possibly a starting block from the succs *)
+     let bs = BlockSetE.add_block bset target_path_block in
+     let p = BlockSetE.get_preds bs target_path_block in
+     let s = BlockSetE.get_succs bs target_path_block in
+     BlockSetE.print_ptset bs p;
+
+     (* Smallest block that covers the target fully *)
+     (* let b =
+          Ptset.min_elt_opt s
+          |> Option.map (fun idx -> BlockSetE.get_idx bs idx)
+        in
+
+        (print_endline "Have a partial solution: ";
+         match b with
+         | Some b -> print_endline (ExistentializedBlock.layout b)
+         | None -> print_endline "None"); *)
+     (* TODO, we are going to avoid blocks that are too large for the moment *)
+     let b = None in
+
+     (* Some paths might not get blocks that aid in getting the
+        target? *)
+     if not (Ptset.is_empty p && Ptset.is_empty s) then
+       if
+         Option.is_none b
+         && not (pset_is_sufficient_coverage bs p target_path_block.ty)
+       then (
+         print_endline "return nothing2";
+         [])
+       else (
+         print_endline "return a block";
+         let starting_point = (lc, bs, (b, p)) in
+
+         let target_path_ty = target_path_block.ty in
+
+         let block_choices = setup_type starting_point target_path_ty in
+
+         let block_choices = minimize_type block_choices target_path_ty in
+
+         Pp.printf "Improved Type: %s\n"
+           (layout_rty (unioned_rty_type2 block_choices));
+         List.iter
+           (fun (lc, _, b, _) ->
+             Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
+             Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
+           block_choices;
+
+         let block_choices =
+           List.map (fun (lc, _, b, _) -> (lc, b)) block_choices
+         in
+
+         let block_choices = minimize_num block_choices target_path_ty in
+
+         (* When we are done, drop any remaining predesessors and the block
+            map *)
+         block_choices)
+     else (
+       print_endline "return nothing";
+       []) *)
+
+  (** Lets try and simplify the extraction process by only considering one path
+    at a time *)
   let extract_for_path (lc : LocalCtx.t)
       (target_path_block : ExistentializedBlock.t) (bset : BlockSetE.t) :
       (LocalCtx.t * ExistentializedBlock.t) list =
