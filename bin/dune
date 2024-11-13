@@ -11,6 +11,8 @@
   blocks
   pieces
   localization
+  preprocess
+  postprocess
   underapproximation_type.translate
   underapproximation_type.typing
   underapproximation_type.preprocessing
@@ -74,6 +76,19 @@
  (inline_tests)
  (preprocess
   (pps ppx_inline_test)))
+
+(library
+ (name preprocess)
+ (libraries
+  tracking
+  underapproximation_type.typing
+  underapproximation_type.commands)
+ (modules preprocess))
+
+(library
+ (name postprocess)
+ (libraries pieces underapproximation_type.typing)
+ (modules postprocess))
 
 (library
  (name utils)

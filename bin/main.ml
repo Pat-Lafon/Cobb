@@ -1,5 +1,3 @@
-open Typing
-open Term
 open Pieces
 open Blocks
 open Blockmap
@@ -8,113 +6,10 @@ open Localization
 open Language.FrontendTyped
 open Zzdatatype.Datatype
 open Mtyped
-open Rty
-open Cty
-open Tracking
 open Synthesiscollection
+open Preprocess
+open Postprocess
 module Env = Zzenv
-
-let rec unfold_rty_helper rty : _ typed list * _ rty =
-  match rty with
-  (* | RtyArrArr { argrty : 't rty; retty : 't rty } ->
-      let other_args, retty = unfold_rty_helper retty in
-      (argrty :: other_args, retty) *)
-  | RtyBaseArr { argcty : 't cty; arg : (string[@bound]); retty : 't rty } ->
-      let other_args, retty = unfold_rty_helper retty in
-      ((arg #: (RtyBase { ou = true; cty = argcty })) :: other_args, retty)
-  | RtyBase _ -> ([], rty)
-  | _ -> failwith "unfold_rty_helper::error"
-
-let rec strip_lam (t : (t, t term) typed) : (t, t term) typed =
-  match t.x with
-  | CVal { x = VLam { lamarg; body }; _ } -> strip_lam body
-  | _ -> t
-
-(* Largely taken straight from value_type_check::VFix *)
-let handle_recursion_args (a : (t, t value) typed) (rty : t rty) =
-  assert (Nt.eq a.ty (Rty.erase_rty rty));
-  match (a.x, rty) with
-  | VFix { fixname; fixarg; body }, RtyBaseArr { argcty; arg; retty } ->
-      assert (String.equal fixarg.x arg);
-
-      if
-        String.equal "stlc_term"
-          (Nt.destruct_arr_tp fixname.ty |> snd |> Nt.layout)
-      then
-        match (body.x, retty) with
-        | ( CVal { x = VLam { lamarg; body }; _ },
-            RtyBaseArr { argcty = argcty1; arg = arg1; retty } ) ->
-            let rty' =
-              let arg' = { x = Rename.unique arg; ty = fixarg.ty } in
-              let arg = arg #: fixarg.ty in
-              let arg1' = { x = Rename.unique arg1; ty = lamarg.ty } in
-              let arg1 = arg1 #: lamarg.ty in
-              let rec_constraint_cty = Termcheck.apply_rec_arg2 arg arg' arg1 in
-              RtyBaseArr
-                {
-                  argcty;
-                  arg = arg'.x;
-                  retty =
-                    RtyBaseArr
-                      {
-                        argcty = intersect_ctys [ argcty1; rec_constraint_cty ];
-                        arg = arg1'.x;
-                        retty =
-                          subst_rty_instance arg1.x (AVar arg1')
-                          @@ subst_rty_instance arg.x (AVar arg') retty;
-                      };
-                }
-            in
-            let binding = arg #: (RtyBase { ou = true; cty = argcty }) in
-            let binding1 = arg1 #: (RtyBase { ou = true; cty = argcty1 }) in
-            let body =
-              body
-              #-> (subst_term_instance fixarg.x (VVar arg #: fixarg.ty))
-              #-> (subst_term_instance lamarg.x (VVar arg1 #: fixarg.ty))
-            in
-
-            let rec_fix = fixname.x #: rty' in
-            ([ binding; binding1 ], rec_fix, strip_lam body)
-        | _ -> failwith "unexpected lack of second argument for stlc lam term"
-      else
-        let retty = subst_rty_instance arg (AVar fixarg) retty in
-
-        let rec_constraint_cty = Termcheck.apply_rec_arg1 fixarg in
-        (* Termcheck.apply_rec_arg2 *)
-        let () =
-          Termcheck.init_cur_rec_func_name (fixname.x, rec_constraint_cty)
-        in
-        let rty' =
-          let a = { x = Rename.unique fixarg.x; ty = fixarg.ty } in
-          RtyBaseArr
-            {
-              argcty = intersect_ctys [ argcty; rec_constraint_cty ];
-              arg = a.x;
-              retty =
-                subst_rty_instance arg (AVar (NameTracking.known_var a)) retty;
-            }
-        in
-        (*       Pp.printf "\nSubstituted Return Type: %s\n" (layout_rty retty_a); *)
-        (*       Pp.printf "\nRty A: %s\n" (layout_rty rty_a); *)
-        (*       Pp.printf "\nRty A: %s\n" (layout_rty rty_a); *)
-        let binding = fixarg.x #: (RtyBase { ou = true; cty = argcty }) in
-        (*       Pp.printf "\nBinding: %s\n" (layout_id_rty binding); *)
-        assert (String.equal arg fixarg.x);
-        (*
-        So long as these are equal, the next line doesn't really do anything I
-        think? I should double check. Otherwise, return this as the new type we
-        are targetting
-      *)
-        let _retty = subst_rty_instance arg (AVar fixarg) retty in
-        (*       Pp.printf "\nSubstituted Return Type: %s\n" (layout_rty _retty); *)
-        assert (
-          Core.Sexp.( = )
-            (Rty.sexp_of_rty Nt.sexp_of_t _retty)
-            (Rty.sexp_of_rty Nt.sexp_of_t retty));
-        let rec_fix = fixname.x #: rty' in
-
-        ([ binding ], rec_fix, strip_lam body)
-  | _ -> failwith "Did not recieve a fixpoint value and a base arrow type"
 
 type config = {
   bound : int;
@@ -123,10 +18,51 @@ type config = {
   syn_ext : string;
   syn_rlimit : int;
   abd_rlimit : int;
+  type_rlimit : int;
   use_missing_coverage_file : bool;
   collect_ext : string;
   component_list : string list;
 }
+
+type benchmark_results = {
+  synth_result : bool option;
+  bound : int option;
+  num_localized_paths : int option;
+  resource_limit : int option;
+  queries : int option;
+  abd_time : float option;
+  synth_time : float option;
+  total_time : float option;
+}
+
+let new_benchmark_results () =
+  {
+    synth_result = None;
+    bound = None;
+    num_localized_paths = None;
+    resource_limit = None;
+    queries = None;
+    abd_time = None;
+    synth_time = None;
+    total_time = None;
+  }
+
+let write_results_to_file results_file results =
+  let default_str to_str x = Option.fold x ~some:to_str ~none:"" in
+
+  let results_csv_contents =
+    Printf.sprintf
+      "Result, Bounds, Resource Limit, Queries, Abd Time, Synth Time, Total Time\n\
+       %s, %s, %s, %s, %s, %s, %s"
+      (default_str string_of_bool results.synth_result)
+      (default_str string_of_int results.bound)
+      (default_str string_of_int results.resource_limit)
+      (default_str string_of_int results.queries)
+      (default_str (Printf.sprintf "%.2f") results.abd_time)
+      (default_str (Printf.sprintf "%.2f") results.synth_time)
+      (default_str (Printf.sprintf "%.2f") results.total_time)
+  in
+  Core.Out_channel.write_all results_file ~data:results_csv_contents
 
 let get_synth_config_values meta_config_file : config =
   let open Json in
@@ -140,6 +76,7 @@ let get_synth_config_values meta_config_file : config =
   let syn_ext = metaj |> member "synfile" |> to_string in
   let syn_rlimit = metaj |> member "synth_rlimit" |> to_int in
   let abd_rlimit = metaj |> member "abduce_rlimit" |> to_int in
+  let type_rlimit = metaj |> member "type_rlimit" |> to_int in
   let collect_ext = metaj |> member "collectfile" |> to_string in
   let comp_path = metaj |> member "comp_path" |> to_string in
   let use_missing_coverage_file =
@@ -164,257 +101,11 @@ let get_synth_config_values meta_config_file : config =
     syn_ext;
     abd_rlimit;
     syn_rlimit;
+    type_rlimit;
     collect_ext;
     component_list;
     use_missing_coverage_file;
   }
-
-let build_initial_typing_context () : uctx =
-  let prim_path = Env.get_prim_path () in
-
-  let predefine = Commands.Cre.preprocess prim_path.coverage_typing () in
-
-  (*   Pp.printf "\nPredefined:\n%s\n" (layout_structure predefine); *)
-  let builtin_ctx = Typing.Itemcheck.gather_uctx predefine in
-
-  (*   Pp.printf "\nBuiltin Context:\n%s\n" (layout_typectx layout_rty builtin_ctx); *)
-  assert (List.length predefine = List.length (Typectx.to_list builtin_ctx));
-
-  let lemmas = Commands.Cre.preprocess prim_path.axioms () in
-
-  (* Pp.printf "\nLemmas:\n%s\n" (layout_structure lemmas); *)
-  let axioms =
-    Typing.Itemcheck.gather_axioms lemmas |> List.map Mtyped._get_ty
-  in
-
-  { builtin_ctx; local_ctx = Typectx.emp; axioms }
-
-let rec swap_in_body (code : (Nt.t, Nt.t value) typed) :
-    (t, t term) typed -> (Nt.t, Nt.t value) typed =
-  match code.x with
-  | VFix { fixname; fixarg; body = { x = CVal body; ty } } ->
-      fun x ->
-        let b : _ -> (Nt.t, Nt.t value) typed = swap_in_body body in
-        (VFix { fixname; fixarg; body = b x |> value_to_term }) #: code.ty
-  | VFix { fixname; fixarg; body } -> (
-      fun x : (Nt.t, Nt.t value) typed ->
-        (VFix { fixname; fixarg; body = x }) #: code.ty)
-  | VLam { lamarg; body = { x = CVal body; ty } } ->
-      fun x ->
-        let b : _ -> (Nt.t, Nt.t value) typed = swap_in_body body in
-        (VLam { lamarg; body = b x |> value_to_term }) #: code.ty
-  | VLam { lamarg; body } -> (
-      fun x : (Nt.t, Nt.t value) typed -> (VLam { lamarg; body = x }) #: code.ty
-      )
-  | _ -> failwith "swap_in_body::failure"
-
-let get_args_rec_retty_body_from_source source_file =
-  let processed_file = Commands.Cre.preprocess source_file () in
-
-  assert (List.length processed_file = 2);
-
-  (*  Pp.printf "\nProcessed File:\n%s\n" (layout_structure processed_file); *)
-  let synth_name, synth_type =
-    List.find_map
-      (fun item ->
-        match item with
-        | Item.MRty { name; is_assumption; rty } ->
-            assert (not is_assumption);
-            Some (name, rty)
-        | _ -> None)
-      processed_file
-    |> Option.get
-  in
-
-  (*   Pp.printf "\nSynthesis Problem: %s:%s\n" synth_name (layout_rty synth_type); *)
-  let argtyps, retty = unfold_rty_helper synth_type in
-
-  (* Pp.printf "\nArg Types: %s\n" (List.split_by "," layout_id_rty argtyps);
-     Pp.printf "\nReturn Type: %s\n" (layout_rty retty); *)
-  let code =
-    List.find_map
-      (fun item ->
-        match item with
-        | Item.MFuncImp { name = { x; _ }; if_rec = true; body }
-          when String.equal x synth_name ->
-            Some body
-        | _ -> None)
-      processed_file
-    |> Option.get
-  in
-
-  let code =
-    match code.x with CVal x -> x | _ -> failwith "Did not receive a value"
-  in
-
-  let reconstruct_code_with_new_body x =
-    let b = swap_in_body code in
-    Item.MFuncImp
-      {
-        name = synth_name #: (erase_rty synth_type);
-        if_rec = true;
-        body = b x |> value_to_term;
-      }
-  in
-
-  let first_arg, rec_fix, body = handle_recursion_args code synth_type in
-  (* Pp.printf "Body: %s\n" (layout_typed_term body);
-     List.iter (fun x -> Pp.printf "\nArg: %s\n" (layout_id_rty x)) first_arg;
-     Pp.printf "\nRec Fix: %s\n" (layout_id_rty rec_fix); *)
-  let args =
-    first_arg
-    @ List.sublist argtyps ~start_included:(List.length first_arg)
-        ~end_excluded:(List.length argtyps)
-  in
-  (args, rec_fix, retty, body, reconstruct_code_with_new_body)
-
-let rec remove_excess_ast_aux (t : (Nt.t, Nt.t term) typed) =
-  match t.x with
-  | CErr | CApp _ | CAppOp _ | CVal _ -> t
-  | CLetE
-      {
-        lhs;
-        rhs =
-          {
-            x =
-              CApp
-                {
-                  appf = { x = VVar { x = "bool_gen"; _ }; _ };
-                  apparg = { x = VConst U; _ };
-                };
-            _;
-          };
-        body =
-          {
-            x =
-              CMatch
-                {
-                  matched = { x = VVar v; _ };
-                  match_cases =
-                    [
-                      CMatchcase
-                        { constructor = { x = "True"; _ }; args = []; exp };
-                      CMatchcase
-                        {
-                          constructor = { x = "False"; _ };
-                          args = [];
-                          exp = { x = CVal { x = VVar f; _ }; _ };
-                        };
-                    ];
-                };
-            _;
-          };
-      }
-    when Core.String.(lhs.x = v.x && is_prefix f.x ~prefix:"Hole") ->
-      (* let _ = layout_typed_term t |> print_endline in
-         let _ = f.x |> print_endline in *)
-      remove_excess_ast_aux exp
-  | CLetE (* True branch Err *)
-      {
-        lhs;
-        rhs =
-          {
-            x =
-              CApp
-                {
-                  appf = { x = VVar { x = "bool_gen"; _ }; _ };
-                  apparg = { x = VConst U; _ };
-                };
-            _;
-          };
-        body =
-          {
-            x =
-              CMatch
-                {
-                  matched = { x = VVar v; _ };
-                  match_cases =
-                    [
-                      CMatchcase
-                        {
-                          constructor = { x = "True"; _ };
-                          args = [];
-                          exp = { x = CErr; _ };
-                        };
-                      CMatchcase
-                        { constructor = { x = "False"; _ }; args = []; exp };
-                    ];
-                };
-            _;
-          };
-      }
-    when Core.String.(lhs.x = v.x) ->
-      remove_excess_ast_aux exp
-  | CLetE (* False branch Err *)
-      {
-        lhs;
-        rhs =
-          {
-            x =
-              CApp
-                {
-                  appf = { x = VVar { x = "bool_gen"; _ }; _ };
-                  apparg = { x = VConst U; _ };
-                };
-            _;
-          };
-        body =
-          {
-            x =
-              CMatch
-                {
-                  matched = { x = VVar v; _ };
-                  match_cases =
-                    [
-                      CMatchcase
-                        { constructor = { x = "True"; _ }; args = []; exp };
-                      CMatchcase
-                        {
-                          constructor = { x = "False"; _ };
-                          args = [];
-                          exp = { x = CErr; _ };
-                        };
-                    ];
-                };
-            _;
-          };
-      }
-    when Core.String.(lhs.x = v.x) ->
-      remove_excess_ast_aux exp
-  | CLetE { lhs; rhs = { x = CVal { x = VVar v; _ }; _ }; body } when lhs = v ->
-      remove_excess_ast_aux body
-  | CLetE { lhs; rhs; body } ->
-      (CLetE { lhs; rhs; body = remove_excess_ast_aux body }) #: t.ty
-  | CLetDeTu { turhs; tulhs; body } ->
-      (CLetDeTu { turhs; tulhs; body = remove_excess_ast_aux body }) #: t.ty
-  | CMatch { matched; match_cases } ->
-      (CMatch
-         {
-           matched;
-           match_cases =
-             List.map
-               (fun (CMatchcase { constructor; args; exp }) ->
-                 CMatchcase
-                   { constructor; args; exp = remove_excess_ast_aux exp })
-               match_cases;
-         })
-      #: t.ty
-
-let rec nd_join_list (t : (t, t term) typed list) : (t, t term) typed =
-  match t with
-  | [] -> failwith "Empty list"
-  | [ x ] -> x
-  | x :: xs -> Pieces.mk_ND_choice x (nd_join_list xs)
-
-(** Take the body of the function, a lambda to convert the body into full code,
-  and output it somewhere after some cleanup.  *)
-let final_program_to_string (reconstruct_code_with_new_body : _ -> _) new_body :
-    string =
-  let new_frontend_prog =
-    new_body |> reconstruct_code_with_new_body |> Item.map_item (fun x -> None)
-  in
-
-  Frontend_opt.To_item.layout_item new_frontend_prog
 
 let set_z3_rlimit rlimit =
   Z3.Params.update_param_value Backend.Smtquery.ctx "rlimit"
@@ -429,19 +120,60 @@ let abduce_benchmark source_file meta_config_file =
 
   set_z3_rlimit config.abd_rlimit;
 
+  let start_time = Sys.time () in
+
   let missing_coverage =
     Commands.Cre.type_infer_inner meta_config_file source_file ()
   in
 
+  let abd_time = Sys.time () -. start_time in
+
   let abduction_file = source_file ^ config.abd_ext in
 
-  if Sys_unix.is_file_exn abduction_file then
-    let previous_coverage = Core.In_channel.read_all abduction_file in
-    let current_coverage = layout_rty missing_coverage in
-    assert (String.equal previous_coverage current_coverage)
-  else
-    Core.Out_channel.write_all abduction_file
-      ~data:(layout_rty missing_coverage)
+  let results_file = source_file ^ config.res_ext ^ ".csv" in
+
+  let results = new_benchmark_results () in
+  let results = { results with queries = Some !Backend.Check.query_counter } in
+  let results = { results with abd_time = Some abd_time } in
+
+  let () =
+    if Sys_unix.is_file_exn abduction_file then
+      let previous_coverage = Core.In_channel.read_all abduction_file in
+      let current_coverage = layout_rty missing_coverage in
+      assert (String.equal previous_coverage current_coverage)
+    else
+      Core.Out_channel.write_all abduction_file
+        ~data:(layout_rty missing_coverage)
+  in
+  write_results_to_file results_file results
+
+let localize_benchmark source_file meta_config_file =
+  let config = get_synth_config_values meta_config_file in
+
+  set_z3_rlimit config.abd_rlimit;
+
+  let start_time = Sys.time () in
+
+  let missing_coverage =
+    Commands.Cre.type_infer_inner meta_config_file source_file ()
+  in
+
+  set_z3_rlimit config.syn_rlimit;
+
+  let uctx = build_initial_typing_context () in
+
+  let args, rec_fix, retty, body, reconstruct_code_with_new_body =
+    get_args_rec_retty_body_from_source source_file
+  in
+
+  let uctx = add_to_rights uctx (rec_fix :: args) in
+
+  let path_maps, new_body =
+    Localization.localization uctx body missing_coverage
+  in
+
+  let num_localized_paths = List.length path_maps in
+  Printf.printf "Number of paths: %d\n" num_localized_paths
 
 let synthesis_benchmark source_file meta_config_file =
   let config = get_synth_config_values meta_config_file in
@@ -495,7 +227,6 @@ let synthesis_benchmark source_file meta_config_file =
 
   let collection_file = source_file ^ config.collect_ext in
 
-  (*   Env.sexp_of_meta_config (!Env.meta_config |> Option.value_exn) |> dbg_sexp; *)
   let uctx = build_initial_typing_context () in
 
   let args, rec_fix, retty, body, reconstruct_code_with_new_body =
@@ -545,7 +276,9 @@ let synthesis_benchmark source_file meta_config_file =
     Localization.localization uctx body missing_coverage
   in
 
-  print_endline ("Number of paths: " ^ string_of_int (List.length path_maps));
+  let num_localized_paths = List.length path_maps in
+
+  print_endline ("Number of paths: " ^ string_of_int num_localized_paths);
 
   let context_maps =
     List.fold_left
@@ -600,22 +333,22 @@ let synthesis_benchmark source_file meta_config_file =
                  acc)
          raw_body
     |> Raw_term_to_anf.normalize_term |> remove_excess_ast_aux
-    |> remove_excess_ast_aux
+    |> remove_excess_ast_aux |> remove_underscores_in_variable_names_typed
   in
 
   print_endline ("New_body :\n" ^ layout_typed_term new_body);
 
   (*   print_endline ("Return Type: \n" ^ layout_rty retty); *)
-  set_z3_rlimit config.abd_rlimit;
+  let synth_time = Sys.time () -. synth_start_time in
+
+  set_z3_rlimit config.type_rlimit;
 
   let result =
     Typing.Termcheck.term_type_check uctx new_body retty |> Option.is_some
   in
   if not result then failwith "Failed to type check result";
 
-  let end_time = Sys.time () in
-  let synth_time = end_time -. synth_start_time in
-  let total_time = end_time -. start_time in
+  let total_time = Sys.time () -. start_time in
 
   let synthesized_program =
     final_program_to_string reconstruct_code_with_new_body new_body
@@ -625,14 +358,20 @@ let synthesis_benchmark source_file meta_config_file =
   let synthesis_file = source_file ^ config.syn_ext in
   let results_file = source_file ^ config.res_ext ^ ".csv" in
 
-  let results_csv_contents =
-    Printf.sprintf
-      "Result, Bounds, Resource Limit, Queries, Abd Time, Synth Time, Total Time\n\
-       %b, %d, %d, %d, %.2f, %.2f, %.2f" result config.bound config.syn_rlimit
-      !Backend.Check.query_counter
-      abd_time synth_time total_time
+  let results = new_benchmark_results () in
+  let results = { results with synth_result = Some result } in
+  let results = { results with bound = Some config.bound } in
+  let results =
+    { results with num_localized_paths = Some num_localized_paths }
   in
-  Core.Out_channel.write_all results_file ~data:results_csv_contents;
+  let results = { results with resource_limit = Some config.syn_rlimit } in
+  let results = { results with queries = Some !Backend.Check.query_counter } in
+  let results = { results with abd_time = Some abd_time } in
+  let results = { results with synth_time = Some synth_time } in
+  let results = { results with total_time = Some total_time } in
+
+  write_results_to_file results_file results;
+
   Core.Out_channel.write_all synthesis_file ~data:synthesized_program;
   Core.Out_channel.write_all abduction_file ~data:(layout_rty missing_coverage);
 
@@ -658,10 +397,6 @@ let regular_directory =
 let cobb (f : string -> string -> unit) =
   Command.basic ~summary:"The Cobb synthesizer which leverages coverage types"
     Command.Let_syntax.(
-      (* let%map_open benchmark_dir = anon ("benchmark_dir" %: regular_directory)
-         and program_name =
-           anon ("program_name" %: Command.Arg_type.create (fun x -> x))
-         in *)
       let%map_open source_file = anon ("program" %: regular_file) in
       fun () ->
         Memtrace.trace_if_requested ();
@@ -677,10 +412,7 @@ let prog =
       ("synthesis", cobb synthesis_benchmark);
       ("abduction", cobb abduce_benchmark);
       ("config", cobb check_config);
+      ("localize", cobb localize_benchmark);
     ]
 
 let () = Command_unix.run prog
-
-(* let () =
-   run_benchmark benchmark_to_run.source_file benchmark_to_run.meta_config_file
-     benchmark_to_run.bound *)
