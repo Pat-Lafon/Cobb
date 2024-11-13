@@ -254,20 +254,24 @@ end
 
 module PrioritySynthesisCollection = struct
   type t = {
-    path_specific : (LocalCtx.t, PriorityBBMap.t * BlockMap.t) Hashtbl.t;
+    path_specific :
+      ( LocalCtx.t,
+        ExistentializedBlock.t * PriorityBBMap.t * BlockMap.t )
+      Hashtbl.t;
   }
 
   let assert_valid (t : t) : unit =
     Hashtbl.iter
-      (fun _ (pbbm, bm) ->
+      (fun _ (_, pbbm, bm) ->
         PriorityBBMap.assert_valid pbbm;
         BlockMap.assert_valid bm)
       t.path_specific
 
   (* TODO: Instead use lists not maps*)
-  let init (inital_seeds : BlockMap.t)
+  let init (inital_seeds : BlockMap.t) (target_ty : Nt.t rty)
       (path_specific_seeds : (LocalCtx.t, BlockMap.t) Hashtbl.t) : t =
     let inital_seeds = BlockMap.to_list inital_seeds in
+    let target_block = ExistentializedBlock.create_target target_ty in
     let path_specific =
       Hashtbl.map
         (fun (p, seeds) ->
@@ -281,7 +285,13 @@ module PrioritySynthesisCollection = struct
                    { b with lc = new_path_ctx })
                  inital_seeds)
           in
-          (p, (PriorityBBMap.init path_seeds, BlockMap.init path_seeds)))
+          let path_target_block =
+            ExistentializedBlock.path_promotion p target_block
+          in
+          ( p,
+            ( path_target_block,
+              PriorityBBMap.init path_seeds,
+              BlockMap.init path_seeds ) ))
         path_specific_seeds
     in
 
@@ -289,11 +299,13 @@ module PrioritySynthesisCollection = struct
 
   (* todo: eventually deprecate *)
   let from_synth_coll ({ general_coll; path_specific } : SynthesisCollection.t)
-      : t =
+      (target_ty : Nt.t rty) : t =
     let { new_blocks = new_general_blocks; old_blocks } : BlockCollection.t =
       general_coll
     in
     let new_general_blocks = BlockMap.to_list new_general_blocks in
+
+    let target_block = ExistentializedBlock.create_target target_ty in
 
     assert (BlockMap.is_empty old_blocks);
     let path_specific =
@@ -314,21 +326,28 @@ module PrioritySynthesisCollection = struct
                 else (acc_map, pgb :: acc_list))
               (new_blocks, []) path_general_blocks
           in
+
+          let path_target_block =
+            ExistentializedBlock.path_promotion lc target_block
+          in
+
           ( lc,
-            ( PriorityBBMap.init
+            ( path_target_block,
+              PriorityBBMap.init
                 (List.append added_blocks (BlockMap.to_list new_blocks)),
               combined_block_map ) ))
         path_specific
     in
     let res = { path_specific } in
     assert_valid res;
+    (*     failwith "stop here"; *)
     res
 
   let layout ({ path_specific } : t) : string =
     "Path Specific Collection:\n"
     ^ (Hashtbl.to_seq path_specific
       |> Seq.fold_left
-           (fun acc (local_ctx, (block_collection, _)) ->
+           (fun acc (local_ctx, (_, block_collection, _)) ->
              let res =
                "In Path:\n"
                ^ layout_typectx layout_rty local_ctx
@@ -388,8 +407,8 @@ module PrioritySynthesisCollection = struct
     print_endline
       ("Incrementing with op: " ^ Pieces.layout_component (fst component));
     Hashtbl.iter
-      (fun lc path_maps ->
-        let pmap, bmap = increment_by_path lc path_maps component cost in
-        Hashtbl.replace path_specific lc (pmap, bmap))
+      (fun lc (pty, p, b) ->
+        let pmap, bmap = increment_by_path lc (p, b) component cost in
+        Hashtbl.replace path_specific lc (pty, pmap, bmap))
       path_specific
 end

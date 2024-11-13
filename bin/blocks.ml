@@ -16,25 +16,24 @@ open Synthesiscollection
      let init (num : int) : t = Hashtbl.create num
    end *)
 
-let check_paths_for_solution (target_block : ExistentializedBlock.t)
-    (collection : PrioritySynthesisCollection.t) : (LocalCtx.t * _) list =
-  let nty = ExistentializedBlock.to_nty target_block in
+let check_paths_for_solution (collection : PrioritySynthesisCollection.t) :
+    (LocalCtx.t * _) list =
   Hashtbl.fold
-    (fun lc (_, bmap) acc ->
+    (fun lc (path_target_block, _, bmap) acc ->
+      let nty = ExistentializedBlock.to_nty path_target_block in
       (* todo better *)
       let s = BlockMap.existentialized_list bmap nty |> BlockSetE.init in
-      let path_target_block =
-        ExistentializedBlock.path_promotion lc target_block
+
+      let res =
+        Extraction.extract_precise_blocks_for_path lc path_target_block s
       in
-      let res = Extraction.extract_for_path lc path_target_block s in
       List.append res acc)
     collection.path_specific []
 
-let check_and_remove_finished_paths (coll : PrioritySynthesisCollection.t)
-    (target_type : rty) : (LocalCtx.t * _) list =
+let check_and_remove_finished_paths (coll : PrioritySynthesisCollection.t) :
+    (LocalCtx.t * _) list =
   (* todo eventually have the target blocks included in the collection *)
-  let target_block = ExistentializedBlock.create_target target_type in
-  let paths_finished_by_seeds = check_paths_for_solution target_block coll in
+  let paths_finished_by_seeds = check_paths_for_solution coll in
 
   let completed_contexts =
     List.map fst paths_finished_by_seeds
@@ -68,9 +67,7 @@ module PrioritySynthesis = struct
     in
 
     (* todo: only check in paths that have gotten something new lol *)
-    let path_solutions =
-      check_and_remove_finished_paths collection target_type
-    in
+    let path_solutions = check_and_remove_finished_paths collection in
 
     let acc = path_solutions @ acc in
 
@@ -94,7 +91,7 @@ module PrioritySynthesis = struct
       (operations : (Pieces.component * (t list * t)) list)
       (collection_file : string) : (LocalCtx.t * (t, t term) typed list) list =
     let inital_seeds =
-      PrioritySynthesisCollection.from_synth_coll inital_seeds
+      PrioritySynthesisCollection.from_synth_coll inital_seeds target_type
     in
 
     print_endline "Initial seeds";
@@ -103,7 +100,7 @@ module PrioritySynthesis = struct
       ~data:(PrioritySynthesisCollection.layout inital_seeds);
 
     let paths_finished_by_seeds =
-      check_and_remove_finished_paths inital_seeds target_type
+      check_and_remove_finished_paths inital_seeds
     in
 
     (* TODO: With the result, we may want to minimize
