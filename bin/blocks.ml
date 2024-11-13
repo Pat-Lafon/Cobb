@@ -10,12 +10,6 @@ open Blockmap
 open Extraction
 open Synthesiscollection
 
-(* module PathPriorityQueue = struct
-     type t = (LocalCtx.t, BBQueue.t) Hashtbl.t
-
-     let init (num : int) : t = Hashtbl.create num
-   end *)
-
 let check_paths_for_solution (collection : PrioritySynthesisCollection.t) :
     (LocalCtx.t * _) list =
   Hashtbl.fold
