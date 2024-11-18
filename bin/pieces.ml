@@ -89,14 +89,33 @@ module Pieces = struct
 
   (* vars 1, consts 2, rec 3, fun 4 *)
   let component_cost = function
+    (* Component is the recursive call*)
     | Fun f
-      when Option.map
-             (fun (n, _) -> String.equal n f.x)
-             !Typing.Termcheck._cur_rec_func_name
-           |> Option.value ~default:false ->
+      when Option.fold ~none:false
+             ~some:(fun (n, _, _) -> String.equal n f.x)
+             !Typing.Termcheck._cur_rec_func_name ->
         1
+        (* Component produces a type of the same type as a recursive call(goal type) *)
+    | Fun f
+      when Option.fold ~none:false
+             ~some:(fun (_, _, ty) -> Nt.eq f.ty ty)
+             !Typing.Termcheck._cur_rec_func_name ->
+        10
     | Fun _ -> 5
     | Op _ -> 5
+
+  (** The cost of function arguments *)
+  let arg_cost : int = 1
+
+  (** The cost of a simple generator like `bool_gen ()` *)
+  let base_gen_cost : int = 1
+
+  (** The cost of a 0-arity seed *)
+  let seed_cost s_ty =
+    Option.fold ~none:5
+      ~some:(fun (_, _, ty) ->
+        if Nt.eq s_ty ty then 10 else if Nt.eq s_ty Nt.Ty_bool then 1 else 5)
+      !Typing.Termcheck._cur_rec_func_name
 
   let layout_component (c : component) : string =
     match c with
@@ -187,7 +206,7 @@ module Pieces = struct
         id = new_name;
         ty = new_rty_type;
         lc = Typectx [ new_name.x #: new_rty_type ];
-        cost = 1;
+        cost = arg_cost;
       }
     in
 
@@ -240,7 +259,12 @@ module Pieces = struct
               NameTracking.known_ast name (x #: nt |> id_to_term);
               (* ?? *)
               let new_seed : new_seed =
-                { id = name; ty; lc = Typectx [ name.x #: ty ]; cost = 5 }
+                {
+                  id = name;
+                  ty;
+                  lc = Typectx [ name.x #: ty ];
+                  cost = seed_cost nt;
+                }
               in
               (new_seed :: seeds, components)
           | RtyBaseArr
@@ -258,7 +282,7 @@ module Pieces = struct
                   id = name;
                   ty = retty;
                   lc = Typectx [ name.x #: retty ];
-                  cost = 1;
+                  cost = base_gen_cost;
                 }
               in
 
