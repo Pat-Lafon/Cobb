@@ -31,10 +31,9 @@ let handle_recursion_args (a : (Nt.t, Nt.t value) typed) (rty : Nt.t rty) =
   | VFix { fixname; fixarg; body }, RtyBaseArr { argcty; arg; retty } ->
       assert (String.equal fixarg.x arg);
 
-      if
-        String.equal "stlc_term"
-          (Nt.destruct_arr_tp fixname.ty |> snd |> Nt.layout)
-      then
+      let ret_nt_ty = Nt.destruct_arr_tp fixname.ty |> snd in
+
+      if String.equal "stlc_term" (ret_nt_ty |> Nt.layout) then
         match (body.x, retty) with
         | ( CVal { x = VLam { lamarg; body }; _ },
             RtyBaseArr { argcty = argcty1; arg = arg1; retty } ) ->
@@ -76,7 +75,8 @@ let handle_recursion_args (a : (Nt.t, Nt.t value) typed) (rty : Nt.t rty) =
         let rec_constraint_cty = Termcheck.apply_rec_arg1 fixarg in
         (* Termcheck.apply_rec_arg2 *)
         let () =
-          Termcheck.init_cur_rec_func_name (fixname.x, rec_constraint_cty)
+          Termcheck.init_cur_rec_func_name
+            (fixname.x, rec_constraint_cty, ret_nt_ty)
         in
         let rty' =
           let a = { x = Rename.unique fixarg.x; ty = fixarg.ty } in
