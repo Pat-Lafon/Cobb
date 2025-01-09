@@ -312,6 +312,9 @@ let synthesis_benchmark source_file meta_config_file =
 
   let init_synth_col = SynthesisCollection.init inital_map context_maps in
 
+(*   print_endline "Initial collection";
+  SynthesisCollection.print init_synth_col; *)
+
   let synthesis_result =
     PrioritySynthesis.synthesis missing_coverage config.bound init_synth_col
       components collection_file
