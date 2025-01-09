@@ -24,7 +24,7 @@ let rec typed_term_replace_block_body (t : (_, _ term) typed) replacement_body :
   | CMatch _ | CApp _ | CAppOp _ | CErr ->
       failwith "Unsupported use of typed_term_replace_block_body"
   | CLetDeTu _ ->
-      failwith "typed_term_replace_block_body::CLetDeTu::unimplemented"
+      failwith "typed_term_replace_block_body::CLetDeTu::unreachable"
 
 module Pieces = struct
   let mk_let_app_const ~(record : bool) (f : identifier)
@@ -95,7 +95,10 @@ module Pieces = struct
              ~some:(fun (n, _, _) -> String.equal n f.x)
              !Typing.Termcheck._cur_rec_func_name ->
         1
-        (* Component produces a type of the same type as a recursive call(goal type) *)
+        (* Component produces a type of the same type as a recursive call(goal
+           type) *)
+        (* todo: I don't think this does what I think it does because f.ty is
+           probaby an arrow type*)
     | Fun f
       when Option.fold ~none:false
              ~some:(fun (_, _, ty) -> Nt.eq f.ty ty)
@@ -233,14 +236,14 @@ module Pieces = struct
         | RtyBase _ -> None
         | RtyBaseArr
             { argcty = Cty { nty = Nt.Ty_unit; _ }; retty = RtyBase _; _ } ->
-            failwith "components_from_args::RtyBaseArr::unimplemented"
+            failwith "components_from_args::RtyBaseArr::unreachable"
         | RtyBaseArr _ ->
             let id = x #: nt |> NameTracking.known_var in
             let new_component : component * (t list * t) =
               (string_to_component id, nt |> Nt.destruct_arr_tp)
             in
             Some new_component
-        | _ -> failwith "components_from_args::Other::unimplemented")
+        | _ -> failwith "components_from_args::Other::unreachable")
       ctx_list
 
   let seeds_and_components (Typectx ctx_list : t rty Typectx.ctx)
@@ -294,8 +297,7 @@ module Pieces = struct
               in
               (seeds, new_component :: components)
           | RtyArrArr _ ->
-              failwith "seeds_and_components::RtyArrArr::unimplemented"
-          | RtyTuple _ ->
-              failwith "seeds_and_components::RtyTuple::unimplemented")
+              failwith "seeds_and_components::RtyArrArr::unreachable"
+          | RtyTuple _ -> failwith "seeds_and_components::RtyTuple::unreachable")
       ([], []) ctx_list
 end
