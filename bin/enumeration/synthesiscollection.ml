@@ -366,6 +366,16 @@ module PrioritySynthesisCollection = struct
         Hashtbl.remove t.path_specific lc)
       lc_list
 
+  (** Fold over all blocksets in any of the paths. Over the total collection of
+    blocks for that type, not stratified by priority. Order unspecified. *)
+  let fold_by_type (t : t) (nty : Nt.t) (acc : 'a)
+      (f : 'a -> Blockset.BlockSet.t -> 'a) : 'a =
+    Hashtbl.fold
+      (fun _lc (_eblock, _pmap, bmap) acc ->
+        let bset = BlockMap.get bmap nty in
+        f acc bset)
+      t.path_specific acc
+
   let increment_by_path (lc : LocalCtx.t)
       ((pmap, bmap) : PriorityBBMap.t * BlockMap.t)
       ((component, (args_nty, ret_ty)) : Pieces.component * (Nt.t list * Nt.t))

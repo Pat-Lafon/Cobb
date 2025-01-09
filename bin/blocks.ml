@@ -35,6 +35,12 @@ let check_and_remove_finished_paths (coll : PrioritySynthesisCollection.t) :
   PrioritySynthesisCollection.remove_finished_contexts coll completed_contexts;
   paths_finished_by_seeds
 
+let _num_target_blocks (collection : PrioritySynthesisCollection.t)
+    (target_type : rty) : int =
+  let nty_target_type = Rty.erase_rty target_type in
+  PrioritySynthesisCollection.fold_by_type collection nty_target_type 0
+    (fun acc bset -> acc + BlockSet.size bset)
+
 module PrioritySynthesis = struct
   let rec synthesis_helper (target_type : rty) (max_cost : int)
       (current_cost : int)
@@ -49,6 +55,12 @@ module PrioritySynthesis = struct
     Core.Out_channel.write_all collection_file
       ~data:(PrioritySynthesisCollection.layout collection);
 
+    let current_target_amount = _num_target_blocks collection target_type in
+
+    print_endline
+      ("Current number of extraction blocks to choose from: "
+      ^ string_of_int current_target_amount);
+
     let _ =
       List.fold_left
         (fun acc component ->
@@ -58,8 +70,15 @@ module PrioritySynthesis = struct
         collection operations
     in
 
-    (* todo: only check in paths that have gotten something new lol *)
-    let path_solutions = check_and_remove_finished_paths collection in
+    let new_target_amount = _num_target_blocks collection target_type in
+
+    let path_solutions =
+      (* only check in paths that have gotten something new lol *)
+      if current_target_amount = new_target_amount then (
+        print_endline "No new blocks have been added, avoid extraction";
+        [])
+      else check_and_remove_finished_paths collection
+    in
 
     let acc = path_solutions @ acc in
 
