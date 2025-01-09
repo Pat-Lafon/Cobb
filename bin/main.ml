@@ -221,7 +221,7 @@ let synthesis_benchmark source_file meta_config_file =
 
   if Utils.rty_is_false missing_coverage then failwith "No missing coverage";
 
-  set_z3_rlimit config.syn_rlimit;
+  set_z3_rlimit config.type_rlimit;
 
   let synth_start_time = Sys.time () in
 
@@ -245,6 +245,7 @@ let synthesis_benchmark source_file meta_config_file =
   | Some _ -> failwith "Nothing to repair");
 
   Context.set_global_uctx uctx;
+  set_z3_rlimit config.syn_rlimit;
 
   let _typed_code = Typing.Termcheck.term_type_infer uctx body |> Option.get in
 
