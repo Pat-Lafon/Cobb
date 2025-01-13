@@ -263,7 +263,7 @@ module Localization = struct
     match base with
     | RtyBase { ou; cty = Cty { nty; phi } } ->
         RtyBase { ou; cty = Cty { nty; phi = smart_and (phi :: props) } }
-    | _ -> failwith "add_props_to_base::unimplemented"
+    | _ -> failwith "add_props_to_base::unreachable"
 
   let localization (uctx : uctx) (body : (Nt.t, Nt.t Term.term) Mtyped.typed)
       (target_ty : Nt.t rty) :
@@ -316,6 +316,19 @@ module Localization = struct
              (Prop.Not phi, local_vs, s))
     in
 
+    let possible_props =
+      List.filter_map
+        (fun (p, x, y) ->
+          let p = Prop.simplify p in
+          if
+            Prop.eq_prop
+              (Lit.eq_lit Constant.equal_constant)
+              p (Prop.from_const (B true))
+          then None
+          else Some (p, x, y))
+        possible_props
+    in
+
     print_endline "Possible props: ";
     List.iter
       (fun (x, local_vs, s) ->
@@ -360,20 +373,28 @@ module Localization = struct
        how trees work) so lets reverse the order to make some cases nicer *)
     let possible_props = List.rev possible_props in
 
+    (* print_endline "Trying to determine useful props"; *)
     let useful_props =
       List.fold_left
         (fun acc idx ->
           let ps = Core.List.drop possible_props idx in
           let current_prop = List.hd ps in
+
+          (* (print_endline "Current prop: ";
+             let cp = current_prop |> fun (a, b, _) -> a in
+             print_endline (layout_prop cp)); *)
+
           (* Local variables are hard to reason about in terms of which paths
              with local variables are useful.
              So probably just not try to drop them*)
           if current_prop |> (fun (_, b, _) -> b) |> List.is_empty |> not then
+            (*  print_endline "Skipping because of local vars"; *)
             current_prop :: acc
           else
             let rest_props = List.tl ps in
 
-            (* List.map (fun (a, _, _) -> a) ps
+            (* print_endline "Rest of the props: ";
+               List.map (fun (a, _, _) -> a) (List.concat [ acc; rest_props ])
                |> Zzdatatype.Datatype.List.split_by_comma layout_prop
                |> print_endline; *)
 
@@ -416,7 +437,6 @@ module Localization = struct
           useful_props
       else useful_props
     in
-
     print_endline "Final set of props: ";
     List.iter
       (fun (x, local_vs, s) ->
