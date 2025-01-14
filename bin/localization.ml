@@ -7,7 +7,6 @@ open Language.FrontendTyped
 open Subtyping.Subrty
 open Utils
 open Cty
-open Block
 open Tracking
 open Pieces
 open Context
@@ -466,35 +465,31 @@ module Localization = struct
     let res =
       remove_negations_in_props
       |> List.map (fun (x, local_vs, s) ->
+             let path_var =
+               mk_path_var (remove_local_vars_from_prop x local_vs)
+             in
+             let selfified_local_vs =
+               List.map
+                 (fun x -> Pieces.selfification x.x (erase_rty x.ty))
+                 local_vs
+             in
              let local_ctx : LocalCtx.t =
-               let path_var =
-                 mk_path_var (remove_local_vars_from_prop x local_vs)
-               in
                (* let _ =
                     NameTracking.known_var path_var.x #: (erase_rty path_var.ty)
                   in *)
                Typectx (local_vs @ [ path_var ])
              in
+             LocalCtx.layout local_ctx |> print_endline;
+
              let block_map =
                BlockMap.init
                  (List.map
-                    (fun (local_v : _ typed) ->
-                      let nty = erase_rty local_v.ty in
-                      let block : Block.t =
-                        {
-                          id = local_v.x #: nty |> NameTracking.known_var;
-                          ty = local_v.ty;
-                          (* We intentionally want to add the variables before the
-                             current local_ctx as we want them available to fill holes
-                             from remove_local_vars_from_prop *)
-                          lc = local_ctx;
-                          cost = Pieces.arg_cost;
-                        }
-                      in
-                      Block.layout block |> print_endline;
-
-                      block)
-                    local_vs)
+                    (fun (x : block_record) : block_record ->
+                      {
+                        x with
+                        lc = fst (LocalCtx.local_ctx_union_r local_ctx x.lc);
+                      })
+                    selfified_local_vs)
              in
              (local_ctx, block_map, s))
     in
