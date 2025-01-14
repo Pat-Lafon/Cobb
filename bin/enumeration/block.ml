@@ -82,7 +82,7 @@ end = struct
   let get_local_ctx ({ id; ty } : t) : LocalCtx.t =
     Typectx.Typectx [ id.x #: ty ]
 
-  let new_X (id : identifier) (ty : Nt.t rty) : t = { id; ty }
+  (* let new_X (id : identifier) (ty : Nt.t rty) : t = { id; ty } *)
 
   let create_target (target_ty : Nt.t rty) : t =
     (* Create a target block that we are missing *)
