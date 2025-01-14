@@ -97,11 +97,9 @@ module Pieces = struct
         1
         (* Component produces a type of the same type as a recursive call(goal
            type) *)
-        (* todo: I don't think this does what I think it does because f.ty is
-           probaby an arrow type*)
     | Fun f
       when Option.fold ~none:false
-             ~some:(fun (_, _, ty) -> Nt.eq f.ty ty)
+             ~some:(fun (_, _, ty) -> Nt.eq (Nt.destruct_arr_tp f.ty |> snd) ty)
              !Typing.Termcheck._cur_rec_func_name ->
         10
     | Fun _ -> 5
