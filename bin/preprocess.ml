@@ -43,6 +43,10 @@ let handle_recursion_args (a : (Nt.t, Nt.t value) typed) (rty : Nt.t rty) =
               let arg1' = { x = Rename.unique arg1; ty = lamarg.ty } in
               let arg1 = arg1 #: lamarg.ty in
               let rec_constraint_cty = Termcheck.apply_rec_arg2 arg arg' arg1 in
+              let () =
+                Termcheck.init_cur_rec_func_name
+                  (fixname.x, rec_constraint_cty, ret_nt_ty)
+              in
               RtyBaseArr
                 {
                   argcty;
