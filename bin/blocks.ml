@@ -130,7 +130,7 @@ module PrioritySynthesis = struct
     |> List.map (fun (x, y) -> (x, List.map snd y))
 end
 
-module Synthesis = struct
+(* module Synthesis = struct
   let rec synthesis_helper (max_depth : int) (target_type : rty)
       (collection : SynthesisCollection.t)
       (operations : (Pieces.component * (t list * t)) list)
@@ -172,4 +172,4 @@ module Synthesis = struct
     (* SynthesisCollection.print inital_seeds; *)
     synthesis_helper max_depth target_type inital_seeds operations
       collection_file
-end
+end *)
