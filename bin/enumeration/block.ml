@@ -320,6 +320,8 @@ module PreBlock = struct
                  print_endline "Nonempty"
                else print_endline "Empty"
            | _ -> ()); *)
+        (* Handle some really annoying name clashing*)
+        let block_id = NameTracking.rename block_id in
         assert (ret_type = erase_rty new_ut.ty);
         if
           (* Check if new term is coverage equivalent to one of it's
