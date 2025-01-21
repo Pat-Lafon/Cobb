@@ -55,7 +55,7 @@ end = struct
         let pp_node_attr (ppf : Format.formatter) (node : el node) : unit =
           Format.fprintf ppf "label = \"%s\""
             ( P.get_key node |> (* B.layout *) fun b ->
-              Printf.sprintf "%s : %s :\n"
+              Printf.sprintf "%s : %s\n"
                 (B.get_id b |> Tracking.NameTracking.get_term
                |> layout_typed_erased_term)
                 (B.get_id b |> fun { ty; _ } -> Nt.layout ty)
