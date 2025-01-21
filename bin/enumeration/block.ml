@@ -54,6 +54,7 @@ module type Block_intf = sig
   val to_nty : t -> Nt.t
   val to_typed_term : t -> (Nt.t, Nt.t term) typed
   val get_local_ctx : t -> LocalCtx.t
+  val get_id : t -> identifier
   val typing_relation : uctx -> t -> t -> Relations.relation
   val is_sub_rty : uctx -> t -> t -> bool
 end
@@ -77,6 +78,8 @@ end = struct
     Printf.sprintf "%s : %s :\n%s\n"
       (NameTracking.get_term id |> layout_typed_erased_term)
       (layout_ty id.ty) (layout_rty ty)
+
+  let get_id ({ id; _ } : t) : identifier = id
 
   (* In the case of an existentialiszed block, the only thing in context is itself*)
   let get_local_ctx ({ id; ty } : t) : LocalCtx.t =
@@ -140,6 +143,7 @@ end = struct
       (NameTracking.get_term id |> layout_typed_erased_term)
       (layout_ty id.ty) (layout_rty ty)
 
+  let get_id ({ id; _ } : t) : identifier = id
   let get_local_ctx ({ lc; _ } : t) : LocalCtx.t = lc
 
   let existentialize ({ id; ty; lc; _ } : t) : ExistentializedBlock.t =
