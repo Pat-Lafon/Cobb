@@ -1,6 +1,7 @@
 open Block
 open Pomap
 open Relation
+open Language.FrontendTyped
 
 module BlockSetF (B : Block_intf) : sig
   type t
@@ -52,7 +53,14 @@ end = struct
         type 'a node = 'a P.node
 
         let pp_node_attr (ppf : Format.formatter) (node : el node) : unit =
-          Format.fprintf ppf "label = \"%s\"" (P.get_key node |> B.layout)
+          Format.fprintf ppf "label = \"%s\""
+            ( P.get_key node |> (* B.layout *) fun b ->
+              Printf.sprintf "%s : %s :\n"
+                (B.get_id b |> Tracking.NameTracking.get_term
+               |> layout_typed_erased_term)
+                (B.get_id b |> fun { ty; _ } -> Nt.layout ty)
+              (* (NameTracking.get_term id |> layout_typed_erased_term)
+                 (layout_ty id.ty)) *) )
 
         let rotation = 0.
       end)
