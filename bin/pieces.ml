@@ -87,7 +87,6 @@ module Pieces = struct
 
   type component = Fun of identifier | Op of (Nt.t, Op.op) typed
 
-  (* vars 1, consts 2, rec 3, fun 4 *)
   let component_cost c =
     match c with
     (* Component is the recursive call*)
@@ -102,14 +101,14 @@ module Pieces = struct
       when Option.fold ~none:false
              ~some:(fun (_, _, ty) -> Nt.eq (Nt.destruct_arr_tp f.ty |> snd) ty)
              !Typing.Termcheck._cur_rec_func_name ->
-        9
-    | Fun _ -> 5
+        10
+    | Fun _ -> 15
     | Op f
       when Option.fold ~none:false
              ~some:(fun (_, _, ty) -> Nt.eq (Nt.destruct_arr_tp f.ty |> snd) ty)
              !Typing.Termcheck._cur_rec_func_name ->
-        9
-    | Op _ -> 5
+        10
+    | Op _ -> 15
 
   (** The cost of function arguments *)
   let arg_cost : int = 1
