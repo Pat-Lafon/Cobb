@@ -80,4 +80,19 @@ module LocalCtx = struct
            assert (not (List.mem old_name (Rty.fv_rty_id ty)));
            if x = old_name then { x = new_name; ty } else { x; ty })
          ctx)
+
+  (* TODO: Not sure if this is useful yet since Z3 might just de-dupe itself*)
+  let remove_duplicates (Typectx.Typectx ctx : t) : t =
+    let empty = Typectx.emp in
+
+    let new_locals =
+      List.fold_left
+        (fun acc x ->
+          match Typectx.get_opt acc x.x with
+          | None -> Typectx.add_to_right acc x
+          | Some _ -> acc)
+        empty ctx
+    in
+
+    new_locals
 end
