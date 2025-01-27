@@ -256,13 +256,17 @@ let prop_eq_up_to_non_det_choice p1 p2 : bool =
   Prop.eq_prop_under_alpha_equivalence p1' p2'
 
 module Localization = struct
-  let add_props_to_base (base : _ rty) (props : (_ Prop.prop * _ * _) list) :
-      _ rty =
-    let props = List.map (fun (a, _, _) -> a) props in
+  let add_props_to_base_inner (base : _ rty) (props : _ Prop.prop list) : _ rty
+      =
     match base with
     | RtyBase { ou; cty = Cty { nty; phi } } ->
         RtyBase { ou; cty = Cty { nty; phi = smart_and (phi :: props) } }
-    | _ -> failwith "add_props_to_base::unreachable"
+    | _ -> failwith "add_props_to_base_inner::unreachable"
+
+  let add_props_to_base (base : _ rty) (props : (_ Prop.prop * _ * _) list) :
+      _ rty =
+    let props = List.map (fun (a, _, _) -> a) props in
+    add_props_to_base_inner base props
 
   let localization (uctx : uctx) (body : (Nt.t, Nt.t Term.term) Mtyped.typed)
       (target_ty : Nt.t rty) :
@@ -436,12 +440,64 @@ module Localization = struct
           useful_props
       else useful_props
     in
-    print_endline "Final set of props: ";
+
+    print_endline "Filtered set of props: ";
     List.iter
       (fun (x, local_vs, s) ->
         print_endline (layout_prop x);
         List.iter (fun x -> print_endline (layout_id_rty x)) local_vs)
       useful_props;
+
+    (* TODO: Lets look for pairs of path conditions where one is the
+       specialization or a subset of inputs compared to the other *)
+    (* TODO: Limited to just when there are two paths for now because this
+       typically doesn't occur in the programs we have(besides stlc)*)
+    let useful_props =
+      if List.length useful_props == 2 then (
+        let fst_path = List.hd useful_props in
+        let second_path = List.hd (List.tl useful_props) in
+        let p1, _, _ = fst_path in
+        let p2, _, _ = second_path in
+
+        let bool_res1 =
+          Subtyping.Subcty.sub_cty_bool uctx
+            (Cty { nty = Ty_unit; phi = p1 }, Cty { nty = Ty_unit; phi = p2 })
+        in
+        let bool_res2 =
+          Subtyping.Subcty.sub_cty_bool uctx
+            (Cty { nty = Ty_unit; phi = p2 }, Cty { nty = Ty_unit; phi = p1 })
+        in
+
+        print_endline "Subtyping check between path conditions: ";
+        print_endline (string_of_bool bool_res1);
+        print_endline (string_of_bool bool_res2);
+
+        match (bool_res1, bool_res2) with
+        | true, true | false, false ->
+            (* No specialization connection *)
+            useful_props
+        | _ ->
+            let more_specific = if bool_res1 then p1 else p2 in
+
+            print_endline "More specific path condition: ";
+            print_endline (layout_prop more_specific);
+
+            let modified_target_ty =
+              add_props_to_base_inner target_ty [ more_specific ]
+            in
+
+            let subtyping_res =
+              sub_rty_bool uctx (inferred_body.ty, modified_target_ty)
+            in
+
+            print_endline "Subtyping check with more specific path condition: ";
+            print_endline (string_of_bool subtyping_res);
+            if subtyping_res then
+              if bool_res1 then [ fst_path ] else [ second_path ]
+            else if bool_res1 then [ second_path ]
+            else [ fst_path ])
+      else useful_props
+    in
 
     (* Zzdatatype.Datatype.List.split_by_comma layout_prop useful_props
        |> print_endline;
@@ -470,7 +526,8 @@ module Localization = struct
              in
              let selfified_local_vs =
                List.map
-                 (fun x -> Pieces.selfification x.x (erase_rty x.ty))
+                 (fun local ->
+                   Pieces.selfification local.x (erase_rty local.ty))
                  local_vs
              in
              let local_ctx : LocalCtx.t =
