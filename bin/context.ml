@@ -45,8 +45,8 @@ module LocalCtx = struct
       (fun (Typectx.Typectx res) -> Typectx.Typectx (l @ res))
       (NameTracking.freshen r)
 
-  (** Carefully adds the local context to uctx
-    * You should probably use this for constructing uctx's *)
+  (** Carefully adds the local context to uctx * You should probably use this
+      for constructing uctx's *)
   let uctx_add_local_ctx (ctx : t) : uctx =
     let uctx = get_global_uctx () in
     {
@@ -57,8 +57,7 @@ module LocalCtx = struct
     }
 
   (** Take a local context and add the local context of a path which should have
-   only path constraints and local vars.
-    must not be incompatible contexts *)
+      only path constraints and local vars. must not be incompatible contexts *)
   let promote_ctx_to_path (local_ctx : t) ~promote_ctx =
     let local_ctx = Typectx.to_list local_ctx in
     let promote_ctx = Typectx.to_list promote_ctx in
