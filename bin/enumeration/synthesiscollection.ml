@@ -30,7 +30,7 @@ module SynthesisCollection = struct
 
     { general_coll; path_specific }
 
-  let layout ({ general_coll; path_specific } : t) : string =
+  (* let layout ({ general_coll; path_specific } : t) : string =
     "General Collection:\n"
     ^ BlockCollection.layout general_coll
     ^ "Path Specific Collection:\n"
@@ -249,7 +249,7 @@ module SynthesisCollection = struct
       new_collection with
       path_specific =
         merge_path_specific_maps new_collection.path_specific path_specific_maps;
-    }
+    } *)
 end
 
 module PrioritySynthesisCollection = struct
@@ -367,7 +367,7 @@ module PrioritySynthesisCollection = struct
       lc_list
 
   (** Fold over all blocksets in any of the paths. Over the total collection of
-    blocks for that type, not stratified by priority. Order unspecified. *)
+      blocks for that type, not stratified by priority. Order unspecified. *)
   let fold_by_type (t : t) (nty : Nt.t) (acc : 'a)
       (f : 'a -> Blockset.BlockSet.t -> 'a) : 'a =
     Hashtbl.fold
