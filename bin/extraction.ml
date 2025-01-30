@@ -1,15 +1,15 @@
 open Pomap
 open Context
-open Relation
+(* open Relation *)
 open Block
 open Blockset
 open Blockmap
-open Blockcollection
+(* open Blockcollection *)
 open Utils
 open Zzdatatype.Datatype
 open Language.FrontendTyped
 open Typing.Termcheck
-open Synthesiscollection
+(* open Synthesiscollection *)
 open Frontend_opt.To_typectx
 open Language
 
@@ -68,7 +68,8 @@ module Extraction = struct
             if
               (* The proposed min implies the target*)
               sub_rty_bool uctx (proposed_min, target_ty)
-              && (* And it is implied by the current min*)
+              &&
+              (* And it is implied by the current min*)
               sub_rty_bool uctx (current_min, proposed_min)
             then (proposed_min, proposed_list)
             else (current_min, current_list))
@@ -131,7 +132,8 @@ module Extraction = struct
 
     let res =
       List.fold_left
-        (fun (current_min_coverage, (acc : _ list)) (idx : int) : (rty * _ list) ->
+        (fun (current_min_coverage, (acc : _ list)) (idx : int) : (rty * _ list)
+           ->
           let current_term, rest_terms =
             Core.List.drop x idx |> List.destruct_opt |> Option.get
           in
@@ -220,7 +222,7 @@ module Extraction = struct
     res
 
   (** Lets try and simplify the extraction process by only considering one path
-    at a time *)
+      at a time *)
   let extract_precise_blocks_for_path (lc : LocalCtx.t)
       (target_path_block : ExistentializedBlock.t) (bset : BlockSetE.t) :
       (LocalCtx.t * ExistentializedBlock.t) list =
@@ -305,7 +307,7 @@ module Extraction = struct
        []) *)
 
   (** Lets try and simplify the extraction process by only considering one path
-    at a time *)
+      at a time *)
   let extract_for_path (lc : LocalCtx.t)
       (target_path_block : ExistentializedBlock.t) (bset : BlockSetE.t) :
       (LocalCtx.t * ExistentializedBlock.t) list =
@@ -388,7 +390,7 @@ module Extraction = struct
           [])
 
   (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
-  let extract_blocks (collection : SynthesisCollection.t) (target_ty : rty) :
+  (* let extract_blocks (collection : SynthesisCollection.t) (target_ty : rty) :
       (LocalCtx.t * ExistentializedBlock.t) list =
     let target_nty = erase_rty target_ty in
 
@@ -488,5 +490,5 @@ module Extraction = struct
         [] path_specific_sets_list
     in
 
-    minimize_num extracted_blocks target_ty
+    minimize_num extracted_blocks target_ty *)
 end

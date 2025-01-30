@@ -5,8 +5,8 @@ type identifier = (Nt.t, string) Mtyped.typed
 (*** Replace the element at pos of l with a *)
 let replace l pos a = List.mapi (fun i x -> if i = pos then a else x) l
 
-(* Creates a version of the list with only unique elements *)
-(* Secretly reverses the order *)
+(** Creates a version of the list with only unique elements. Secretly reverse
+    the order *)
 let unique l =
   let rec aux l acc =
     match l with
@@ -31,9 +31,9 @@ let map_fst f (l, r) = (f l, r)
 (** Produces a list from 0..n-1 *)
 let range n = List.init n (fun x -> x)
 
-(** Computes a powerset from a list of elements
-  * https://stackoverflow.com/questions/40141955/computing-a-set-of-all-subsets-power-set
-    *)
+(** Computes a powerset from a list of elements *
+    https://stackoverflow.com/questions/40141955/computing-a-set-of-all-subsets-power-set
+*)
 let rec superset_helper = function
   | [] -> [ [] ]
   | x :: xs ->
@@ -43,9 +43,9 @@ let rec superset_helper = function
 (* Superset, except remove the first element which is the nil element *)
 let superset l = superset_helper l |> List.tl
 
-(** Takes a list and performs a giant multi-cartesian product
-  * Used to compute a new list of function arguments from a list of possible arguments for each position
-*)
+(** Takes a list and performs a giant multi-cartesian product * Used to compute
+    a new list of function arguments from a list of possible arguments for each
+    position *)
 let rec n_cartesian_product = function
   | [] -> [ [] ]
   | x :: xs ->
@@ -106,7 +106,7 @@ let _stripe_fun (l : 'b option list) (n : int) (v : 'b option) =
 (* Not the most efficient but it works *)
 
 (** Given an n, make all possible combinations of lists of length n with the
-  condition that Some(true) and Some(false) occur atleast once *)
+    condition that Some(true) and Some(false) occur atleast once *)
 let arg_coloring (n : int) : bool option list list =
   assert (n >= 2);
   let init = List.init n (fun _ -> None) in
