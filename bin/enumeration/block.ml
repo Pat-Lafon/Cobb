@@ -55,8 +55,8 @@ module type Block_intf = sig
   val to_typed_term : t -> (Nt.t, Nt.t term) typed
   val get_local_ctx : t -> LocalCtx.t
   val get_id : t -> identifier
-  val typing_relation : uctx -> t -> t -> Relations.relation
-  val is_sub_rty : uctx -> t -> t -> bool
+  val typing_relation : t -> t -> Relations.relation
+  val is_sub_rty : t -> t -> bool
 end
 
 module ExistentializedBlock : sig
@@ -82,8 +82,7 @@ end = struct
   let get_id ({ id; _ } : t) : identifier = id
 
   (* In the case of an existentialiszed block, the only thing in context is itself*)
-  let get_local_ctx ({ id; ty } : t) : LocalCtx.t =
-    Typectx.Typectx [ id.x #: ty ]
+  let get_local_ctx ({ id; ty } : t) : LocalCtx.t = Typectx.Typectx [ id.x#:ty ]
 
   (* let new_X (id : identifier) (ty : Nt.t rty) : t = { id; ty } *)
 
@@ -91,7 +90,7 @@ end = struct
     (* Create a target block that we are missing *)
     {
       id =
-        (Rename.unique "missing") #: (erase_rty target_ty)
+        (Rename.unique "missing")#:(erase_rty target_ty)
         |> NameTracking.known_var;
       ty = target_ty;
     }
@@ -100,15 +99,16 @@ end = struct
      NameTracking.known_ast id (id_to_term id);
      { id; ty } *)
 
-  let is_sub_rty (uctx : uctx) ({ ty; _ } : t) ({ ty = ty'; _ } : t) : bool =
-    Relations.is_sub_rty uctx ty ty'
+  let is_sub_rty ({ ty; _ } : t) ({ ty = ty'; _ } : t) : bool =
+    Relations.is_sub_rty (Context.get_global_uctx ()) ty ty'
 
-  let typing_relation (uctx : uctx) ({ id; ty } : t)
-      ({ id = id'; ty = ty' } : t) : Relations.relation =
-    Relations.typed_relation uctx id.x #: ty id'.x #: ty'
+  let typing_relation ({ id; ty } : t) ({ id = id'; ty = ty' } : t) :
+      Relations.relation =
+    let uctx = Context.get_global_uctx () in
+    Relations.typed_relation uctx id.x#:ty id'.x#:ty'
 
   let path_promotion (lc : LocalCtx.t) ({ id; ty } : t) : t =
-    let fresh_id = (Rename.unique id.x) #: id.ty in
+    let fresh_id = (Rename.unique id.x)#:id.ty in
     NameTracking.add_ast fresh_id (NameTracking.get_ast id |> Option.get);
     let fresh_rty = LocalCtx.exists_rtys_to_rty lc ty in
 
@@ -152,13 +152,12 @@ end = struct
     let local_ctx =
       Typectx.to_list lc
       |> List.filter (fun { x; ty } ->
-             if x = id.x then NameTracking.is_known x #: (erase_rty ty)
-             else true)
+             if x = id.x then NameTracking.is_known x#:(erase_rty ty) else true)
     in
     let ext_rty = exists_rtys_to_rty local_ctx ty in
     { id; ty = ext_rty }
 
-  let is_sub_rty (uctx : uctx) (block : t) (block' : t) : bool =
+  let is_sub_rty (block : t) (block' : t) : bool =
     (* let id, target_ty, ctx = block in
        let id', ty, ctx' = block' in *)
     assert (not (LocalCtx.contains_path_cond block.lc));
@@ -177,8 +176,7 @@ end = struct
 
     res
 
-  let typing_relation (uctx : uctx) (target_block : t) (block : t) :
-      Relations.relation =
+  let typing_relation (target_block : t) (block : t) : Relations.relation =
     (* let target_id, target_ty, target_ctx = target_block in
        let id, ty, ctx = block in
     *)
@@ -186,7 +184,7 @@ end = struct
       LocalCtx.contains_path_cond target_block.lc
       || LocalCtx.contains_path_cond block.lc
     then
-      ExistentializedBlock.typing_relation uctx
+      ExistentializedBlock.typing_relation
         (existentialize target_block)
         (existentialize block)
     else
@@ -222,7 +220,8 @@ end = struct
       (fun ( (args : identifier list),
              (acc_context : LocalCtx.t),
              (new_id_list : LocalCtx.mapping list) ) (id : identifier)
-           changed_ctx : (identifier list * LocalCtx.t * LocalCtx.mapping list) ->
+           changed_ctx : (identifier list * LocalCtx.t * LocalCtx.mapping list)
+         ->
         let new_ctx, mapping =
           LocalCtx.local_ctx_union_r acc_context changed_ctx
         in
@@ -461,10 +460,9 @@ let apply (pre_block : PreBlock.t) (filter_type : Nt.t rty option)
              else print_endline "Empty"
          | _ -> ()); *)
       assert (ret_type = erase_rty new_ut.ty);
-      if
-        Option.is_some filter_type && not (List.is_empty promotable_paths)
-        (* TODO: Possible optimization *)
-        (* && (TypeInference.check_filter_type filter_type new_uctx new_ut) *)
+      if Option.is_some filter_type && not (List.is_empty promotable_paths)
+      (* TODO: Possible optimization *)
+      (* && (TypeInference.check_filter_type filter_type new_uctx new_ut) *)
       then (
         print_endline "Has filter so check in branch";
         (None, try_add_paths ()))

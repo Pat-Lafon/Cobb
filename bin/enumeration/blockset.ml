@@ -36,9 +36,7 @@ end = struct
       | Relations.None -> Unknown
       | Relations.Timeout -> Unknown
 
-    let compare (a : el) (b : el) =
-      let uctx = Context.get_global_uctx () in
-      B.typing_relation uctx a b |> relations_to_ord
+    let compare (a : el) (b : el) = B.typing_relation a b |> relations_to_ord
   end
 
   module P = Pomap_impl.Make (BlockOrdering)
@@ -59,8 +57,9 @@ end = struct
                 (B.get_id b |> Tracking.NameTracking.get_term
                |> layout_typed_erased_term)
                 (B.get_id b |> fun { ty; _ } -> Nt.layout ty)
-              (* (NameTracking.get_term id |> layout_typed_erased_term)
-                 (layout_ty id.ty)) *) )
+            (* (NameTracking.get_term id |> layout_typed_erased_term)
+                 (layout_ty id.ty)) *)
+            )
 
         let rotation = 0.
       end)
