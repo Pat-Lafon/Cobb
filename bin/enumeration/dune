@@ -1,6 +1,6 @@
 (library
  (name relation)
- (libraries underapproximation_type.typing timeout)
+ (libraries underapproximation_type.typing timeout context)
  (modules relation)
  (preprocess
   (pps ppx_sexp_conv)))
