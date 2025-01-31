@@ -317,12 +317,6 @@ module PreBlock = struct
         List.iter (LocalCtx.cleanup ~recursive:false) newly_created_ids;
         None
     | Res new_ut ->
-        (* (match component with
-           | Op { x = DtConstructor "SAFETY_Rbtnode"; _ } ->
-               if Subtyping.Subrty.is_nonempty_rty new_uctx new_ut.ty then
-                 print_endline "Nonempty"
-               else print_endline "Empty"
-           | _ -> ()); *)
         (* Handle some really annoying name clashing*)
         let block_id = NameTracking.rename block_id in
         assert (ret_type = erase_rty new_ut.ty);
@@ -460,10 +454,7 @@ let apply (pre_block : PreBlock.t) (filter_type : Nt.t rty option)
              else print_endline "Empty"
          | _ -> ()); *)
       assert (ret_type = erase_rty new_ut.ty);
-      if Option.is_some filter_type && not (List.is_empty promotable_paths)
-      (* TODO: Possible optimization *)
-      (* && (TypeInference.check_filter_type filter_type new_uctx new_ut) *)
-      then (
+      if Option.is_some filter_type && not (List.is_empty promotable_paths) then (
         print_endline "Has filter so check in branch";
         (None, try_add_paths ()))
       else if
