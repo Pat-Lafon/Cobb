@@ -36,3 +36,13 @@ or
 ## Getting the list of axioms as Coq
 
 `dune exec -- bin/main.exe coq-axioms meta-config.json`
+
+## Useful links for Development
+
+### Axiom Profiler
+
+- The actual tool:
+<https://viperproject.github.io/axiom-profiler-2/>
+
+- Some guidance on how to instrument and use:
+<https://github.com/viperproject/axiom-profiler-2>
