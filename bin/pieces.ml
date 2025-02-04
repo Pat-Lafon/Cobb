@@ -20,7 +20,7 @@ let rec typed_term_replace_block_body (t : (_, _ term) typed) replacement_body :
   | CVal _ -> replacement_body
   | CLetE { lhs; rhs; body } ->
       let new_body = typed_term_replace_block_body body replacement_body in
-      (CLetE { lhs; rhs; body = new_body }) #: new_body.ty
+      (CLetE { lhs; rhs; body = new_body })#:new_body.ty
   | CMatch _ | CApp _ | CAppOp _ | CErr ->
       failwith "Unsupported use of typed_term_replace_block_body"
   | CLetDeTu _ ->
@@ -29,9 +29,7 @@ let rec typed_term_replace_block_body (t : (_, _ term) typed) replacement_body :
 module Pieces = struct
   let mk_let_app_const ~(record : bool) (f : identifier)
       (arg : Constant.constant) : identifier * (Nt.t, Nt.t term) typed =
-    let ret : identifier =
-      (Rename.name ()) #: (snd @@ Nt.destruct_arr_tp f.ty)
-    in
+    let ret : identifier = (Rename.name ())#:(snd @@ Nt.destruct_arr_tp f.ty) in
     let app = mk_app (f |> id_to_value) (arg |> constant_to_value) in
     if record then NameTracking.add_ast ret app else ();
     (ret, mk_lete ret app (ret |> id_to_term))
@@ -42,30 +40,28 @@ module Pieces = struct
     let new_ret_ty =
       Nt.destruct_arr_tp f.ty |> fun (l, t) -> Nt.construct_arr_tp (List.tl l, t)
     in
-    let ret : identifier = (Rename.name ()) #: new_ret_ty in
+    let ret : identifier = (Rename.name ())#:new_ret_ty in
     let app = mk_app (f |> id_to_value) (arg |> id_to_value) in
     if record then NameTracking.add_ast ret app else ();
     (ret, mk_lete ret app (ret |> id_to_term))
 
   let mk_let_appops ~(record : bool) (f : (t, Op.op) typed)
       (args : identifier list) : identifier * (Nt.t, Nt.t term) typed =
-    let ret : identifier =
-      (Rename.name ()) #: (snd @@ Nt.destruct_arr_tp f.ty)
-    in
+    let ret : identifier = (Rename.name ())#:(snd @@ Nt.destruct_arr_tp f.ty) in
     let app = mk_appop f (List.map id_to_value args) in
     if record then NameTracking.add_ast ret app else ();
     (ret, mk_lete ret app (ret |> id_to_term))
 
   let mk_let ~(record : bool) (f : identifier) =
-    let ret = (Rename.name ()) #: f.ty in
+    let ret = (Rename.name ())#:f.ty in
     let rhs = f |> id_to_term in
     if record then NameTracking.add_ast ret rhs else ();
     (ret, mk_lete ret rhs (ret |> id_to_term))
 
   let mk_ND_choice (t1 : ('a, 'a term) typed) (t2 : ('a, 'a term) typed) =
     assert (t1.ty = t2.ty);
-    let f = "bool_gen" #: (Nt.Ty_arrow (Nt.Ty_unit, Nt.Ty_bool)) in
-    let ret = (Rename.name ()) #: (snd @@ Nt.destruct_arr_tp f.ty) in
+    let f = "bool_gen"#:(Nt.Ty_arrow (Nt.Ty_unit, Nt.Ty_bool)) in
+    let ret = (Rename.name ())#:(snd @@ Nt.destruct_arr_tp f.ty) in
     let arg = Constant.U |> constant_to_value in
     let app = mk_app (f |> id_to_value) arg in
     NameTracking.add_ast ret app;
@@ -76,12 +72,11 @@ module Pieces = struct
            match_cases =
              [
                CMatchcase
-                 { constructor = "True" #: Nt.Ty_bool; args = []; exp = t1 };
+                 { constructor = "True"#:Nt.Ty_bool; args = []; exp = t1 };
                CMatchcase
-                 { constructor = "False" #: Nt.Ty_bool; args = []; exp = t2 };
+                 { constructor = "False"#:Nt.Ty_bool; args = []; exp = t2 };
              ];
-         })
-      #: t1.ty
+         })#:t1.ty
     in
     mk_lete ret app body
 
@@ -124,13 +119,11 @@ module Pieces = struct
       !Typing.Termcheck._cur_rec_func_name
 
   let layout_component (c : component) : string =
-    match c with
-    | Fun f -> f.x
-    | Op op -> op.x |> Op.sexp_of_op |> Core.Sexp.to_string_hum
+    match c with Fun f -> f.x | Op op -> Op.op_name_for_typectx op.x
 
   let string_to_component (s : identifier) : component =
-    if Op.is_builtin_op s.x then Op (Op.PrimOp s.x) #: s.ty
-    else if Op.is_dt_op s.x then Op (Op.DtConstructor s.x) #: s.ty
+    if Op.is_builtin_op s.x then Op (Op.PrimOp s.x)#:s.ty
+    else if Op.is_dt_op s.x then Op (Op.DtConstructor s.x)#:s.ty
     else Fun s
 
   let mk_app (f_id : identifier) (args : identifier list) _ :
@@ -166,7 +159,7 @@ module Pieces = struct
     let renamed_ty =
       List.fold_left
         (fun t { x = name; ty } ->
-          if NameTracking.is_known name #: ty then t
+          if NameTracking.is_known name#:ty then t
           else
             let new_name =
               match Hashtbl.find_opt ht name with
@@ -185,9 +178,8 @@ module Pieces = struct
   type new_seed = block_record
 
   let selfification (x : string) (nt : t) =
-    let new_name = (Rename.name ()) #: nt in
-    NameTracking.known_ast new_name
-      (id_to_term (NameTracking.known_var x #: nt));
+    let new_name = (Rename.name ())#:nt in
+    NameTracking.known_ast new_name (id_to_term (NameTracking.known_var x#:nt));
     let new_rty_type =
       Rty.RtyBase
         {
@@ -199,11 +191,9 @@ module Pieces = struct
                 phi =
                   Prop.Lit
                     (Lit.AAppOp
-                       ( "==" #: (Nt.Ty_arrow (nt, Nt.Ty_arrow (nt, Nt.Ty_bool))),
-                         [
-                           (Lit.AVar "v" #: nt) #: nt; (Lit.AVar x #: nt) #: nt;
-                         ] ))
-                    #: Nt.Ty_bool;
+                       ( "=="#:(Nt.Ty_arrow (nt, Nt.Ty_arrow (nt, Nt.Ty_bool))),
+                         [ (Lit.AVar "v"#:nt)#:nt; (Lit.AVar x#:nt)#:nt ] ))#:Nt
+                                                                              .Ty_bool;
               };
         }
     in
@@ -211,7 +201,7 @@ module Pieces = struct
       {
         id = new_name;
         ty = new_rty_type;
-        lc = Typectx [ new_name.x #: new_rty_type ];
+        lc = Typectx [ new_name.x#:new_rty_type ];
         cost = arg_cost;
       }
     in
@@ -241,7 +231,7 @@ module Pieces = struct
             { argcty = Cty { nty = Nt.Ty_unit; _ }; retty = RtyBase _; _ } ->
             failwith "components_from_args::RtyBaseArr::unreachable"
         | RtyBaseArr _ ->
-            let id = x #: nt |> NameTracking.known_var in
+            let id = x#:nt |> NameTracking.known_var in
             let new_component : component * (t list * t) =
               (string_to_component id, nt |> Nt.destruct_arr_tp)
             in
@@ -259,16 +249,16 @@ module Pieces = struct
           let nt = erase_rty ty in
           match ty with
           | RtyBase _ ->
-              NameTracking.known_ast x #: nt
-                (mk_appop (Op.DtConstructor x) #: nt []);
-              let name, _ = mk_let ~record:false x #: nt in
-              NameTracking.known_ast name (x #: nt |> id_to_term);
+              NameTracking.known_ast x#:nt
+                (mk_appop (Op.DtConstructor x)#:nt []);
+              let name, _ = mk_let ~record:false x#:nt in
+              NameTracking.known_ast name (x#:nt |> id_to_term);
               (* ?? *)
               let new_seed : new_seed =
                 {
                   id = name;
                   ty;
-                  lc = Typectx [ name.x #: ty ];
+                  lc = Typectx [ name.x#:ty ];
                   cost = seed_cost nt;
                 }
               in
@@ -282,12 +272,12 @@ module Pieces = struct
               assert (
                 phi = Prop.Lit { x = Lit.AC (Constant.B true); ty = Nt.Ty_bool });
               let nt_ty = erase_rty retty in
-              let name, _ = mk_let_app_const ~record:true x #: nt Constant.U in
+              let name, _ = mk_let_app_const ~record:true x#:nt Constant.U in
               let new_seed : new_seed =
                 {
                   id = name;
                   ty = retty;
-                  lc = Typectx [ name.x #: retty ];
+                  lc = Typectx [ name.x#:retty ];
                   cost = base_gen_cost;
                 }
               in
@@ -295,7 +285,7 @@ module Pieces = struct
               (new_seed :: seeds, components)
           | RtyBaseArr _ ->
               let new_component : component * (t list * t) =
-                ( string_to_component (x #: nt |> NameTracking.known_var),
+                ( string_to_component (x#:nt |> NameTracking.known_var),
                   nt |> Nt.destruct_arr_tp )
               in
               (seeds, new_component :: components)
