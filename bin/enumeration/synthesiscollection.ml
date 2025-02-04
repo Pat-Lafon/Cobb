@@ -376,40 +376,96 @@ module PrioritySynthesisCollection = struct
         f acc bset)
       t.path_specific acc
 
+  type block_map_rep = (* BlockRef of Block.t *  *) Block.t (* list *)
+
+  let generalize_representative (b_list : Block.t list) : block_map_rep list =
+    print_newline ();
+    print_newline ();
+
+    List.iter
+      (fun b ->
+        let b = { b with lc = b.lc |> LocalCtx.remove_duplicates } in
+
+        Block.layout b |> print_endline)
+      b_list;
+
+    (* failwith "unimplemented" *)
+    b_list
+
+  let new_blocks_get_rep_or_nah (b_list : Block.t list)
+      (target_block : ExistentializedBlock.t) :
+      Block.t list * block_map_rep list =
+    if List.length b_list <= 2 then (b_list, [])
+    else
+      let f, s =
+        List.partition
+          (fun b ->
+            let res =
+              ExistentializedBlock.typing_relation (Block.existentialize b)
+                target_block
+            in
+            assert (res != Relation.Relations.Timeout);
+            (* TODO: Can optimize this with short circuiting *)
+            res != Relation.Relations.None)
+          b_list
+      in
+      if List.length s <= 2 then (b_list, [])
+      else (f, generalize_representative s)
+
   let increment_by_path (lc : LocalCtx.t)
       ((pmap, bmap) : PriorityBBMap.t * BlockMap.t)
       ((component, (args_nty, ret_ty)) : Pieces.component * (Nt.t list * Nt.t))
-      (cost : int) : PriorityBBMap.t * BlockMap.t =
+      (cost : int) (target_block : ExistentializedBlock.t) :
+      PriorityBBMap.t * BlockMap.t =
     print_endline ("Incrementing with op in path:\n" ^ LocalCtx.layout lc);
     let component_cost = Pieces.component_cost component in
     let possible_args =
       PriorityBBMap.get_args pmap (cost - component_cost) args_nty
     in
 
-    let bmap =
-      List.fold_left
-        (fun bmap args ->
+    let newly_created_terms =
+      List.filter_map
+        (fun args ->
           let pb = PreBlock.create component args ret_ty in
 
-          print_endline "New PreBlock";
-          print_endline (PreBlock.layout pb);
+          if Option.is_some (PreBlock.additional_cost_from_diversity_penalty pb)
+          then (
+            print_endline "Diversity Penalty";
+            PreBlock.layout pb |> print_endline;
+            (* TODO: Lets do something better here *)
+            None)
+          else (
+            print_endline "New PreBlock";
+            print_endline (PreBlock.layout pb);
 
-          let new_block = PreBlock.apply pb in
+            let new_block = PreBlock.apply pb in
 
-          match new_block with
-          | None -> bmap
-          | Some b ->
-              let size = BlockMap.size bmap in
-              let bmap = BlockMap.add bmap b in
-              if size = BlockMap.size bmap then ()
-              else (
-                print_endline "New Block Added";
-                print_endline (Block.layout b);
-                PriorityBBMap.add pmap b);
-              ();
-              bmap)
-        bmap possible_args
+            new_block))
+        possible_args
     in
+
+    let just_blocks, reps =
+      new_blocks_get_rep_or_nah newly_created_terms target_block
+    in
+
+    let bmap =
+      List.fold_left
+        (fun bmap b ->
+          let size = BlockMap.size bmap in
+          let bmap = BlockMap.add bmap b in
+          if size = BlockMap.size bmap then ()
+          else (
+            print_endline "New Block Added";
+            print_endline (Block.layout b);
+            PriorityBBMap.add pmap b);
+          ();
+          bmap)
+        bmap just_blocks
+    in
+
+    (* Just arbitrarily add them, TODO: We can do something better here *)
+    List.iter (fun b -> PriorityBBMap.add pmap b) reps;
+
     (pmap, bmap)
 
   let increment_by_component ({ path_specific } : t)
@@ -418,7 +474,7 @@ module PrioritySynthesisCollection = struct
       ("Incrementing with op: " ^ Pieces.layout_component (fst component));
     Hashtbl.iter
       (fun lc (pty, p, b) ->
-        let pmap, bmap = increment_by_path lc (p, b) component cost in
+        let pmap, bmap = increment_by_path lc (p, b) component cost pty in
         Hashtbl.replace path_specific lc (pty, pmap, bmap))
       path_specific
 end
