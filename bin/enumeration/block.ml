@@ -282,6 +282,13 @@ module PreBlock = struct
 
     { cost; component; args; ret_type }
 
+  let additional_cost_from_diversity_penalty (t : t) : int option =
+    let current_component = t.component |> Pieces.layout_component in
+    List.find_opt
+      (fun b -> NameTracking.term_contains_component b.id current_component)
+      t.args
+    |> Option.map (fun _ -> t.cost * 2)
+
   let apply (pre_block : t) : Block.t option =
     (* Correct joining of contexts? *)
     let ( (arg_names : identifier list),
