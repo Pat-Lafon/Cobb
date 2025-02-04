@@ -117,6 +117,7 @@ end = struct
         let relation_result =
           typed_relation uctx x #: arg_t block_id.x #: new_ut
         in
+        (* TODO: Make this lazy/short-circuiting*)
         Equiv = relation_result)
       arg_names
 end
