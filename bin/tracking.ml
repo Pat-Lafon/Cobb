@@ -152,13 +152,13 @@ module NameTracking = struct
         in
         let new_name = Hashtbl.find ht x in
         assert (new_name.ty = Rty.erase_rty renamed_ty);
-        new_name.x #: renamed_ty)
+        new_name.x#:renamed_ty)
       ctx
 
   let rename (id : identifier) : identifier =
     if is_known id then id
     else
-      let new_name = (Rename.unique id.x) #: id.ty in
+      let new_name = (Rename.unique id.x)#:id.ty in
       assert (not (Hashtbl.mem asts new_name));
       let () =
         match get_ast id with
@@ -175,12 +175,12 @@ module NameTracking = struct
 
     let maybe_freshen_one (name_rty : (t rty, string) typed) :
         (t rty, string) typed =
-      let name = name_rty #=> erase_rty in
+      let name = name_rty#=>erase_rty in
       if is_known name then (
         Hashtbl.replace ht name.x name;
         name_rty)
       else
-        let new_name = (Rename.unique name.x) #: name.ty in
+        let new_name = (Rename.unique name.x)#:name.ty in
         let () =
           match get_ast name with
           | None -> failwith name.x
@@ -188,10 +188,37 @@ module NameTracking = struct
         in
         assert (not (Hashtbl.mem ht name.x));
         Hashtbl.replace ht name.x new_name;
-        new_name.x #: name_rty.ty
+        new_name.x#:name_rty.ty
     in
     let _ = Typectx.map_ctx_typed maybe_freshen_one ctx in
 
     let res = ctx_subst ctx ht in
     (res, ht)
+
+  (* TODO: I use a string here because I don't want to create a cycle between
+    tracking and Pieces *)
+  let rec term_contains_component (a : identifier) (c : string) : bool =
+    match Hashtbl.find_opt asts a with
+    | None -> false
+    | Some x -> (
+        match x.x with
+        | CVal { x = _; _ } -> false
+        | CApp { appf = { x = VVar f; _ }; apparg } -> (
+            String.equal f.x c
+            ||
+            match apparg.x with
+            | VConst _ -> false
+            | VVar v -> term_contains_component v c
+            | _ ->
+                print_endline (layout_typed_value apparg);
+                failwith "I don't think I should hit that?")
+        | CAppOp { op; appopargs } ->
+            Op.op_name_for_typectx op.x |> String.equal c
+            || List.exists
+                 (fun x ->
+                   match x.x with
+                   | VVar v -> term_contains_component v c
+                   | _ -> failwith "I don't think I should hit this")
+                 appopargs
+        | _ -> failwith "I don't think")
 end
