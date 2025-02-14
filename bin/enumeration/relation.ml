@@ -24,7 +24,7 @@ module Relations : sig
   val check_coverage_with_args :
     uctx -> identifier -> t rty -> identifier list -> bool
 
-  val check_cache : string -> string -> relation option
+  val check_cache : string -> string -> bool option
   val assert_string_not_in_cache : string -> unit
   val clear_cache : unit -> unit
 end = struct
@@ -41,18 +41,19 @@ end = struct
     | Timeout -> Timeout
 
   module RelationCache = struct
-    type t = (string * string, relation) Hashtbl.t
+    type t = (string * string, bool) Hashtbl.t
 
     let cache : t = Hashtbl.create 10000
     let reset_cache () = Hashtbl.clear cache
 
-    let add (l : string) (r : string) (rel : relation) : unit =
-      Hashtbl.add cache (l, r) rel
+    let add (l : string) (r : string) (is_sub : bool) : unit =
+      Hashtbl.add cache (l, r) is_sub
 
-    let check (l : string) (r : string) : relation option =
-      match Hashtbl.find_opt cache (l, r) with
+    let check (l : string) (r : string) : bool option =
+      Hashtbl.find_opt cache (l, r)
+    (* match Hashtbl.find_opt cache (l, r) with
       | Some r -> Some r
-      | None -> Hashtbl.find_opt cache (r, l) |> Option.map invert_relation
+      | None -> Hashtbl.find_opt cache (r, l) |> Option.map invert_relation *)
   end
 
   let is_equiv_or_timeout (r : relation) : bool =
@@ -77,6 +78,22 @@ end = struct
       let res = Timeout.sub_rty_bool_or_timeout uctx (l, r) in
       match res with Result true -> true | _ -> false
 
+  let is_sub_id_rty uctx (id : (t rty, string) typed) target_id =
+    if id.x = target_id.x then true
+    else if diff_base_type id.ty target_id.ty then false
+    else
+      match check_cache id.x target_id.x with
+      | Some r -> r
+      | None ->
+          let res =
+            let x =
+              Timeout.sub_rty_bool_or_timeout uctx (id.ty, target_id.ty)
+            in
+            Timeout.timeout_eq (x, Timeout.Result true)
+          in
+          RelationCache.add id.x target_id.x res;
+          res
+
   (* TODO: Where can this be replaced with cache access?*)
   let typing_relation ctx target_ty ty =
     if diff_base_type target_ty ty then None
@@ -100,24 +117,29 @@ end = struct
       | _, Result true -> ImpliedByTarget
       | _ -> None
 
-  let typed_relation ctx target_id id =
-    match check_cache target_id.x id.x with
-    | Some r -> r
-    | None ->
-        let target_ty = target_id.ty in
-        let ty = id.ty in
-        let res = typing_relation ctx target_ty ty in
-        RelationCache.add target_id.x id.x res;
-        res
+  let typed_relation ctx target_id id : relation =
+    if diff_base_type target_id.ty id.ty then None
+    else
+      let implies_target = is_sub_id_rty ctx id target_id in
+      let implied_by_target = is_sub_id_rty ctx target_id id in
+      match (implies_target, implied_by_target) with
+      | true, true -> Equiv
+      | true, false -> ImpliesTarget
+      | false, true -> ImpliedByTarget
+      | false, false -> None
 
-  let check_coverage_with_args uctx block_id new_ut arg_names : bool =
+  let check_coverage_with_args uctx (block_id : identifier) new_ut arg_names :
+      bool =
     List.exists
       (fun ({ x; _ } : identifier) ->
         let arg_t = FrontendTyped.get_opt uctx x |> Option.get in
-        let relation_result =
+
+        if not (is_sub_id_rty uctx x#:arg_t block_id.x#:new_ut) then false
+        else is_sub_id_rty uctx block_id.x#:new_ut x#:arg_t
+        (*  let relation_result =
           typed_relation uctx x #: arg_t block_id.x #: new_ut
         in
         (* TODO: Make this lazy/short-circuiting*)
-        Equiv = relation_result)
+        Equiv = relation_result *))
       arg_names
 end

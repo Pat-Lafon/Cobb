@@ -86,8 +86,9 @@ let get_synth_config_values meta_config_file : config =
     |> Option.value ~default:false
   in
 
-  assert (abd_rlimit >= syn_rlimit);
-
+  (*
+I found this assertion doesn't scale as well given more complex repairs to synthesize
+assert (abd_rlimit >= syn_rlimit); *)
   let comp_path =
     Filename.concat (Filename.dirname meta_config_file) comp_path
   in
@@ -108,6 +109,10 @@ let get_synth_config_values meta_config_file : config =
   }
 
 let set_z3_rlimit rlimit =
+  (* HACK: Z3 ocaml bindings don't let be get the parameter from the context...
+  only update it*)
+  (* TODO: check if this is a version issue or submit a pr?*)
+  Backend.Check.rlimit := rlimit;
   Z3.Params.update_param_value Backend.Smtquery.ctx "rlimit"
     (string_of_int rlimit)
 
@@ -148,7 +153,7 @@ let abduce_or_provide_missing (config : config) (source_file : string)
       let missing_coverage =
         Commands.Cre.type_infer_inner meta_config_file source_file ()
       in
-      let abd_time = Sys.time () -. start_time in
+      let abd_time = Unix.gettimeofday () -. start_time in
       (missing_coverage, abd_time))
   in
   (missing_coverage, abd_time)
@@ -158,13 +163,13 @@ let abduce_benchmark source_file meta_config_file =
 
   set_z3_rlimit config.abd_rlimit;
 
-  let start_time = Sys.time () in
+  let start_time = Unix.gettimeofday () in
 
   (* let missing_coverage =
        Commands.Cre.type_infer_inner meta_config_file source_file ()
      in
 
-     let abd_time = Sys.time () -. start_time in
+     let abd_time = Unix.gettimeofday () -. start_time in
   *)
   let missing_coverage, abd_time =
     abduce_or_provide_missing config source_file meta_config_file start_time
@@ -194,7 +199,7 @@ let localize_benchmark source_file meta_config_file =
 
   set_z3_rlimit config.abd_rlimit;
 
-  let start_time = Sys.time () in
+  let start_time = Unix.gettimeofday () in
 
   (* let missing_coverage =
        Commands.Cre.type_infer_inner meta_config_file source_file ()
@@ -225,7 +230,7 @@ let localize_benchmark source_file meta_config_file =
 let synthesis_benchmark source_file meta_config_file =
   let config = get_synth_config_values meta_config_file in
 
-  let start_time = Sys.time () in
+  let start_time = Unix.gettimeofday () in
 
   (* let missing_coverage, abd_time =
        if config.use_missing_coverage_file then (
@@ -258,7 +263,7 @@ let synthesis_benchmark source_file meta_config_file =
          let missing_coverage =
            Commands.Cre.type_infer_inner meta_config_file source_file ()
          in
-         let abd_time = Sys.time () -. start_time in
+         let abd_time = Unix.gettimeofday () -. start_time in
          (missing_coverage, abd_time))
      in *)
   let missing_coverage, abd_time =
@@ -273,7 +278,7 @@ let synthesis_benchmark source_file meta_config_file =
 
   set_z3_rlimit config.type_rlimit;
 
-  let synth_start_time = Sys.time () in
+  let synth_start_time = Unix.gettimeofday () in
 
   let collection_file = source_file ^ config.collect_ext in
 
@@ -383,7 +388,7 @@ let synthesis_benchmark source_file meta_config_file =
   print_endline ("New_body :\n" ^ layout_typed_term new_body);
 
   (*   print_endline ("Return Type: \n" ^ layout_rty retty); *)
-  let synth_time = Sys.time () -. synth_start_time in
+  let synth_time = Unix.gettimeofday () -. synth_start_time in
 
   set_z3_rlimit config.type_rlimit;
 
@@ -392,7 +397,7 @@ let synthesis_benchmark source_file meta_config_file =
   in
   if not result then failwith "Failed to type check result";
 
-  let total_time = Sys.time () -. start_time in
+  let total_time = Unix.gettimeofday () -. start_time in
 
   let synthesized_program =
     final_program_to_string reconstruct_code_with_new_body new_body
@@ -421,8 +426,8 @@ let synthesis_benchmark source_file meta_config_file =
 
   print_endline "Finished Synthesis"
 
-(** Benchmarks can be provided as a command line argument
-  * Default is "sizedlist" *)
+(** Benchmarks can be provided as a command line argument * Default is
+    "sizedlist" *)
 let regular_file =
   Command.Arg_type.create (fun filename ->
       match Sys_unix.is_file filename with

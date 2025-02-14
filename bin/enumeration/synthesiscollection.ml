@@ -401,15 +401,16 @@ module PrioritySynthesisCollection = struct
         List.partition
           (fun b ->
             let res =
-              ExistentializedBlock.typing_relation (Block.existentialize b)
-                target_block
+              ExistentializedBlock.is_sub_rty target_block
+                (Block.existentialize b)
             in
-            assert (res != Relation.Relations.Timeout);
-            (* TODO: Can optimize this with short circuiting *)
-            res != Relation.Relations.None)
+            print_endline (b.id.x ^ ": " ^ string_of_bool res);
+            res)
           b_list
       in
-      if List.length s <= 2 then (b_list, [])
+      if List.length s <= 2 then (
+        failwith "do I hit this lol";
+        (b_list, []))
       else (f, generalize_representative s)
 
   let increment_by_path (lc : LocalCtx.t)
