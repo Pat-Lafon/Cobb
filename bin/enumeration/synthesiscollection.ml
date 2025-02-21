@@ -401,8 +401,8 @@ module PrioritySynthesisCollection = struct
         List.partition
           (fun b ->
             let res =
-              ExistentializedBlock.is_sub_rty target_block
-                (Block.existentialize b)
+              ExistentializedBlock.is_sub_rty (Block.existentialize b)
+                target_block
             in
             print_endline (b.id.x ^ ": " ^ string_of_bool res);
             res)
