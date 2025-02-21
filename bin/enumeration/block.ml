@@ -300,6 +300,8 @@ module PreBlock = struct
       Block.combine_all_args pre_block.args
     in
 
+    let joined_ctx = LocalCtx.remove_duplicates joined_ctx in
+
     let cost = pre_block.cost in
     let ret_type = pre_block.ret_type in
     let block_id, term = Pieces.apply pre_block.component arg_names in
