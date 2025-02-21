@@ -15,6 +15,9 @@ module Relations : sig
   (* TODO: comment this line out so everyone needs to use cache*)
   val is_sub_rty : uctx -> t rty -> t rty -> bool
 
+  val is_sub_id_rty :
+    uctx -> (t rty, string) typed -> (t rty, string) typed -> bool
+
   (* todo: comment this line out so everyone needs to use cache *)
   val typing_relation : uctx -> t rty -> t rty -> relation
 

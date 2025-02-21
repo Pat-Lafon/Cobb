@@ -99,8 +99,10 @@ end = struct
      NameTracking.known_ast id (id_to_term id);
      { id; ty } *)
 
-  let is_sub_rty ({ ty; _ } : t) ({ ty = ty'; _ } : t) : bool =
-    Relations.is_sub_rty (Context.get_global_uctx ()) ty ty'
+  let is_sub_rty (t : t) (t' : t) : bool =
+    let ty = t.id.x#:t.ty in
+    let ty' = t'.id.x#:t'.ty in
+    Relations.is_sub_id_rty (Context.get_global_uctx ()) ty ty'
 
   let typing_relation ({ id; ty } : t) ({ id = id'; ty = ty' } : t) :
       Relations.relation =
