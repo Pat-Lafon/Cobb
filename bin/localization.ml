@@ -27,15 +27,14 @@ let type_to_generator_mapping : (Nt.t * string) list =
     (ty_stlc_term, "hidden_stlc_term_gen");
   ]
 
-let term_bot (base_ty : Nt.t) : _ Mtyped.typed = Term.CErr #: base_ty
+let term_bot (base_ty : Nt.t) : _ Mtyped.typed = Term.CErr#:base_ty
 
 let term_top (base_ty : Nt.t) : _ Mtyped.typed =
   (*   let ret = (Rename.name ()) #: base_ty in *)
   let unit_value = Constant.U |> constant_to_value in
   (* let unit_name = (Rename.name ()) #: Ty_unit in *)
   let f =
-    (List.assoc base_ty type_to_generator_mapping)
-    #: (Ty_arrow (Ty_unit, base_ty))
+    (List.assoc base_ty type_to_generator_mapping)#:(Ty_arrow (Ty_unit, base_ty))
   in
   (*  let _, gen_app = Pieces.mk_let_app f unit_name in
   *)
@@ -66,7 +65,7 @@ let not_map_base_triple f (t, b, c) =
   if is_base_bot t || is_base_top t then (t, [], c) else (f t, b, c)
 
 (** if the thing is not top/bot, then apply f and add local_vars, else return
-  top/bot and no vars *)
+    top/bot and no vars *)
 let exn_map (f : _ -> _) (local_vars : _ list) (v : _ exn_variations) :
     _ exn_variations =
   assert (v.other != []);
@@ -126,7 +125,7 @@ let exn_map_list_match (f : 'a Term.match_case list -> 'b)
                 {
                   constructor;
                   args;
-                  exp = Pieces.mk_ND_choice exp (c #: exp.ty |> id_to_term);
+                  exp = Pieces.mk_ND_choice exp (c#:exp.ty |> id_to_term);
                 }
           | CMatchcase { constructor; args; exp } ->
               CMatchcase { constructor; args; exp } ))
@@ -147,10 +146,7 @@ let exn_map_list_match (f : 'a Term.match_case list -> 'b)
 let promote_true_rty (x : (t, string) typed) : (t rty, string) typed =
   x #=> (fun nty ->
   RtyBase
-    {
-      ou = false;
-      cty = Cty { nty; phi = Prop.Lit (Lit.AC (B true)) #: Ty_bool };
-    })
+    { ou = false; cty = Cty { nty; phi = Prop.Lit (Lit.AC (B true))#:Ty_bool } })
 
 let rec term_exnify (body : (t, t term) typed) : (t, _) typed exn_variations =
   match body.x with
@@ -183,12 +179,12 @@ let rec term_exnify (body : (t, t term) typed) : (t, _) typed exn_variations =
       term_exnify body
       |> exn_map
            (fun (x : (t, t term) typed) : (t, t term) typed ->
-             (CLetE { lhs; rhs; body = x }) #: body.ty)
+             (CLetE { lhs; rhs; body = x })#:body.ty)
            [ promote_true_rty lhs ]
   | CLetDeTu { turhs; tulhs; body } ->
       term_exnify body
       |> exn_map
-           (fun x -> (CLetDeTu { turhs; tulhs; body = x }) #: body.ty)
+           (fun x -> (CLetDeTu { turhs; tulhs; body = x })#:body.ty)
            (List.map promote_true_rty tulhs)
   | CMatch { matched; match_cases } ->
       let exn_cases = List.map case_exnify match_cases in
@@ -212,7 +208,7 @@ and case_exnify (CMatchcase { constructor; args; exp } : _ match_case) :
   }
 
 let mk_path_var (phi : _ Prop.prop) : (t rty, string) typed =
-  let path_name = (Rename.unique path_condition_prefix) #: Ty_unit in
+  let path_name = (Rename.unique path_condition_prefix)#:Ty_unit in
   (path_name |> NameTracking.known_var) #=> (fun l ->
   RtyBase { ou = false; cty = Cty { nty = Nt.Ty_unit; phi } })
 
