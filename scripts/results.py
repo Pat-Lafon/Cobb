@@ -14,6 +14,9 @@ results_file_regex = r"prog[0-9]+\.ml.result.csv$"
 if __name__ == "__main__":
     evaluation_stats = []
     for benchmark_dir in os.listdir(working_dir):
+        if "stlc" in benchmark_dir:
+            continue
+
         b_path = "{}/{}".format(working_dir, benchmark_dir)
         benchmark_stats = []
         if os.path.isdir(b_path):
