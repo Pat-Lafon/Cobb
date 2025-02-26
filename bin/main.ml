@@ -382,7 +382,7 @@ let synthesis_benchmark source_file meta_config_file =
                  acc)
          raw_body
     |> Raw_term_to_anf.normalize_term |> remove_excess_ast_aux
-    |> remove_excess_ast_aux |> remove_underscores_in_variable_names_typed
+    |> remove_underscores_in_variable_names_typed
   in
 
   print_endline ("New_body :\n" ^ layout_typed_term new_body);
