@@ -9,6 +9,8 @@ open Language
 open Block
 open Blockqueue
 
+let max_cost_ref = ref 0
+
 module SynthesisCollection = struct
   type t = {
     general_coll : BlockCollection.t;
@@ -465,7 +467,8 @@ module PrioritySynthesisCollection = struct
     in
 
     (* Just arbitrarily add them, TODO: We can do something better here *)
-    List.iter (fun b -> PriorityBBMap.add pmap b) reps;
+    if !max_cost_ref - 10 >= cost then
+      List.iter (fun b -> PriorityBBMap.add pmap b) reps;
 
     (pmap, bmap)
 

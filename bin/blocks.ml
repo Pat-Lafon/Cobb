@@ -42,19 +42,18 @@ let _num_target_blocks (collection : PrioritySynthesisCollection.t)
     (fun acc bset -> acc + BlockSet.size bset)
 
 module PrioritySynthesis = struct
-  let rec synthesis_helper (target_type : rty) (max_cost : int)
-      (current_cost : int)
+  let rec synthesis_helper (target_type : rty) (current_cost : int)
       (*      (priority_queue : PathPriorityQueue.t) *)
         (collection : PrioritySynthesisCollection.t)
       (operations : (Pieces.component * (t list * t)) list)
       (collection_file : string) (acc : (LocalCtx.t * _) list) :
       (LocalCtx.t * _) list =
-    if max_cost < current_cost then failwith "Max cost exceeded"
+    if !max_cost_ref < current_cost then failwith "Max cost exceeded"
     else print_endline "Current Collection";
-    PrioritySynthesisCollection.print collection;
-    Core.Out_channel.write_all collection_file
-      ~data:(PrioritySynthesisCollection.layout collection);
 
+    (*     PrioritySynthesisCollection.print collection;
+    Core.Out_channel.write_all collection_file
+      ~data:(PrioritySynthesisCollection.layout collection); *)
     let current_target_amount = _num_target_blocks collection target_type in
 
     print_endline
@@ -91,8 +90,8 @@ module PrioritySynthesis = struct
     then acc
     else
       let enumeration_result =
-        synthesis_helper target_type max_cost (current_cost + 1) collection
-          operations collection_file acc
+        synthesis_helper target_type (current_cost + 1) collection operations
+          collection_file acc
       in
       enumeration_result
 
@@ -104,6 +103,8 @@ module PrioritySynthesis = struct
     let inital_seeds =
       PrioritySynthesisCollection.from_synth_coll inital_seeds target_type
     in
+
+    max_cost_ref := max_cost;
 
     print_endline "Initial seeds";
     PrioritySynthesisCollection.print inital_seeds;
@@ -123,7 +124,7 @@ module PrioritySynthesis = struct
             PathPriorityQueue.init
               (Hashtbl.to_seq_keys inital_seeds.path_specific |> Seq.length)
           in *)
-       synthesis_helper target_type max_cost 4 (* priority_queue *) inital_seeds
+       synthesis_helper target_type 4 (* priority_queue *) inital_seeds
          operations collection_file paths_finished_by_seeds)
     |> List.map (fun (lc, b) -> (lc, ExistentializedBlock.to_typed_term b))
     |> group_by (fun (x, y) -> x)
