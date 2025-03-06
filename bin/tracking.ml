@@ -202,7 +202,11 @@ module NameTracking = struct
     | None -> false
     | Some x -> (
         match x.x with
-        | CVal { x = _; _ } -> false
+        | CVal { x = VVar v; _ } ->
+            if not (String.equal v.x a.x) then (
+              print_endline "hit";
+              term_contains_component v c)
+            else false
         | CApp { appf = { x = VVar f; _ }; apparg } -> (
             String.equal f.x c
             ||
