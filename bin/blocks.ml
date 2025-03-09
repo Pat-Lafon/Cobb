@@ -97,12 +97,9 @@ module PrioritySynthesis = struct
 
   (* todo is max_cost even necessary anymore??*)
   let synthesis (target_type : rty) (max_cost : int)
-      (inital_seeds : SynthesisCollection.t)
+      (inital_seeds : PrioritySynthesisCollection.t)
       (operations : (Pieces.component * (t list * t)) list)
       (collection_file : string) : (LocalCtx.t * (t, t term) typed list) list =
-    let inital_seeds =
-      PrioritySynthesisCollection.from_synth_coll inital_seeds target_type
-    in
 
     max_cost_ref := max_cost;
 

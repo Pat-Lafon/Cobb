@@ -17,6 +17,7 @@ type config = {
   abd_ext : string;
   syn_ext : string;
   syn_rlimit : int;
+  syn_timeout : int option;
   abd_rlimit : int;
   type_rlimit : int;
   use_missing_coverage_file : bool;
@@ -28,6 +29,8 @@ type benchmark_results = {
   synth_result : bool option;
   bound : int option;
   num_localized_paths : int option;
+  num_terms_considered : int option;
+  repair_size : int option;
   resource_limit : int option;
   queries : int option;
   abd_time : float option;
@@ -40,6 +43,8 @@ let new_benchmark_results () =
     synth_result = None;
     bound = None;
     num_localized_paths = None;
+    num_terms_considered = None;
+    repair_size = None;
     resource_limit = None;
     queries = None;
     abd_time = None;
@@ -47,20 +52,36 @@ let new_benchmark_results () =
     total_time = None;
   }
 
-let write_results_to_file results_file results =
+let write_results_to_file results_file
+    {
+      synth_result;
+      bound;
+      resource_limit;
+      queries;
+      abd_time;
+      synth_time;
+      total_time;
+      num_terms_considered;
+      num_localized_paths;
+      repair_size;
+    } =
   let default_str to_str x = Option.fold x ~some:to_str ~none:"" in
 
   let results_csv_contents =
     Printf.sprintf
-      "Result, Bounds, Resource Limit, Queries, Abd Time, Synth Time, Total Time\n\
-       %s, %s, %s, %s, %s, %s, %s"
-      (default_str string_of_bool results.synth_result)
-      (default_str string_of_int results.bound)
-      (default_str string_of_int results.resource_limit)
-      (default_str string_of_int results.queries)
-      (default_str (Printf.sprintf "%.2f") results.abd_time)
-      (default_str (Printf.sprintf "%.2f") results.synth_time)
-      (default_str (Printf.sprintf "%.2f") results.total_time)
+      "Result, Bounds, Resource Limit, Queries, #Terms, #Paths, Repair Size, \
+       Abd Time, Synth Time, Total Time\n\
+       %s, %s, %s, %s, %s, %s, %s, %s, %s, %s"
+      (default_str string_of_bool synth_result)
+      (default_str string_of_int bound)
+      (default_str string_of_int resource_limit)
+      (default_str string_of_int queries)
+      (default_str string_of_int num_terms_considered)
+      (default_str string_of_int num_localized_paths)
+      (default_str string_of_int repair_size)
+      (default_str (Printf.sprintf "%.2f") abd_time)
+      (default_str (Printf.sprintf "%.2f") synth_time)
+      (default_str (Printf.sprintf "%.2f") total_time)
   in
   Core.Out_channel.write_all results_file ~data:results_csv_contents
 
@@ -69,12 +90,11 @@ let get_synth_config_values meta_config_file : config =
   let open Yojson.Basic.Util in
   let metaj = load_json meta_config_file in
   let bound = metaj |> member "synth_bound" |> to_int in
-  let timeout = metaj |> member "synth_timeout" |> to_string_option in
-  assert (timeout = None);
   let res_ext = metaj |> member "resfile" |> to_string in
   let abd_ext = metaj |> member "abdfile" |> to_string in
   let syn_ext = metaj |> member "synfile" |> to_string in
   let syn_rlimit = metaj |> member "synth_rlimit" |> to_int in
+  let syn_timeout = metaj |> member "synth_timeout" |> to_int_option in
   let abd_rlimit = metaj |> member "abduce_rlimit" |> to_int in
   let type_rlimit = metaj |> member "type_rlimit" |> to_int in
   let collect_ext = metaj |> member "collectfile" |> to_string in
@@ -102,6 +122,7 @@ assert (abd_rlimit >= syn_rlimit); *)
     syn_ext;
     abd_rlimit;
     syn_rlimit;
+    syn_timeout;
     type_rlimit;
     collect_ext;
     component_list;
@@ -116,8 +137,10 @@ let set_z3_rlimit rlimit =
   Z3.Params.update_param_value Backend.Smtquery.ctx "rlimit"
     (string_of_int rlimit)
 
+let set_z3_timeout timeout = Backend.Check.optional_timeout := timeout
+
 let check_config _ meta_config_file =
-  let _ = get_synth_config_values meta_config_file in
+  let _config = get_synth_config_values meta_config_file in
   ()
 
 let abduce_or_provide_missing (config : config) (source_file : string)
@@ -149,6 +172,7 @@ let abduce_or_provide_missing (config : config) (source_file : string)
       (unfold_rty_helper missing_rty |> snd, 0.0))
     else (
       set_z3_rlimit config.abd_rlimit;
+      set_z3_timeout None;
 
       let missing_coverage =
         Commands.Cre.type_infer_inner meta_config_file source_file ()
@@ -162,6 +186,7 @@ let abduce_benchmark source_file meta_config_file =
   let config = get_synth_config_values meta_config_file in
 
   set_z3_rlimit config.abd_rlimit;
+  set_z3_timeout None;
 
   let start_time = Unix.gettimeofday () in
 
@@ -198,17 +223,16 @@ let localize_benchmark source_file meta_config_file =
   let config = get_synth_config_values meta_config_file in
 
   set_z3_rlimit config.abd_rlimit;
+  set_z3_timeout None;
 
   let start_time = Unix.gettimeofday () in
 
-  (* let missing_coverage =
-       Commands.Cre.type_infer_inner meta_config_file source_file ()
-     in *)
   let missing_coverage, abd_time =
     abduce_or_provide_missing config source_file meta_config_file start_time
   in
 
   set_z3_rlimit config.syn_rlimit;
+  set_z3_timeout config.syn_timeout;
 
   let uctx = build_initial_typing_context () in
 
@@ -232,40 +256,6 @@ let synthesis_benchmark source_file meta_config_file =
 
   let start_time = Unix.gettimeofday () in
 
-  (* let missing_coverage, abd_time =
-       if config.use_missing_coverage_file then (
-         let open Language in
-         (* Basically do all of the initialization since we aren't running the
-            abduction algorithm to do this for us *)
-         let () = Env.load_meta meta_config_file in
-         let prim_path = Env.get_prim_path () in
-         let templates = Commands.Cre.preprocess prim_path.templates () in
-         let templates = Commands.Cre.handle_template templates in
-         let missing_type_filename = source_file ^ ".missing" in
-
-         (* Process actual file*)
-         let missing_type_code =
-           Commands.Cre.preprocess missing_type_filename ()
-         in
-
-         assert (List.length missing_type_code == 1);
-
-         let _, missing_rty = get_rty_by_name missing_type_code "missing_ty" in
-
-         print_endline
-           "Pulled a missing coverage type from file because of config flag";
-         print_endline (layout_rty missing_rty);
-
-         (unfold_rty_helper missing_rty |> snd, 0.0))
-       else (
-         set_z3_rlimit config.abd_rlimit;
-
-         let missing_coverage =
-           Commands.Cre.type_infer_inner meta_config_file source_file ()
-         in
-         let abd_time = Unix.gettimeofday () -. start_time in
-         (missing_coverage, abd_time))
-     in *)
   let missing_coverage, abd_time =
     abduce_or_provide_missing config source_file meta_config_file start_time
   in
@@ -277,6 +267,7 @@ let synthesis_benchmark source_file meta_config_file =
   if Utils.rty_is_false missing_coverage then failwith "No missing coverage";
 
   set_z3_rlimit config.type_rlimit;
+  set_z3_timeout None;
 
   let synth_start_time = Unix.gettimeofday () in
 
@@ -301,6 +292,8 @@ let synthesis_benchmark source_file meta_config_file =
 
   Context.set_global_uctx uctx;
   set_z3_rlimit config.syn_rlimit;
+
+  set_z3_timeout config.syn_timeout;
 
   assert (Typing.Termcheck.term_type_infer uctx body |> Option.is_some);
 
@@ -339,27 +332,16 @@ let synthesis_benchmark source_file meta_config_file =
 
   let raw_body = Anf_to_raw_term.typed_term_to_typed_raw_term new_body in
 
-  (*   Printf.printf "Missing Coverage: %s\n" (layout_rty missing_coverage); *)
-
-  (* Pp.printf "\nSeeds:\n%s\n"
-          (List.split_by "\n"
-             (fun (a, b) -> Block.layout a ^ " " ^ Nt.layout b)
-             seeds);
-
-     Pp.printf "\nComponents:\n%s\n"
-       (List.split_by "\n"
-          (fun (c, (args, ret)) ->
-            Pieces.layout_component c ^ " : "
-            ^ List.split_by "," Nt.layout args
-            ^ " -> " ^ Nt.layout ret)
-          components); *)
-  (* failwith "stop here"; *)
   let inital_map = BlockMap.init seeds in
 
   let init_synth_col = SynthesisCollection.init inital_map context_maps in
 
-  (* print_endline "Initial collection";
-     SynthesisCollection.print init_synth_col; *)
+  let init_synth_col =
+    PrioritySynthesisCollection.from_synth_coll init_synth_col missing_coverage
+  in
+
+  PrioritySynthesisCollection.initialize_num_terms_considered init_synth_col;
+
   let synthesis_result =
     PrioritySynthesis.synthesis missing_coverage config.bound init_synth_col
       components collection_file
@@ -385,12 +367,19 @@ let synthesis_benchmark source_file meta_config_file =
     |> remove_underscores_in_variable_names_typed
   in
 
-  print_endline ("New_body :\n" ^ layout_typed_term new_body);
-
   (*   print_endline ("Return Type: \n" ^ layout_rty retty); *)
   let synth_time = Unix.gettimeofday () -. synth_start_time in
 
+  print_endline ("New_body :\n" ^ layout_typed_term new_body);
+
+  let size_of_repairs =
+    List.fold_left
+      (fun acc (_, t) -> acc + Term.ast_size_term t.x)
+      0 synthesis_result
+  in
+
   set_z3_rlimit config.type_rlimit;
+  set_z3_timeout None;
 
   let result =
     Typing.Termcheck.term_type_check uctx new_body retty |> Option.is_some
@@ -418,6 +407,10 @@ let synthesis_benchmark source_file meta_config_file =
   let results = { results with abd_time = Some abd_time } in
   let results = { results with synth_time = Some synth_time } in
   let results = { results with total_time = Some total_time } in
+  let results =
+    { results with num_terms_considered = Some !num_considered_terms }
+  in
+  let results = { results with repair_size = Some size_of_repairs } in
 
   write_results_to_file results_file results;
 

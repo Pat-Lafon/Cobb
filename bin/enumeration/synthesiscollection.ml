@@ -262,6 +262,14 @@ module PrioritySynthesisCollection = struct
       Hashtbl.t;
   }
 
+  (** IDK, just call this initially but since branches get removed during
+      synthesis *)
+  let initialize_num_terms_considered ({ path_specific } : t) : unit =
+    num_considered_terms :=
+      Hashtbl.fold
+        (fun _ (_, _, bmap) acc -> acc + BlockMap.size bmap)
+        path_specific 0
+
   let assert_valid (t : t) : unit =
     Hashtbl.iter
       (fun _ (_, pbbm, bm) ->

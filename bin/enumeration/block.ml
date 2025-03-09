@@ -11,6 +11,8 @@ open Context
 open Relation
 open Timeout
 
+let num_considered_terms = ref 0
+
 module TypeInference = struct
   type type_inf_result =
     | NoCoverage
@@ -305,6 +307,8 @@ module PreBlock = struct
     let cost = pre_block.cost in
     let ret_type = pre_block.ret_type in
     let block_id, term = Pieces.apply pre_block.component arg_names in
+
+    num_considered_terms := !num_considered_terms + 1;
 
     print_endline "Block in question:";
     LocalCtx.layout joined_ctx |> print_endline;
