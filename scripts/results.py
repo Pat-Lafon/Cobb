@@ -42,6 +42,11 @@ if __name__ == "__main__":
                         for row in reader:
                             print(row[" Queries"])
                             stats["#Queries"] = row[" Queries"]
+
+                            stats["#Terms"] = row[" #Terms"]
+                            stats["#Paths"] = row[" #Paths"]
+                            stats["Repair Size"] = row[" Repair Size"]
+
                             print(row[" Abd Time"])
                             stats["Abduction Time(s)"] = row[" Abd Time"]
 
