@@ -69,7 +69,7 @@ let write_results_to_file results_file
 
   let results_csv_contents =
     Printf.sprintf
-      "Result, Bounds, Resource Limit, Queries, #Terms, #Paths, Repair Size, \
+      "Result, Bounds, Resource Limit, Queries, #Terms, #Holes, Repair Size, \
        Abd Time, Synth Time, Total Time\n\
        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s"
       (default_str string_of_bool synth_result)

@@ -44,7 +44,7 @@ if __name__ == "__main__":
                             stats["#Queries"] = row[" Queries"]
 
                             stats["#Terms"] = row[" #Terms"]
-                            stats["#Paths"] = row[" #Paths"]
+                            stats["#Holes"] = row[" #Holes"]
                             stats["Repair Size"] = row[" Repair Size"]
 
                             print(row[" Abd Time"])
