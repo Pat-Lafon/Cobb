@@ -24,7 +24,6 @@ let check_paths_for_solution (collection : PrioritySynthesisCollection.t) :
 
 let check_and_remove_finished_paths (coll : PrioritySynthesisCollection.t) :
     (LocalCtx.t * _) list =
-  (* todo eventually have the target blocks included in the collection *)
   let paths_finished_by_seeds = check_paths_for_solution coll in
 
   let completed_contexts =
@@ -95,12 +94,10 @@ module PrioritySynthesis = struct
       in
       enumeration_result
 
-  (* todo is max_cost even necessary anymore??*)
   let synthesis (target_type : rty) (max_cost : int)
       (inital_seeds : PrioritySynthesisCollection.t)
       (operations : (Pieces.component * (t list * t)) list)
       (collection_file : string) : (LocalCtx.t * (t, t term) typed list) list =
-
     max_cost_ref := max_cost;
 
     print_endline "Initial seeds";

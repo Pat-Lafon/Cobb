@@ -156,8 +156,8 @@ module NameTracking = struct
       ctx
 
   let rename (id : identifier) : identifier =
-    if is_known id then id
-    else
+    (* if is_known id then id
+    else *)
       let new_name = (Rename.unique id.x)#:id.ty in
       assert (not (Hashtbl.mem asts new_name));
       let () =

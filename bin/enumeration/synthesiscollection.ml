@@ -399,7 +399,6 @@ module PrioritySynthesisCollection = struct
         Block.layout b |> print_endline)
       b_list;
 
-    (* failwith "unimplemented" *)
     b_list
 
   let new_blocks_get_rep_or_nah (b_list : Block.t list)
@@ -411,17 +410,19 @@ module PrioritySynthesisCollection = struct
         List.partition
           (fun b ->
             let res =
-              ExistentializedBlock.is_sub_rty (Block.existentialize b)
-                target_block
+              ExistentializedBlock.is_sub_rty target_block (Block.existentialize b)
+
             in
             print_endline (b.id.x ^ ": " ^ string_of_bool res);
+            (* if b.id.x = "idx379_0" then failwith "stop here to investigate"; *)
             res)
           b_list
       in
-      if List.length s <= 2 then (
+      (* if List.length s <= 2 then (
         failwith "do I hit this lol";
         (b_list, []))
-      else (f, generalize_representative s)
+      else  *)
+      (f, generalize_representative s)
 
   let increment_by_path (lc : LocalCtx.t)
       ((pmap, bmap) : PriorityBBMap.t * BlockMap.t)
