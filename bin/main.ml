@@ -266,8 +266,8 @@ let synthesis_benchmark source_file meta_config_file =
 
   if Utils.rty_is_false missing_coverage then failwith "No missing coverage";
 
-  set_z3_rlimit config.type_rlimit;
-  set_z3_timeout None;
+  set_z3_rlimit config.syn_rlimit;
+  set_z3_timeout config.syn_timeout;
 
   let synth_start_time = Unix.gettimeofday () in
 
@@ -291,10 +291,13 @@ let synthesis_benchmark source_file meta_config_file =
   | Some _ -> failwith "Nothing to repair");
 
   Context.set_global_uctx uctx;
-  set_z3_rlimit config.syn_rlimit;
 
-  set_z3_timeout config.syn_timeout;
+  (*   Typing.Termcheck.term_type_infer uctx body
+  |> Option.fold ~none:() ~some:(fun t ->
+         print_endline ("Type: " ^ layout_rty t.ty)
+         (* TODO: remove this print *));
 
+  failwith "stop"; *)
   assert (Typing.Termcheck.term_type_infer uctx body |> Option.is_some);
 
   assert (
