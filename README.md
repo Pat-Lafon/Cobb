@@ -37,6 +37,11 @@ or
 
 `dune exec -- bin/main.exe coq-axioms meta-config.json`
 
+## Getting lines of code
+
+`brew install cloc`
+`cloc bin`
+
 ## Useful links for Development
 
 ### Axiom Profiler
