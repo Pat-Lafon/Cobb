@@ -12,11 +12,12 @@ results_file_regex = r"prog[0-9]+\.ml.result.csv$"
     invoc_cmd(verbose, cmd, rescode_non_zero, None, cwd=None) """
 
 if __name__ == "__main__":
-    evaluation_stats = []
+    list_stats = []
+    tree_stats = []
+    stlc_stats = []
     for benchmark_dir in os.listdir(working_dir):
-        if "stlc" in benchmark_dir:
+        if "combined_stlc_gen" in benchmark_dir:
             continue
-
         b_path = "{}/{}".format(working_dir, benchmark_dir)
         benchmark_stats = []
         if os.path.isdir(b_path):
@@ -41,12 +42,10 @@ if __name__ == "__main__":
                         """  reader["fielname"] = filename """
                         for row in reader:
                             print(row[" Queries"])
-                            stats["#Queries"] = row[" Queries"]
-
-                            stats["#Terms"] = row[" #Terms"]
                             stats["#Holes"] = row[" #Holes"]
                             stats["Repair Size"] = row[" Repair Size"]
-
+                            stats["#Queries"] = row[" Queries"]
+                            stats["#Terms"] = row[" #Terms"]
                             print(row[" Abd Time"])
                             stats["Abduction Time(s)"] = row[" Abd Time"]
 
@@ -66,12 +65,12 @@ if __name__ == "__main__":
         if benchmark_stats:
             """if evaluation_stats:
             evaluation_stats.append((SEPARATING_LINE,))"""
-            evaluation_stats += benchmark_stats
-
-    # print(evaluation_stats)
-    latex_table = tabulate(
-        evaluation_stats, headers="keys", tablefmt="latex", stralign="right"
-    )
+            if "list" in benchmark_dir:
+                list_stats += benchmark_stats
+            elif "tree" in benchmark_dir or "bst" in benchmark_dir:
+                tree_stats += benchmark_stats
+            else:
+                stlc_stats += benchmark_stats
 
     def helper(s: re.Match[str]) -> str:
         string = s.group(0)
@@ -80,5 +79,12 @@ if __name__ == "__main__":
 
         return (string[:-1:]) + " \\midrule " + string[-1]
 
-    latex_table = re.sub(r"\\\\\n\s+[a-zA-Z]", helper, latex_table)
-    print(latex_table)
+    for evaluation_stats in [list_stats, tree_stats, stlc_stats]:
+        # print(evaluation_stats)
+        latex_table = tabulate(
+            evaluation_stats, headers="keys", tablefmt="latex", stralign="right"
+        )
+
+
+        latex_table = re.sub(r"\\\\\n\s+[a-zA-Z]", helper, latex_table)
+        print(latex_table)
