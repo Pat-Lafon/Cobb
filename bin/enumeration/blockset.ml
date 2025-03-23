@@ -5,12 +5,14 @@ open Language.FrontendTyped
 
 module BlockSetF (B : Block_intf) : sig
   type t
+  type added_or_found = Added of t | Found of B.t
 
   val empty : t
   val size : t -> int
   val singleton : B.t -> t
   val init : B.t list -> t
   val add_block : t -> B.t -> t
+  val add_or_find : t -> B.t -> added_or_found
   val find_block_opt : t -> B.t -> B.t option
   val get_idx : t -> Ptset.elt -> B.t
   val union : t -> t -> t
@@ -65,12 +67,18 @@ end = struct
       end)
 
   type t = unit P.pomap
+  type added_or_found = Added of t | Found of B.t
 
   let empty : t = P.empty
   let size (pm : t) : int = P.cardinal pm
   let is_empty (pm : t) : bool = P.is_empty pm
   let singleton (x : P.key) : t = P.singleton x ()
   let add_block (pm : t) x : t = P.add x () pm
+
+  let add_or_find (pm : t) x =
+    match P.add_find x () pm with
+    | Added (_, _, pm) -> Added pm
+    | Found (_, k) -> Found (P.get_key k)
 
   let init (inital_seeds : B.t list) : t =
     let aux (b_map : t) term = add_block b_map term in

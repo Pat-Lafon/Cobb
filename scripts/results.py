@@ -25,36 +25,45 @@ if __name__ == "__main__":
             d = os.listdir(b_path)
             d.sort()
 
-            for filename in d:
-                matches = re.search(results_file_regex, filename, re.MULTILINE)
-                if matches:
-                    stats = {}
-                    n = filename.split(".")[0].removeprefix("prog")
-                    name = ""
-                    if n == "1":
-                        name = "{} {}".format(benchmark_dir, n)
-                    else:
-                        name = n
-                    print(name)
-                    stats["name"] = name
-                    with open("{}/{}".format(b_path, filename), "r") as f:
-                        reader = csv.DictReader(f)
-                        """  reader["fielname"] = filename """
-                        for row in reader:
-                            print(row[" Queries"])
-                            stats["#Holes"] = row[" #Holes"]
-                            stats["Repair Size"] = row[" Repair Size"]
-                            stats["#Queries"] = row[" Queries"]
-                            stats["#Terms"] = row[" #Terms"]
-                            print(row[" Abd Time"])
-                            stats["Abduction Time(s)"] = row[" Abd Time"]
+            d = list(
+                filter(
+                    lambda filename: re.search(
+                        results_file_regex, filename, re.MULTILINE
+                    ),
+                    d,
+                )
+            )
 
-                            print(row[" Synth Time"])
-                            stats["Synthesis Time(s)"] = row[" Synth Time"]
+            for idx, filename in enumerate(d, start=1):
+                stats = {}
+                n = filename.split(".")[0].removeprefix("prog")
+                name = ""
+                if n == "1":
+                    name = "{} {}".format(benchmark_dir, n)
+                elif idx == len(d):
+                    name = "sketch"
+                else:
+                    name = n
+                print(name)
+                stats["name"] = name
+                with open("{}/{}".format(b_path, filename), "r") as f:
+                    reader = csv.DictReader(f)
+                    """  reader["fielname"] = filename """
+                    for row in reader:
+                        print(row[" Queries"])
+                        stats["#Holes"] = row[" #Holes"]
+                        stats["Repair Size"] = row[" Repair Size"]
+                        stats["#Queries"] = row[" Queries"]
+                        stats["#Terms"] = row[" #Terms"]
+                        print(row[" Abd Time"])
+                        stats["Abduction Time(s)"] = row[" Abd Time"]
 
-                            print(row[" Total Time"])
-                            stats["Total Time(s)"] = row[" Total Time"]
-                    benchmark_stats.append(stats)
+                        print(row[" Synth Time"])
+                        stats["Synthesis Time(s)"] = row[" Synth Time"]
+
+                        print(row[" Total Time"])
+                        stats["Total Time(s)"] = row[" Total Time"]
+                benchmark_stats.append(stats)
             # print(benchmark_stats)
             """ print(
                 tabulate(
@@ -72,12 +81,20 @@ if __name__ == "__main__":
             else:
                 stlc_stats += benchmark_stats
 
+    # HACK: TODO: Fix this mess
     def helper(s: re.Match[str]) -> str:
         string = s.group(0)
 
+        print("here")
+        print(string)
         print((string[:-1:]))
 
-        return (string[:-1:]) + " \\midrule " + string[-1]
+        if "sketch" in string:
+            return string
+        elif "\\\\" in string:
+            return "\\\\ \n\\midrule" + string[2:]
+        else:
+            return (string[:-1:]) + " \\midrule " + string[-1]
 
     for evaluation_stats in [list_stats, tree_stats, stlc_stats]:
         # print(evaluation_stats)
@@ -85,6 +102,5 @@ if __name__ == "__main__":
             evaluation_stats, headers="keys", tablefmt="latex", stralign="right"
         )
 
-
-        latex_table = re.sub(r"\\\\\n\s+[a-zA-Z]", helper, latex_table)
+        latex_table = re.sub(r"\\\\\n\s+[a-zA-Z]+", helper, latex_table)
         print(latex_table)

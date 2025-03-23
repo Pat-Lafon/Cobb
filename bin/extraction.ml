@@ -1,14 +1,17 @@
 open Pomap
 open Context
+
 (* open Relation *)
 open Block
 open Blockset
 open Blockmap
+
 (* open Blockcollection *)
 open Utils
 open Zzdatatype.Datatype
 open Language.FrontendTyped
 open Typing.Termcheck
+
 (* open Synthesiscollection *)
 open Frontend_opt.To_typectx
 open Language
@@ -323,18 +326,25 @@ module Extraction = struct
      BlockSetE.print set);
 
     (* Does the target exist in this path? *)
-    match BlockSetE.find_block_opt bset target_path_block with
-    | Some b ->
+    match BlockSetE.add_or_find bset target_path_block with
+    | Found b ->
         (* Yes: Return current bs, no preds, and the target_block *)
         print_endline "Have a complete block for a path solution";
         (lc, b) :: []
-    | None ->
+    | Added bset ->
         (* No: Return a new bs with the target block, any preds, and
            possibly a starting block from the succs *)
+        (*         let starting_len = BlockSetE.size bset in
+
         let bs = BlockSetE.add_block bset target_path_block in
-        let p = BlockSetE.get_preds bs target_path_block in
-        let s = BlockSetE.get_succs bs target_path_block in
-        BlockSetE.print_ptset bs p;
+        (*  assert (starting_len < BlockSetE.size bs); *)
+
+        print_endline "lol"; *)
+        BlockSetE.print bset;
+
+        let p = BlockSetE.get_preds bset target_path_block in
+        let s = BlockSetE.get_succs bset target_path_block in
+        BlockSetE.print_ptset bset p;
 
         (* Smallest block that covers the target fully *)
         (* let b =
@@ -354,13 +364,13 @@ module Extraction = struct
         if not (Ptset.is_empty p && Ptset.is_empty s) then
           if
             Option.is_none b
-            && not (pset_is_sufficient_coverage bs p target_path_block.ty)
+            && not (pset_is_sufficient_coverage bset p target_path_block.ty)
           then (
             print_endline "return nothing2";
             [])
           else (
             print_endline "return a block";
-            let starting_point = (lc, bs, (b, p)) in
+            let starting_point = (lc, bset, (b, p)) in
 
             let target_path_ty = target_path_block.ty in
 
