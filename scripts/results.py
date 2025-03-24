@@ -11,6 +11,30 @@ results_file_regex = r"prog[0-9]+\.ml.result.csv$"
 """ def run_synthesis_aux(cmd):
     invoc_cmd(verbose, cmd, rescode_non_zero, None, cwd=None) """
 
+
+def fix_name(name):
+    if "sized" in name:
+        return "Sized List"
+    elif "even" in name:
+        return "Even List"
+    elif "sorted" in name:
+        return "Sorted List"
+    elif "bst" in name:
+        return "BST"
+    elif "duplicate" in name:
+        return "Duplicate List"
+    elif "unique" in name:
+        return "Unique List"
+    elif "depth" in name:
+        return "Sized Tree"
+    elif "complete" in name:
+        return "Complete Tree"
+    elif "rbtree" in name:
+        return "Red-Black Tree"
+    else:
+        return name
+
+
 if __name__ == "__main__":
     list_stats = []
     tree_stats = []
@@ -39,7 +63,7 @@ if __name__ == "__main__":
                 n = filename.split(".")[0].removeprefix("prog")
                 name = ""
                 if n == "1":
-                    name = "{} {}".format(benchmark_dir, n)
+                    name = "{} {}".format(fix_name(benchmark_dir), n)
                 elif idx == len(d):
                     name = "sketch"
                 else:
