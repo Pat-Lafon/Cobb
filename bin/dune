@@ -22,6 +22,7 @@
   (pps ppx_jane)))
 
 (library
+ (public_name Cobb.context)
  (name context)
  (libraries underapproximation_type.typing tracking)
  (modules context))
@@ -46,6 +47,7 @@
   (pps ppx_optcomp ppx_compare ppx_sexp_conv)))
 
 (library
+(public_name Cobb.pieces)
  (name pieces)
  (libraries underapproximation_type.typing utils tracking context)
  (modules pieces))
@@ -56,6 +58,7 @@
  (modules timeout))
 
 (library
+ (public_name Cobb.tracking)
  (name tracking)
  (libraries underapproximation_type.typing utils)
  (modules tracking))
@@ -86,11 +89,13 @@
  (modules preprocess))
 
 (library
+ (public_name Cobb.postprocess)
  (name postprocess)
  (libraries pieces underapproximation_type.typing)
  (modules postprocess))
 
 (library
+ (public_name Cobb.utils)
  (name utils)
  (modules utils)
  (libraries core underapproximation_type.typing language_utils.zzdatatype))
