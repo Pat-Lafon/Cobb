@@ -425,14 +425,14 @@ let synthesis_benchmark source_file meta_config_file =
 (** Benchmarks can be provided as a command line argument * Default is
     "sizedlist" *)
 let regular_file =
-  Command.Arg_type.create (fun filename ->
+  Core.Command.Arg_type.create (fun filename ->
       match Sys_unix.is_file filename with
       | `Yes -> filename
       | `No -> failwith "Not a regular file"
       | `Unknown -> failwith "Could not determine if this was a regular file")
 
 let regular_directory =
-  Command.Arg_type.create (fun directory ->
+  Core.Command.Arg_type.create (fun directory ->
       match Sys_unix.is_directory directory with
       | `Yes -> directory
       | `No -> failwith "Not a regular directory"
@@ -440,8 +440,8 @@ let regular_directory =
           failwith "Could not determine if this was a regular directory")
 
 let cobb (f : string -> string -> unit) =
-  Command.basic ~summary:"The Cobb synthesizer which leverages coverage types"
-    Command.Let_syntax.(
+  Core.Command.basic ~summary:"The Cobb synthesizer which leverages coverage types"
+    Core.Command.Let_syntax.(
       let%map_open source_file = anon ("program" %: regular_file) in
       fun () ->
         let benchmark_dir = Core.Filename.dirname source_file in
@@ -451,7 +451,7 @@ let cobb (f : string -> string -> unit) =
         f source_file meta_config_file)
 
 let prog =
-  Command.group ~summary:"Cobb"
+  Core.Command.group ~summary:"Cobb"
     [
       ("synthesis", cobb synthesis_benchmark);
       ("abduction", cobb abduce_benchmark);
