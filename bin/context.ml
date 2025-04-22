@@ -30,7 +30,7 @@ module LocalCtx = struct
 
   let contains_path_cond (Typectx.Typectx ctx : t) : bool =
     List.exists
-      (fun { x; _ } -> String.starts_with ~prefix:path_condition_prefix x)
+      (fun { x; _ } -> Core.String.is_prefix ~prefix:path_condition_prefix x)
       ctx
 
   let eq (Typectx.Typectx l : t) (Typectx.Typectx r : t) : bool = l = r
