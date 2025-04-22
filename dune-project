@@ -42,8 +42,7 @@
   (ocamlformat
    (= "0.26.1"))
   (ocaml-lsp-server
-   (= "1.17.0"))
-  (memtrace (= "0.2.3")))
+   (= "1.17.0")))
  (tags
   (topics "to describe" your project)))
 

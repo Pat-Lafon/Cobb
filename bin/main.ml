@@ -444,7 +444,6 @@ let cobb (f : string -> string -> unit) =
     Command.Let_syntax.(
       let%map_open source_file = anon ("program" %: regular_file) in
       fun () ->
-        Memtrace.trace_if_requested ();
         let benchmark_dir = Core.Filename.dirname source_file in
         let meta_config_file =
           Core.Filename.concat benchmark_dir "meta-config.json"
