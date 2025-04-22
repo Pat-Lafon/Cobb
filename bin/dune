@@ -16,8 +16,7 @@
   underapproximation_type.translate
   underapproximation_type.typing
   underapproximation_type.preprocessing
-  underapproximation_type.commands
-  memtrace)
+  underapproximation_type.commands)
  (preprocess
   (pps ppx_jane)))
 
