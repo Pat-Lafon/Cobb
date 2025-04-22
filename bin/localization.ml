@@ -426,8 +426,8 @@ module Localization = struct
       if List.length useful_props > 1 then
         List.filteri
           (fun i (p, _, _) : bool ->
-            List.find_mapi
-              (fun i2 (p2, _, _) : _ option ->
+            Core.List.find_mapi
+              ~f:(fun i2 (p2, _, _) : _ option ->
                 if i >= i2 then None
                 else if prop_eq_up_to_non_det_choice p p2 then Some ()
                 else None)
