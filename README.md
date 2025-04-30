@@ -27,12 +27,6 @@ or
 
 `dune exec -- bin/main.exe type-check meta-config.json data/issue/singleton_unique.ml`
 
-## Memory profiling
-
-`MEMTRACE=trace.ctf dune exec Cobb --no-buffer -- synthesis data/validation/sortedlist prog3.ml > test.log`
-
-`memtrace-viewer trace.ctf`
-
 ## Getting the list of axioms as Coq
 
 `dune exec -- bin/main.exe coq-axioms meta-config.json`
@@ -41,6 +35,12 @@ or
 
 `brew install cloc`
 `cloc bin`
+
+## Adding a new function
+
+Often this is hit with an error message like `(len: none) =? none`. Add the type
+signature in the files pointed to by the `normal_typing` and `coverage_typing`
+fields in your `meta-config.json` file.
 
 ## Useful links for Development
 
