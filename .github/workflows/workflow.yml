@@ -23,7 +23,7 @@ jobs:
 
             - run: opam install . --deps-only --with-test
 
-            - run: make config
+            - run: eval $(opam env) && make config
 
             - run: make build
 
