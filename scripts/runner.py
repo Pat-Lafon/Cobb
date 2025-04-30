@@ -40,7 +40,8 @@ def invoc_cmd(
             if check_res(res):
                 raise subprocess.CalledProcessError(res.returncode, cmd)
         except subprocess.CalledProcessError as e:
-            print(e.output)
+            print(e.output, file=sys.stderr)
+            print(e.stderr, file=sys.stderr)
             raise e
 
 
