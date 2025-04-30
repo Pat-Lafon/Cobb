@@ -80,7 +80,6 @@ module LocalCtx = struct
            if x = old_name then { x = new_name; ty } else { x; ty })
          ctx)
 
-  (* TODO: Not sure if this is useful yet since Z3 might just de-dupe itself*)
   let remove_duplicates (Typectx.Typectx ctx : t) : t =
     let empty = Typectx.emp in
 
