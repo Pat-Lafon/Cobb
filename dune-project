@@ -42,7 +42,8 @@
   (ocamlformat
    (= "0.26.1"))
   (ocaml-lsp-server
-   (= "1.17.0")))
+   (= "1.17.0"))
+  (async (<= "0.17.0")))
  (tags
   (topics "to describe" your project)))
 
