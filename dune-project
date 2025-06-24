@@ -22,13 +22,13 @@
  (depends
   dune
   (ocaml
-   (= "4.14.2"))
+   (>= "5.1.0"))
   (pomap
    (= "4.1.1"))
   (core
-   (<= "v0.16.2"))
+   (<= "v0.17.1"))
   (core_unix
-   (<= "v0.16.0"))
+   (<= "v0.17.0"))
   (dolog
    (<= "6.0.0"))
   (ocolor
@@ -36,14 +36,15 @@
   (qcheck
    (<= "0.21.3"))
   (z3
-   (<= "4.13.0"))
+   (= "4.15.1"))
   (yojson
    (<= "1.7.0"))
   (ocamlformat
    (= "0.26.1"))
   (ocaml-lsp-server
    (= "1.17.0"))
-  (async (<= "0.17.0")))
+  (async
+   (<= "v0.17.0")))
  (tags
   (topics "to describe" your project)))
 
