@@ -121,6 +121,17 @@
   tracking
   synthesiscollection))
 
+(executable
+  (public_name frequify)
+  (name frequify)
+  (modules frequify)
+  (libraries 
+    language_utils.metalang
+    underapproximation_type.commands 
+    underapproximation_type.syntax
+    underapproximation_type.frontend_opt
+  ))
+
 (env
  (dev
   (flags
