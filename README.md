@@ -23,6 +23,39 @@ or
 
 `python scripts/synth.py underapproximation_type/data/validation/sizedlist/`
 
+## Running excess benchmarks and comparing results
+
+### What are excess benchmarks?
+
+Excess benchmarks test how additional components affect synthesis performance. Each `_excess` directory contains more components than its base counterpart.
+
+### Running the benchmarks
+
+1. **Run base benchmarks** (if not already done)
+
+2. **Run excess benchmarks**:
+
+   ```bash
+   python scripts/synth.py underapproximation_type/data/validation/sizedlist_excess/
+   python scripts/synth.py underapproximation_type/data/validation/uniquelist_excess/
+   python scripts/synth.py underapproximation_type/data/validation/sortedlist_excess/
+   python scripts/synth.py underapproximation_type/data/validation/duplicatelist_excess/
+   python scripts/synth.py underapproximation_type/data/validation/even_list_excess/
+   python scripts/synth.py underapproximation_type/data/validation/complete_tree_excess/
+   python scripts/synth.py underapproximation_type/data/validation/depthtree_excess/
+   python scripts/synth.py underapproximation_type/data/validation/depth_bst_excess/
+   ```
+
+### Comparing results
+
+Compare performance differences:
+
+```bash
+python scripts/excess_results.py
+```
+
+This generates CSV comparison files in the `data/` folder.
+
 ## Typechecking a specific example
 
 `dune exec -- bin/main.exe type-check meta-config.json data/issue/singleton_unique.ml`
