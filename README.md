@@ -17,7 +17,7 @@ One who searches underneath the bottom of consciousness: Inception(2010)
 
 ## Running benchmarks
 
-`cd underapproximation_type/ && dune exec Cobb -- synthesis data/validation/sizedlist/ prog1.ml`
+`cd underapproximation_type/ && dune exec Cobb -- synthesis data/validation/sizedlist/prog1.ml`
 
 or
 
