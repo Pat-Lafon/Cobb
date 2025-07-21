@@ -18,8 +18,34 @@ jobs:
             - name: Set-up OCaml
               uses: ocaml/setup-ocaml@v3
               with:
-                ocaml-compiler: 5.1.0
+                ocaml-compiler: 5.1.1
                 dune-cache: true
+
+            - name: Cache opam dependencies
+              uses: actions/cache@v4
+              with:
+                path: ~/.opam
+                key: opam-${{ runner.os }}-5.1.1-${{ hashFiles('**/*.opam') }}
+                restore-keys: |
+                  opam-${{ runner.os }}-5.1.1-
+                  opam-${{ runner.os }}-
+
+            - name: Cache dune build directory
+              uses: actions/cache@v4
+              with:
+                path: _build
+                key: dune-${{ runner.os }}-5.1.1-${{ hashFiles('**/dune', '**/dune-project', '**/*.ml', '**/*.mli') }}
+                restore-keys: |
+                  dune-${{ runner.os }}-5.1.1-
+                  dune-${{ runner.os }}-
+
+            - name: Cache Python dependencies
+              uses: actions/cache@v4
+              with:
+                path: ~/.cache/pip
+                key: pip-${{ runner.os }}-${{ hashFiles('scripts/*.py') }}
+                restore-keys: |
+                  pip-${{ runner.os }}-
 
             - run: opam install . --deps-only --with-test
 
@@ -41,5 +67,15 @@ jobs:
               uses: actions/checkout@v4
               with:
                 submodules: recursive
+
+            - name: Cache proof build artifacts
+              uses: actions/cache@v4
+              with:
+                path: |
+                  underapproximation_type/data/validation/proofs/_build
+                  underapproximation_type/data/validation/proofs/.lia.cache
+                key: proof-${{ runner.os }}-${{ hashFiles('underapproximation_type/data/validation/proofs/**') }}
+                restore-keys: |
+                  proof-${{ runner.os }}-
 
             - run: make proof
