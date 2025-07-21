@@ -106,7 +106,7 @@ if __name__ == "__main__":
                 stlc_stats += benchmark_stats
 
     def add_midrules_to_table(latex_table, stats):
-        lines = latex_table.split('\n')
+        lines = latex_table.split("\n")
         result_lines = []
 
         # Track the current benchmark name to know when to add midrules
@@ -116,76 +116,99 @@ if __name__ == "__main__":
 
         for i, line in enumerate(lines):
             # Check if we're in the data section (after the first \hline)
-            if '\\hline' in line and not in_data_section:
+            if "\\hline" in line and not in_data_section:
                 in_data_section = True
                 result_lines.append(line)
                 continue
-            elif '\\hline' in line and in_data_section:
+            elif "\\hline" in line and in_data_section:
                 # This is the closing \hline, don't add midrule before it
                 result_lines.append(line)
                 continue
-            elif '\\end{tabular}' in line:
+            elif "\\end{tabular}" in line:
                 result_lines.append(line)
                 continue
 
             # Look for data rows (not header, hline, or end tabular)
-            if (in_data_section and line.strip() and not line.strip().startswith('\\')
-                and '&' in line and 'benchmark' not in line.lower()):
+            if (
+                in_data_section
+                and line.strip()
+                and not line.strip().startswith("\\")
+                and "&" in line
+                and "benchmark" not in line.lower()
+            ):
 
                 # Extract the name field (first column)
-                name_part = line.split('&')[0].strip()
+                name_part = line.split("&")[0].strip()
 
                 # Determine the base benchmark name and section
                 benchmark_name = None
                 section = None
 
-                if any(x in name_part.lower() for x in ['sized list', 'even list', 'sorted list', 'duplicate list', 'unique list']):
-                    section = 'list'
-                    if 'sized list' in name_part.lower():
-                        benchmark_name = 'sized_list'
-                    elif 'even list' in name_part.lower():
-                        benchmark_name = 'even_list'
-                    elif 'sorted list' in name_part.lower():
-                        benchmark_name = 'sorted_list'
-                    elif 'duplicate list' in name_part.lower():
-                        benchmark_name = 'duplicate_list'
-                    elif 'unique list' in name_part.lower():
-                        benchmark_name = 'unique_list'
-                elif any(x in name_part.lower() for x in ['red-black tree', 'bst', 'sized tree', 'complete tree']):
-                    section = 'tree'
-                    if 'red-black tree' in name_part.lower():
-                        benchmark_name = 'rbtree'
-                    elif 'bst' in name_part.lower():
-                        benchmark_name = 'bst'
-                    elif 'sized tree' in name_part.lower():
-                        benchmark_name = 'sized_tree'
-                    elif 'complete tree' in name_part.lower():
-                        benchmark_name = 'complete_tree'
-                elif 'stlc' in name_part.lower():
-                    section = 'stlc'
-                    benchmark_name = 'stlc'
-                elif name_part.isdigit() or name_part == 'sketch':
+                if any(
+                    x in name_part.lower()
+                    for x in [
+                        "sized list",
+                        "even list",
+                        "sorted list",
+                        "duplicate list",
+                        "unique list",
+                    ]
+                ):
+                    section = "list"
+                    if "sized list" in name_part.lower():
+                        benchmark_name = "sized_list"
+                    elif "even list" in name_part.lower():
+                        benchmark_name = "even_list"
+                    elif "sorted list" in name_part.lower():
+                        benchmark_name = "sorted_list"
+                    elif "duplicate list" in name_part.lower():
+                        benchmark_name = "duplicate_list"
+                    elif "unique list" in name_part.lower():
+                        benchmark_name = "unique_list"
+                elif any(
+                    x in name_part.lower()
+                    for x in ["red-black tree", "bst", "sized tree", "complete tree"]
+                ):
+                    section = "tree"
+                    if "red-black tree" in name_part.lower():
+                        benchmark_name = "rbtree"
+                    elif "bst" in name_part.lower():
+                        benchmark_name = "bst"
+                    elif "sized tree" in name_part.lower():
+                        benchmark_name = "sized_tree"
+                    elif "complete tree" in name_part.lower():
+                        benchmark_name = "complete_tree"
+                elif "stlc" in name_part.lower():
+                    section = "stlc"
+                    benchmark_name = "stlc"
+                elif name_part.isdigit() or name_part == "sketch":
                     # This is a continuation of the previous benchmark
                     benchmark_name = current_benchmark_name
                     section = current_section
 
                 # Add \midrule and \hline when transitioning from list to tree section
-                if (section != current_section and current_section == 'list' and section == 'tree'):
-                    result_lines.append('\\midrule')
-                    result_lines.append('\\hline')
+                if (
+                    section != current_section
+                    and current_section == "list"
+                    and section == "tree"
+                ):
+                    result_lines.append("\\midrule")
+                    result_lines.append("\\hline")
                 # Add midrule when benchmark name changes within the same section
-                elif (benchmark_name != current_benchmark_name and
-                      current_benchmark_name is not None and
-                      benchmark_name is not None and
-                      section == current_section):
-                    result_lines.append('\\midrule')
+                elif (
+                    benchmark_name != current_benchmark_name
+                    and current_benchmark_name is not None
+                    and benchmark_name is not None
+                    and section == current_section
+                ):
+                    result_lines.append("\\midrule")
 
                 current_benchmark_name = benchmark_name
                 current_section = section
 
             result_lines.append(line)
 
-        return '\n'.join(result_lines)
+        return "\n".join(result_lines)
 
     # Combine list and tree stats into one table, keep STLC separate
     main_stats = []
@@ -205,22 +228,18 @@ if __name__ == "__main__":
         "#Terms": "#Terms",
         "Abduction Time(s)": "Abduction (s)",
         "Synthesis Time(s)": "Synthesis (s)",
-        "Total Time(s)": "Total Time(s)"
+        "Total Time(s)": "Total Time(s)",
     }
 
     # Print main table (lists and trees)
     if main_stats:
         latex_table = tabulate(
-            main_stats,
-            headers=headers,
-            tablefmt="latex",
-            stralign="right"
+            main_stats, headers=headers, tablefmt="latex", stralign="right"
         )
 
         # Replace the default tabular definition with custom column specification
         latex_table = latex_table.replace(
-            "\\begin{tabular}{rrrrrrrr}",
-            "\\begin{tabular}{r|rr|rrrrr}"
+            "\\begin{tabular}{rrrrrrrr}", "\\begin{tabular}{r|rr|rrrrr}"
         )
 
         # Add midrules between different benchmark types
@@ -231,16 +250,12 @@ if __name__ == "__main__":
     if stlc_stats:
         print("\n% STLC Benchmarks:")
         latex_table = tabulate(
-            stlc_stats,
-            headers=headers,
-            tablefmt="latex",
-            stralign="right"
+            stlc_stats, headers=headers, tablefmt="latex", stralign="right"
         )
 
         # Replace the default tabular definition with custom column specification
         latex_table = latex_table.replace(
-            "\\begin{tabular}{rrrrrrrr}",
-            "\\begin{tabular}{r|rr|rrrrr}"
+            "\\begin{tabular}{rrrrrrrr}", "\\begin{tabular}{r|rr|rrrrr}"
         )
 
         # Add midrules between different benchmark types
