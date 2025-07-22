@@ -1,4 +1,4 @@
-Benchmark,Base Components,Δ Components,Base #Queries,Δ #Queries,Base #Terms,Δ #Terms,Base Synthesis Time(s),Δ Synthesis Time(s)
+Benchmark,Components,+ Components,Queries,+ Queries,Terms,+ Terms,Time (s),+ Time (s)
 Complete Tree,4,3,95,130,17,31,1.55,1.88
 BST,3,4,916,12485,597,10549,82.84,532.75
 Sized Tree,4,3,182,6,17,3,7.06,-1.39

@@ -182,18 +182,6 @@ def compare_stats(base_stats, excess_stats, benchmark_name, base_dir, excess_dir
         except ValueError:
             return 0
 
-    def calculate_ratio(excess_val, base_val):
-        """Calculate ratio, handling division by zero"""
-        if base_val == 0:
-            return float("inf") if excess_val > 0 else 1.0
-        return excess_val / base_val
-
-    def calculate_percentage_change(excess_val, base_val):
-        """Calculate percentage change from base to excess"""
-        if base_val == 0:
-            return float("inf") if excess_val > 0 else 0.0
-        return ((excess_val - base_val) / base_val) * 100
-
     # Focus on metrics that are likely to change significantly
     key_metrics = ["#Queries", "#Terms", "Synthesis Time(s)"]
     integer_metrics = {"#Queries", "#Terms"}  # These should be integers
@@ -205,18 +193,26 @@ def compare_stats(base_stats, excess_stats, benchmark_name, base_dir, excess_dir
     # Add component counts
     base_components = _count_components(base_dir)
     excess_components = _count_components(excess_dir)
-    comparison["Base Components"] = base_components
-    comparison["Δ Components"] = excess_components - base_components
+    comparison["Components"] = base_components
+    comparison["+ Components"] = excess_components - base_components
 
-    # Add base values and increases for key metrics
+    # Add base values and deltas for key metrics
     for metric in key_metrics:
         is_integer = metric in integer_metrics
         base_val = safe_numeric_convert(base_stats[metric], force_int=is_integer)
         excess_val = safe_numeric_convert(excess_stats[metric], force_int=is_integer)
-        increase = excess_val - base_val  # Positive = overhead, Negative = improvement
+        delta = excess_val - base_val  # Positive = overhead, Negative = improvement
 
-        comparison[f"Base {metric}"] = base_val
-        comparison[f"Δ {metric}"] = increase
+        # Format column names to match desired output
+        if metric == "#Queries":
+            comparison["Queries"] = base_val
+            comparison["+ Queries"] = delta
+        elif metric == "#Terms":
+            comparison["Terms"] = base_val
+            comparison["+ Terms"] = delta
+        elif metric == "Synthesis Time(s)":
+            comparison["Time (s)"] = base_val
+            comparison["+ Time (s)"] = delta
 
     return comparison
 
@@ -234,21 +230,37 @@ def format_comparison_table(comparison_data, category_name):
     # Generate CSV filename in data directory
     csv_filename = f"data/excess_comparison_{category_name.lower()}.csv"
 
+    # Define column order to match desired output
+    column_order = [
+        "Benchmark",
+        "Components",
+        "+ Components",
+        "Queries",
+        "+ Queries",
+        "Terms",
+        "+ Terms",
+        "Time (s)",
+        "+ Time (s)",
+    ]
+
     # Format floating point values to 2 decimal places for CSV
     formatted_data = []
     for row in comparison_data:
         formatted_row = {}
-        for key, value in row.items():
-            if isinstance(value, float):
-                formatted_row[key] = round(value, 2)
+        for key in column_order:
+            if key in row:
+                value = row[key]
+                if isinstance(value, float):
+                    formatted_row[key] = round(value, 2)
+                else:
+                    formatted_row[key] = value
             else:
-                formatted_row[key] = value
+                formatted_row[key] = ""  # Handle missing columns
         formatted_data.append(formatted_row)
 
-    # Write to CSV
+    # Write to CSV with specified column order
     with open(csv_filename, "w", newline="") as csvfile:
-        fieldnames = formatted_data[0].keys()
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer = csv.DictWriter(csvfile, fieldnames=column_order)
         writer.writeheader()
         writer.writerows(formatted_data)
 
