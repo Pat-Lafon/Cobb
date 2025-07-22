@@ -32,25 +32,13 @@ def navigate_dir_and_run(dir_str, config_file_name):
             if os.path.isdir(pp):
                 navigate_dir_and_run(pp, config_file_name)
     else:
-        from multiprocessing import Pool
-
-        pool = Pool()
-
-        multiple_res = []
         for filename in os.listdir(dir_str):
             matches = re.search(r".*\.ml$", filename, re.MULTILINE)
             filename = "{}/{}".format(dir_str, filename)
             if matches:
                 cmd = cmd_prefix + [meta_config_file, filename]
 
-                res = pool.apply_async(
-                    invoc_cmd,
-                    args=[verbose, cmd, check_res_for_true_result, None],
-                    kwds={"cwd": None},
-                )
-                multiple_res.append(res)
-
-        [res.get() for res in multiple_res]
+                invoc_cmd(verbose, cmd, check_res_for_true_result, None, cwd=None)
 
 
 def synth_func(dir_str):
