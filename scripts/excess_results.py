@@ -1,69 +1,74 @@
 import os
 import re
 import csv
-from tabulate import tabulate, SEPARATING_LINE
+from pathlib import Path
+from typing import List, Tuple, Dict, Any
+from tabulate import tabulate
 
-# Based on results.py structure, adapted for comparing excess vs non-excess benchmarks
+# Configuration constants
+WORKING_DIR = "underapproximation_type/data/validation"
+RESULTS_FILE_REGEX = r"prog[0-9]+\.ml.result.csv$"
+EXCESS_SUFFIX = "_excess"
+OUTPUT_DIR = "data"
 
-working_dir = "underapproximation_type/data/validation"
-results_file_regex = r"prog[0-9]+\.ml.result.csv$"
+# CSV column mappings
+CSV_COLUMN_MAPPING = {
+    "#Holes": " #Holes",
+    "Repair Size": " Repair Size",
+    "#Queries": " Queries",
+    "#Terms": " #Terms",
+    "Abduction Time(s)": " Abd Time",
+    "Synthesis Time(s)": " Synth Time",
+    "Total Time(s)": " Total Time",
+}
+
+# Benchmark name mappings
+BENCHMARK_NAME_MAP = {
+    "sized": "Sized List",
+    "even": "Even List",
+    "sorted": "Sorted List",
+    "bst": "BST",
+    "duplicate": "Duplicate List",
+    "unique": "Unique List",
+    "depth": "Sized Tree",
+    "complete": "Complete Tree",
+    "rbtree": "Red-Black Tree",
+}
 
 
-def fix_name(name):
+def fix_name(name: str) -> str:
     """Convert benchmark directory names to human-readable format"""
-    # Remove '_excess' suffix for display purposes
-    base_name = name.replace("_excess", "")
+    base_name = name.replace(EXCESS_SUFFIX, "")
 
-    if "sized" in base_name:
-        return "Sized List"
-    elif "even" in base_name:
-        return "Even List"
-    elif "sorted" in base_name:
-        return "Sorted List"
-    elif "bst" in base_name:
-        return "BST"
-    elif "duplicate" in base_name:
-        return "Duplicate List"
-    elif "unique" in base_name:
-        return "Unique List"
-    elif "depth" in base_name:
-        return "Sized Tree"
-    elif "complete" in base_name:
-        return "Complete Tree"
-    elif "rbtree" in base_name:
-        return "Red-Black Tree"
-    else:
-        return base_name
+    # Return first match or original name
+    return next(
+        (
+            display_name
+            for key, display_name in BENCHMARK_NAME_MAP.items()
+            if key in base_name
+        ),
+        base_name,
+    )
 
 
-def find_benchmark_pairs():
-    """
-    Find pairs of benchmark directories (base and _excess versions)
-    Returns a list of tuples: (base_dir, excess_dir)
-    """
+def find_benchmark_pairs() -> List[Tuple[str, str]]:
+    """Find pairs of benchmark directories (base and _excess versions)"""
+    working_path = Path(WORKING_DIR)
+
     pairs = []
+    for item in working_path.iterdir():
+        if item.is_dir() and item.name.endswith(EXCESS_SUFFIX):
+            base_name = item.name.replace(EXCESS_SUFFIX, "")
+            base_path = working_path / base_name
 
-    # List all directories in working_dir
-    for item in os.listdir(working_dir):
-        item_path = os.path.join(working_dir, item)
-        if os.path.isdir(item_path) and item.endswith("_excess"):
-            # Found an excess directory
-            base_name = item.replace("_excess", "")
-            base_path = os.path.join(working_dir, base_name)
-
-            # Check if corresponding base directory exists
-            if os.path.isdir(base_path):
-                pairs.append((base_name, item))
+            if base_path.is_dir():
+                pairs.append((base_name, item.name))
 
     return pairs
 
 
-def _parse_stats_from_csv(csv_path):
-    """
-    Helper function to parse statistics from a CSV file
-
-    Returns: dict with statistics from the CSV file
-    """
+def _parse_stats_from_csv(csv_path: str) -> Dict[str, str]:
+    """Helper function to parse statistics from a CSV file"""
     stats = {}
     with open(csv_path, "r") as f:
         reader = csv.DictReader(f)
@@ -79,262 +84,195 @@ def _parse_stats_from_csv(csv_path):
     return stats
 
 
-def _get_program_stats(benchmark_dir, get_last_file=True):
-    """
-    Unified function to extract statistics from benchmark directories
+def _get_program_stats(
+    benchmark_dir: str, get_last_file: bool = True
+) -> Dict[str, str]:
+    """Extract statistics from benchmark directories"""
+    b_path = Path(WORKING_DIR) / benchmark_dir
 
-    Args:
-        benchmark_dir: Directory name (relative to working_dir)
-        get_last_file: If True, get the last (highest numbered) file. If False, get first file.
-
-    Returns: dict with statistics from the program
-    """
-    b_path = "{}/{}".format(working_dir, benchmark_dir)
-
-    # Get all .result.csv files
-    files = os.listdir(b_path)
-    result_files = list(
-        filter(
-            lambda filename: re.search(results_file_regex, filename, re.MULTILINE),
-            files,
-        )
+    # Get all .result.csv files and sort them
+    result_files = sorted(
+        [
+            f
+            for f in b_path.iterdir()
+            if f.is_file() and re.search(RESULTS_FILE_REGEX, f.name)
+        ]
     )
 
     if not result_files:
         raise FileNotFoundError(f"No .result.csv files found in {b_path}")
 
-    # Select target file based on strategy
-    result_files.sort()
+    # Select first or last file
     target_file = result_files[-1] if get_last_file else result_files[0]
 
-    # Parse and return stats
-    return _parse_stats_from_csv("{}/{}".format(b_path, target_file))
+    return _parse_stats_from_csv(str(target_file))
 
 
-def _count_components(benchmark_dir):
-    """
-    Count the number of components in a benchmark directory
-
-    Returns: int - number of components
-    """
-    b_path = "{}/{}".format(working_dir, benchmark_dir)
-    components_file = "{}/components.txt".format(b_path)
+def _count_components(benchmark_dir: str) -> int:
+    """Count the number of components in a benchmark directory"""
+    components_file = Path(WORKING_DIR) / benchmark_dir / "components.txt"
 
     try:
-        with open(components_file, "r") as f:
-            # Count non-empty lines in components.txt
-            components = [line.strip() for line in f if line.strip()]
-            component_count = len(components)
-
-            if component_count == 0:
-                raise ValueError(
-                    f"No components found in {components_file} - file is empty or contains only whitespace"
-                )
-
-            return component_count
+        components = [
+            line.strip()
+            for line in components_file.read_text().splitlines()
+            if line.strip()
+        ]
+        if not components:
+            raise ValueError(f"No components found in {components_file}")
+        return len(components)
     except FileNotFoundError:
-        raise FileNotFoundError(f"components.txt not found in {b_path}")
+        raise FileNotFoundError(f"components.txt not found in {components_file.parent}")
     except Exception as e:
-        raise ValueError(f"Error reading components.txt in {b_path}: {e}")
+        raise ValueError(f"Error reading {components_file}: {e}")
 
 
-def get_synthesized_program_stats(base_dir):
-    """
-    Extract statistics for the synthesized program from the base benchmark directory
-    The synthesized program is typically the last numbered program or named 'sketch'
-
-    Returns: dict with statistics from the synthesized program
-    """
-    return _get_program_stats(base_dir, get_last_file=True)
-
-
-def get_excess_program_stats(excess_dir):
-    """
-    Extract statistics for the single program in the excess benchmark directory
-
-    Returns: dict with statistics from the excess program
-    """
-    return _get_program_stats(excess_dir, get_last_file=False)
+def _safe_numeric_convert(value: Any, force_int: bool = False) -> float:
+    """Convert string values to numeric, handle empty/missing values"""
+    if value is None or value == "" or value == "N/A":
+        return 0.0
+    try:
+        if force_int:
+            return float(
+                int(float(value))
+            )  # Convert via float first to handle "99.0" -> 99
+        else:
+            return float(value)
+    except (ValueError, TypeError):
+        return 0.0
 
 
-def compare_stats(base_stats, excess_stats, benchmark_name, base_dir, excess_dir):
-    """
-    Compare statistics between base synthesized program and excess program
+def _format_metric_with_percentage(
+    base_val: float, excess_val: float, is_time: bool = False
+) -> str:
+    """Format a metric value with percentage change"""
+    if base_val <= 0:
+        return f"{excess_val:.2f}" if is_time else f"{int(excess_val)}"
 
-    Returns: dict with comparison metrics
-    """
+    pct_change = ((excess_val - base_val) / base_val) * 100
+    if is_time:
+        return f"{excess_val:.2f} ({pct_change:+.1f}\\%)"
+    else:
+        return f"{int(excess_val)} ({pct_change:+.1f}\\%)"
+
+
+def compare_stats(
+    base_stats: Dict[str, str],
+    excess_stats: Dict[str, str],
+    benchmark_name: str,
+    base_dir: str,
+    excess_dir: str,
+) -> Dict[str, str]:
+    """Compare statistics between base synthesized program and excess program"""
     if base_stats is None or excess_stats is None:
         raise ValueError(
             f"Missing stats for {benchmark_name}: base={base_stats}, excess={excess_stats}"
         )
 
-    def safe_numeric_convert(value, force_int=False):
-        """Convert string values to numeric, handle empty/missing values"""
-        if value is None or value == "" or value == "N/A":
-            return 0
-        try:
-            if force_int:
-                return int(
-                    float(value)
-                )  # Convert via float first to handle "99.0" -> 99
-            else:
-                return float(value)
-        except ValueError:
-            return 0
-
-    # Focus on metrics that are likely to change significantly
-    key_metrics = ["#Queries", "#Terms", "Synthesis Time(s)"]
-    integer_metrics = {"#Queries", "#Terms"}  # These should be integers
-
-    comparison = {
-        "Benchmark": benchmark_name,
-    }
-
-    # Add component counts
+    # Component counts
     base_components = _count_components(base_dir)
     excess_components = _count_components(excess_dir)
-    comparison["Components"] = base_components
-    comparison["+ Components"] = excess_components - base_components
+    extra_components = excess_components - base_components
+    components_str = f"{excess_components} ({extra_components:+d})"
 
-    # Add base values and deltas for key metrics
-    for metric in key_metrics:
-        is_integer = metric in integer_metrics
-        base_val = safe_numeric_convert(base_stats[metric], force_int=is_integer)
-        excess_val = safe_numeric_convert(excess_stats[metric], force_int=is_integer)
-        delta = excess_val - base_val  # Positive = overhead, Negative = improvement
+    # Process key metrics with their formatting
+    metrics = {}
+    for metric, is_integer in [
+        ("#Queries", True),
+        ("#Terms", True),
+        ("Synthesis Time(s)", False),
+    ]:
+        base_val = _safe_numeric_convert(base_stats[metric], force_int=is_integer)
+        excess_val = _safe_numeric_convert(excess_stats[metric], force_int=is_integer)
+        is_time = metric == "Synthesis Time(s)"
+        metrics[metric] = _format_metric_with_percentage(base_val, excess_val, is_time)
 
-        # Format column names to match desired output
-        if metric == "#Queries":
-            comparison["Queries"] = base_val
-            comparison["+ Queries"] = delta
-        elif metric == "#Terms":
-            comparison["Terms"] = base_val
-            comparison["+ Terms"] = delta
-        elif metric == "Synthesis Time(s)":
-            comparison["Time (s)"] = base_val
-            comparison["+ Time (s)"] = delta
-
-    return comparison
+    return {
+        "Benchmark": benchmark_name,
+        "Components": components_str,
+        "Queries": metrics["#Queries"],
+        "Terms": metrics["#Terms"],
+        "Time": metrics["Synthesis Time(s)"],
+    }
 
 
-def format_comparison_table(comparison_data, category_name):
-    """
-    Format the comparison data into a CSV file and print a simple table
-    """
+def format_comparison_table(
+    comparison_data: List[Dict[str, str]], category_name: str
+) -> str:
+    """Format the comparison data into a CSV file and print a simple table"""
     if not comparison_data:
         raise ValueError(f"No comparison data provided for {category_name} benchmarks!")
 
-    # Ensure data directory exists
-    os.makedirs("data", exist_ok=True)
+    # Ensure output directory exists
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # Generate CSV filename in data directory
-    csv_filename = f"data/excess_comparison_{category_name.lower()}.csv"
+    # Generate CSV filename in output directory
+    csv_filename = f"{OUTPUT_DIR}/excess_comparison_{category_name.lower()}.csv"
 
-    # Define column order to match desired output
-    column_order = [
-        "Benchmark",
-        "Components",
-        "+ Components",
-        "Queries",
-        "+ Queries",
-        "Terms",
-        "+ Terms",
-        "Time (s)",
-        "+ Time (s)",
-    ]
-
-    # Format floating point values to 2 decimal places for CSV
-    formatted_data = []
-    for row in comparison_data:
-        formatted_row = {}
-        for key in column_order:
-            if key in row:
-                value = row[key]
-                if isinstance(value, float):
-                    formatted_row[key] = round(value, 2)
-                else:
-                    formatted_row[key] = value
-            else:
-                formatted_row[key] = ""  # Handle missing columns
-        formatted_data.append(formatted_row)
-
-    # Write to CSV with specified column order
+    # Write to CSV
     with open(csv_filename, "w", newline="") as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=column_order)
-        writer.writeheader()
-        writer.writerows(formatted_data)
+        if comparison_data:  # Ensure we have data
+            writer = csv.DictWriter(csvfile, fieldnames=comparison_data[0].keys())
+            writer.writeheader()
+            writer.writerows(comparison_data)
 
     print(f"Results written to {csv_filename}")
 
-    # Print simple table for visualization
-    print(tabulate(formatted_data, headers="keys", tablefmt="grid", floatfmt=".2f"))
+    # Print table for visualization
+    print(tabulate(comparison_data, headers="keys", tablefmt="grid"))
 
     return csv_filename
 
 
-def categorize_benchmarks(benchmark_pairs):
-    """
-    Categorize benchmark pairs into lists and trees (ignoring STLC benchmarks)
-    """
-    list_pairs = []
-    tree_pairs = []
-
-    for base_dir, excess_dir in benchmark_pairs:
-        if "list" in base_dir:
-            list_pairs.append((base_dir, excess_dir))
-        elif "tree" in base_dir or "bst" in base_dir:
-            tree_pairs.append((base_dir, excess_dir))
-        # Ignore STLC benchmarks (anything that doesn't match list or tree patterns)
-
-    return list_pairs, tree_pairs
+def process_benchmark_pair(base_dir: str, excess_dir: str) -> Dict[str, str]:
+    """Process a single benchmark pair and return comparison metrics"""
+    benchmark_name = fix_name(base_dir)
+    base_stats = _get_program_stats(base_dir, get_last_file=True)
+    excess_stats = _get_program_stats(excess_dir, get_last_file=False)
+    return compare_stats(base_stats, excess_stats, benchmark_name, base_dir, excess_dir)
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Main execution function"""
     print("=== Excess vs Synthesized Program Comparison ===")
 
-    # NOTE: This is a skeleton/plan - functions need to be implemented
-    # Current functions return None/pass, so execution will fail until implemented
-
-    # Step 1: Find all benchmark pairs (base + excess)
+    # Find benchmark pairs and filter for list/tree types
     benchmark_pairs = find_benchmark_pairs()
     print(f"Found {len(benchmark_pairs)} benchmark pairs")
 
-    # Step 2: Categorize benchmarks
-    list_pairs, tree_pairs = categorize_benchmarks(benchmark_pairs)
+    # Categorize and combine into one list
+    list_pairs = [(base, excess) for base, excess in benchmark_pairs if "list" in base]
+    tree_pairs = [
+        (base, excess)
+        for base, excess in benchmark_pairs
+        if "tree" in base or "bst" in base
+    ]
+    all_pairs = list_pairs + tree_pairs
 
-    # Step 3: Process each category
-    for category_name, pairs in [
-        ("Lists", list_pairs),
-        ("Trees", tree_pairs),
-    ]:
-        if not pairs:
-            raise ValueError(
-                f"No {category_name.lower()} benchmark pairs found! Expected directories with 'list'/'tree'/'bst' patterns."
-            )
+    if not all_pairs:
+        raise ValueError(
+            "No benchmark pairs found! Expected directories with 'list'/'tree'/'bst' patterns."
+        )
 
-        print(f"\n=== {category_name} Benchmarks ===")
-        comparison_data = []
+    print(f"\n=== Combined Benchmarks ===")
+    comparison_data = []
 
-        for base_dir, excess_dir in pairs:
-            benchmark_name = fix_name(base_dir)
-
-            # Get statistics from both versions
-            base_stats = get_synthesized_program_stats(base_dir)
-            excess_stats = get_excess_program_stats(excess_dir)
-
-            # Compare and format
-            comparison = compare_stats(
-                base_stats, excess_stats, benchmark_name, base_dir, excess_dir
-            )
-
+    # Process each benchmark pair
+    for base_dir, excess_dir in all_pairs:
+        try:
+            comparison = process_benchmark_pair(base_dir, excess_dir)
             comparison_data.append(comparison)
+        except Exception as e:
+            print(f"Warning: Failed to process {fix_name(base_dir)}: {e}")
 
-        # Generate and print comparison table
-        csv_file = format_comparison_table(comparison_data, category_name)
-        print(f"CSV file generated: {csv_file}")
+    # Generate results
+    csv_file = format_comparison_table(comparison_data, "combined")
+    print(f"CSV file generated: {csv_file}")
+    print(f"\n=== Summary ===")
+    print(
+        f"Successfully processed {len(comparison_data)} out of {len(all_pairs)} benchmark pairs"
+    )
 
-    print("\n=== Summary ===")
-    # TODO: Add overall summary statistics
-    # - Average improvements/degradations
-    # - Best/worst performing benchmarks
-    # - Overall trends
+
+if __name__ == "__main__":
+    main()

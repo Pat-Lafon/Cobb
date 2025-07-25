@@ -1,6 +1,0 @@
-Benchmark,Components,+ Components,Queries,+ Queries,Terms,+ Terms,Time (s),+ Time (s)
-Sorted List,3,5,154,144,77,153,2.64,1.89
-Unique List,2,6,71,0,14,5,1.15,0.05
-Sized List,4,4,99,28,13,12,1.73,0.35
-Duplicate List,3,5,96,25,22,49,5.7,-1.27
-Even List,5,3,301,54,43,50,7.83,1.43
