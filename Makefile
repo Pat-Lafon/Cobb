@@ -24,6 +24,9 @@ subck:
 results:
 	python3 scripts/results.py
 
+excess_results:
+	python scripts/excess_results.py
+
 sync:
 	git submodule sync
 	git submodule update --remote
