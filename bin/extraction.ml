@@ -400,7 +400,7 @@ module Extraction = struct
           [])
 
   (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
-  (* let extract_blocks (collection : SynthesisCollection.t) (target_ty : rty) :
+  let extract_blocks (collection : SynthesisCollection.t) (target_ty : rty) :
       (LocalCtx.t * ExistentializedBlock.t) list =
     let target_nty = erase_rty target_ty in
 
@@ -500,5 +500,5 @@ module Extraction = struct
         [] path_specific_sets_list
     in
 
-    minimize_num extracted_blocks target_ty *)
+    minimize_num extracted_blocks target_ty
 end
