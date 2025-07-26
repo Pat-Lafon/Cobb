@@ -122,30 +122,6 @@ module PriorityBBMap = struct
 
   let print (t : t) : unit = print_endline (layout t)
 end
-(*
-let%test_unit "gen_priority_list" =
-  let res = _gen_priority_list 3 2 in
-  let expected = [ [ 1; 2 ]; [ 2; 1 ] ] in
-  [%test_eq: int list list] res expected
-
-let%test_unit "gen_priority_list2" =
-  let res = _gen_priority_list 4 2 in
-  let expected = [ [ 1; 3 ]; [ 2; 2 ]; [ 3; 1 ] ] in
-  [%test_eq: int list list] res expected
-
-let%test_unit "gen_priority_list3" =
-  let res = _gen_priority_list 5 3 in
-  let expected =
-    [
-      [ 1; 1; 3 ];
-      [ 1; 2; 2 ];
-      [ 1; 3; 1 ];
-      [ 2; 1; 2 ];
-      [ 2; 2; 1 ];
-      [ 3; 1; 1 ];
-    ]
-  in
-  [%test_eq: int list list] res expected *)
 
 let%test_unit "gen_priority_list_big" =
   let res = _more_efficient_gen_priority_list_helper 3 2 in
