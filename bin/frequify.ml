@@ -6,10 +6,12 @@ module Env = Zzenv
 let source = ref "" 
 let all = ref false
 let freq_name = ref "frequency_gen_list"
-let usage_msg = "Usage: dune exec transformation [-a] [-f] <program_file>"
+let out_filename = ref ""
+let usage_msg = "Usage: dune exec frequify [-f] <program_file>"
 let anon_fun file = source := file
 let speclist = [
   ("-f", Arg.String (fun s -> freq_name := s), "Set frequency function (supports freq_gen and frequency_gen_list)");
+  ("-o", Arg.String (fun s -> out_filename := s), "Set output file")
 ] 
 let freq_gen_list = ["freq_gen"; "unif_gen"; "frequency_gen_list"]
 
@@ -384,7 +386,12 @@ let frequify_program (config : string) (source : string ) =
       (* let () = print_endline new_code in *)
 
       (* prints program to file *)
-      let filename = String.sub source 0 ( (String.length source) - 3) ^ "_freq.ml" in
+      let filename = 
+        if !out_filename = "" then
+          String.sub source 0 ( (String.length source) - 3) ^ "_freq.ml"
+        else
+          !out_filename
+        in
       let oc = open_out filename in
       output_string oc "open Combinators\n";
       if !freq_name = "frequency_gen_list" then
@@ -404,7 +411,9 @@ let () =
     Arg.parse speclist anon_fun usage_msg;
 
     if validate_freq_gen !freq_name then
+      frequify_program config_file !source 
+    else
       failwith "frequency generator not supported"
   with
   | Sys_error s -> print_endline s
-  | Failure s -> print_endline s
+  (* | Failure s -> print_endline s *)
