@@ -202,7 +202,8 @@ let rec nd_join_list (t : (_, _ term) typed list) : (_, _ term) typed =
 let final_program_to_string (reconstruct_code_with_new_body : _ -> _ Item.item)
     new_body : string =
   let new_frontend_prog =
-    new_body |> reconstruct_code_with_new_body |> Item.map_item (fun x -> None)
+    new_body |> reconstruct_code_with_new_body
+    |> Item.map_item (fun x -> Some x)
   in
 
   Frontend_opt.To_item.layout_item new_frontend_prog
