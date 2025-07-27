@@ -69,7 +69,8 @@ module PrioritySynthesis = struct
                 lattice)
             list_of_paths
         in
-        List.of_seq found_less_precise_solutions |> List.flatten
+        List.of_seq found_less_precise_solutions
+        |> List.flatten |> List.append acc
       else failwith "Max cost exceeded"
     else (
       print_endline "Current Collection";
