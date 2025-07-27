@@ -26,11 +26,26 @@ def invoc_cmd(
                     capture_output=capture_output,
                     env=my_env,
                     stdout=ofile,
+                    stderr=subprocess.PIPE,  # Capture stderr separately for error reporting
                 )
                 if check_res(res):
-                    raise subprocess.CalledProcessError(res.returncode, cmd)
+                    # Print detailed error information before raising exception
+                    print(
+                        f"Command failed with return code {res.returncode}: {' '.join(cmd)}",
+                        file=sys.stderr,
+                    )
+                    if res.stderr:
+                        stderr_output = (
+                            res.stderr.decode()
+                            if isinstance(res.stderr, bytes)
+                            else res.stderr
+                        )
+                        print(f"Error output: {stderr_output}", file=sys.stderr)
+                    raise subprocess.CalledProcessError(
+                        res.returncode, cmd, stderr=res.stderr
+                    )
             except subprocess.CalledProcessError as e:
-                print(e.output)
+                # Re-raise the exception - error details already printed above
                 raise e
     else:
         if verbose:
@@ -38,10 +53,30 @@ def invoc_cmd(
         try:
             res = subprocess.run(cmd, cwd=cwd, capture_output=True, env=my_env)
             if check_res(res):
-                raise subprocess.CalledProcessError(res.returncode, cmd)
+                # Print detailed error information before raising exception
+                print(
+                    f"Command failed with return code {res.returncode}: {' '.join(cmd)}",
+                    file=sys.stderr,
+                )
+                if res.stderr:
+                    stderr_output = (
+                        res.stderr.decode()
+                        if isinstance(res.stderr, bytes)
+                        else res.stderr
+                    )
+                    print(f"Error output: {stderr_output}", file=sys.stderr)
+                if res.stdout:
+                    stdout_output = (
+                        res.stdout.decode()
+                        if isinstance(res.stdout, bytes)
+                        else res.stdout
+                    )
+                    print(f"Standard output: {stdout_output}", file=sys.stderr)
+                raise subprocess.CalledProcessError(
+                    res.returncode, cmd, res.stdout, res.stderr
+                )
         except subprocess.CalledProcessError as e:
-            print(e.output, file=sys.stderr)
-            print(e.stderr, file=sys.stderr)
+            # Re-raise the exception - error details already printed above
             raise e
 
 
