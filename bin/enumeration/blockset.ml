@@ -12,6 +12,7 @@ module BlockSetF (B : Block_intf) : sig
   val singleton : B.t -> t
   val init : B.t list -> t
   val add_block : t -> B.t -> t
+  val remove_block : t -> B.t -> t
   val add_or_find : t -> B.t -> added_or_found
   val find_block_opt : t -> B.t -> B.t option
   val get_idx : t -> Ptset.elt -> B.t
@@ -74,6 +75,7 @@ end = struct
   let is_empty (pm : t) : bool = P.is_empty pm
   let singleton (x : P.key) : t = P.singleton x ()
   let add_block (pm : t) x : t = P.add x () pm
+  let remove_block (pm : t) x : t = try P.remove x pm with Not_found -> pm
 
   let add_or_find (pm : t) x =
     match P.add_find x () pm with

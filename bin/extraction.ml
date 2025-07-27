@@ -399,8 +399,110 @@ module Extraction = struct
           print_endline "return nothing";
           [])
 
-  (* Take blocks of different coverage types and join them together into full programs using non-deterministic choice *)
-  let extract_blocks (collection : SynthesisCollection.t) (target_ty : rty) :
+  let extract_imprecise_solution (lc : LocalCtx.t)
+      (target_path_block : ExistentializedBlock.t) (other_blocks : Block.t list)
+      (bset : BlockSetE.t) : (LocalCtx.t * ExistentializedBlock.t) list =
+    let conditional_add (bs : BlockSetE.t) (b : ExistentializedBlock.t) :
+        BlockSetE.t =
+      if ExistentializedBlock.is_sub_rty b target_path_block then
+        BlockSetE.add_block bs b
+      else if ExistentializedBlock.is_sub_rty target_path_block b then
+        BlockSetE.add_block bs b
+      else bs
+    in
+
+    let target_nty = ExistentializedBlock.to_nty target_path_block in
+
+    let top_gen_name = Term_utils.get_ty_gen_name target_nty in
+
+    let top_gen =
+      match Tracking.NameTracking.get_ast top_gen_name with
+      | Some x -> x
+      | None ->
+          let term = Term_utils.term_top target_nty in
+          Tracking.NameTracking.add_ast top_gen_name term;
+          term
+    in
+
+    let new_uctx : uctx = LocalCtx.uctx_add_local_ctx lc in
+
+    let top_rty =
+      match TypeInference.infer_type new_uctx top_gen with
+      | NoCoverage | FailedTyping -> failwith "Failed to infer type for top_gen"
+      | Res rty -> rty
+    in
+
+    let gen_block : Block.t =
+      { id = top_gen_name; ty = top_rty.ty; lc; cost = 0 }
+    in
+
+    print_endline "target_path_block:";
+    ExistentializedBlock.print target_path_block;
+
+    (*     (* Add hidden generator? *)
+    print_endline "bset";
+    BlockSetE.print bset; *)
+
+    (*     print_endline "top_gen_block";
+    Block.print block; *)
+    let bset = BlockSetE.add_block bset (Block.existentialize gen_block) in
+
+    (* Fold over path specific terms for this path *)
+    let bset =
+      List.fold_left
+        (fun acc b -> conditional_add acc (Block.existentialize b))
+        bset other_blocks
+    in
+
+    (* extract_for_path lc target_path_ty set *)
+    match BlockSetE.add_or_find bset target_path_block with
+    | Found e ->
+        print_endline
+          "I didn't think this would hanppen, is the target type just true?";
+        [ (lc, e) ]
+    | Added bset ->
+        print_endline "bset after top generator add";
+        BlockSetE.print bset;
+
+        let s = BlockSetE.get_succs bset target_path_block in
+
+        if Ptset.is_empty s then
+          failwith "How does this happen if we just added the top generator"
+        else (
+          BlockSetE.print_ptset bset s;
+
+          let target_path_ty = target_path_block.ty in
+
+          let bset = BlockSetE.remove_block bset target_path_block in
+          let starting_point = (lc, bset, (None, s)) in
+
+          let block_choices = setup_type starting_point target_path_ty in
+
+          List.iter
+            (fun (lc, _, b, _) ->
+              Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
+              Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
+            block_choices;
+
+          let block_choices = minimize_type block_choices target_path_ty in
+
+          List.iter
+            (fun (lc, _, b, _) ->
+              Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
+              Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
+            block_choices;
+
+          let block_choices =
+            List.map (fun (lc, _, b, _) -> (lc, b)) block_choices
+          in
+
+          let block_choices = minimize_num block_choices target_path_ty in
+
+          (* When we are done, drop any remaining predesessors and the block
+               map *)
+          block_choices)
+
+  (* let extract_best_effort_solution (collection : SynthesisCollection.t) (target_ty : rty) :
       (LocalCtx.t * ExistentializedBlock.t) list =
     let target_nty = erase_rty target_ty in
 
@@ -500,5 +602,5 @@ module Extraction = struct
         [] path_specific_sets_list
     in
 
-    minimize_num extracted_blocks target_ty
+    minimize_num extracted_blocks target_ty *)
 end

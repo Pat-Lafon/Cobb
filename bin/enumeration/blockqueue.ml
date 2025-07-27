@@ -121,6 +121,12 @@ module PriorityBBMap = struct
     Buffer.contents res
 
   let print (t : t) : unit = print_endline (layout t)
+
+  let get_all_blocks_of_type (t : t) (nty : Nt.t) : Block.t list =
+    Hashtbl.fold t ~init:[] ~f:(fun ~key:_ ~data acc ->
+        match Hashtbl.find data nty with
+        | Some blocks -> blocks @ acc
+        | None -> acc)
 end
 
 let%test_unit "gen_priority_list_big" =

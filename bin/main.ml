@@ -23,6 +23,9 @@ type config = {
   use_missing_coverage_file : bool;
   collect_ext : string;
   component_list : string list;
+      (** If true, when we hit a cost upper bound, we will attempt to extract
+          out the best possible solution with what we have *)
+  imprecise : bool;
 }
 
 type benchmark_results = {
@@ -99,6 +102,9 @@ let get_synth_config_values meta_config_file : config =
   let type_rlimit = metaj |> member "type_rlimit" |> to_int in
   let collect_ext = metaj |> member "collectfile" |> to_string in
   let comp_path = metaj |> member "comp_path" |> to_string in
+  let imprecise =
+    metaj |> member "imprecise" |> to_bool_option |> Option.value ~default:false
+  in
   let use_missing_coverage_file =
     metaj
     |> member "use_missing_coverage_file"
@@ -127,6 +133,7 @@ assert (abd_rlimit >= syn_rlimit); *)
     collect_ext;
     component_list;
     use_missing_coverage_file;
+    imprecise;
   }
 
 let set_z3_rlimit rlimit =
@@ -254,6 +261,7 @@ let localize_benchmark source_file meta_config_file =
 let synthesis_benchmark source_file meta_config_file =
   let config = get_synth_config_values meta_config_file in
 
+  imprecise := config.imprecise;
   let start_time = Unix.gettimeofday () in
 
   let missing_coverage, abd_time =
@@ -440,7 +448,8 @@ let regular_directory =
           failwith "Could not determine if this was a regular directory")
 
 let cobb (f : string -> string -> unit) =
-  Core.Command.basic ~summary:"The Cobb synthesizer which leverages coverage types"
+  Core.Command.basic
+    ~summary:"The Cobb synthesizer which leverages coverage types"
     Core.Command.Let_syntax.(
       let%map_open source_file = anon ("program" %: regular_file) in
       fun () ->

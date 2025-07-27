@@ -53,6 +53,7 @@ module type Block_intf = sig
   type t
 
   val layout : t -> string
+  val print : t -> unit
   val to_nty : t -> Nt.t
   val to_typed_term : t -> (Nt.t, Nt.t term) typed
   val get_local_ctx : t -> LocalCtx.t
@@ -81,6 +82,7 @@ end = struct
       (NameTracking.get_term id |> layout_typed_erased_term)
       (layout_ty id.ty) (layout_rty ty)
 
+  let print (x : t) : unit = print_endline (layout x)
   let get_id ({ id; _ } : t) : identifier = id
 
   (* In the case of an existentialiszed block, the only thing in context is itself*)
@@ -147,6 +149,7 @@ end = struct
       (NameTracking.get_term id |> layout_typed_erased_term)
       (layout_ty id.ty) (layout_rty ty)
 
+  let print (x : t) : unit = print_endline (layout x)
   let get_id ({ id; _ } : t) : identifier = id
   let get_local_ctx ({ lc; _ } : t) : LocalCtx.t = lc
 

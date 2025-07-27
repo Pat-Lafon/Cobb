@@ -46,7 +46,7 @@
   (pps ppx_optcomp ppx_compare ppx_sexp_conv)))
 
 (library
-(public_name Cobb.pieces)
+ (public_name Cobb.pieces)
  (name pieces)
  (libraries underapproximation_type.typing utils tracking context)
  (modules pieces))
@@ -100,6 +100,16 @@
  (libraries core underapproximation_type.typing language_utils.zzdatatype))
 
 (library
+ (name term_utils)
+ (modules term_utils)
+ (libraries
+  underapproximation_type.typing
+  underapproximation_type.syntax
+  block
+  timeout
+  utils))
+
+(library
  (name extraction)
  (modules extraction)
  (libraries
@@ -107,6 +117,7 @@
   context
   pomap
   blockcollection
+  term_utils
   tracking
   synthesiscollection))
 

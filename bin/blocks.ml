@@ -40,6 +40,8 @@ let _num_target_blocks (collection : PrioritySynthesisCollection.t)
   PrioritySynthesisCollection.fold_by_type collection nty_target_type 0
     (fun acc bset -> acc + BlockSet.size bset)
 
+let imprecise = ref false
+
 module PrioritySynthesis = struct
   let rec synthesis_helper (target_type : rty) (current_cost : int)
       (*      (priority_queue : PathPriorityQueue.t) *)
@@ -47,52 +49,74 @@ module PrioritySynthesis = struct
       (operations : (Pieces.component * (t list * t)) list)
       (collection_file : string) (acc : (LocalCtx.t * _) list) :
       (LocalCtx.t * _) list =
-    if !max_cost_ref < current_cost then failwith "Max cost exceeded"
-    else print_endline "Current Collection";
+    if !max_cost_ref < current_cost then
+      if !imprecise then
+        let target_nty = Rty.erase_rty target_type in
+        let list_of_paths = Hashtbl.to_seq collection.path_specific in
+        let found_less_precise_solutions =
+          Seq.map
+            (fun (lc, (target_block, (pmap : Blockqueue.PriorityBBMap.t), bmap))
+               ->
+              let (blocks : Block.t list) =
+                Blockqueue.PriorityBBMap.get_all_blocks_of_type pmap target_nty
+              in
 
-    (*     PrioritySynthesisCollection.print collection;
+              let lattice =
+                BlockMap.existentialized_list bmap target_nty |> BlockSetE.init
+              in
+
+              Extraction.extract_imprecise_solution lc target_block blocks
+                lattice)
+            list_of_paths
+        in
+        List.of_seq found_less_precise_solutions |> List.flatten
+      else failwith "Max cost exceeded"
+    else (
+      print_endline "Current Collection";
+
+      (*     PrioritySynthesisCollection.print collection;
     Core.Out_channel.write_all collection_file
       ~data:(PrioritySynthesisCollection.layout collection); *)
-    let current_target_amount = _num_target_blocks collection target_type in
+      let current_target_amount = _num_target_blocks collection target_type in
 
-    print_endline
-      ("Current number of extraction blocks to choose from: "
-      ^ string_of_int current_target_amount);
+      print_endline
+        ("Current number of extraction blocks to choose from: "
+        ^ string_of_int current_target_amount);
 
-    let _ =
-      List.fold_left
-        (fun acc component ->
-          PrioritySynthesisCollection.increment_by_component acc component
-            current_cost;
-          acc)
-        collection operations
-    in
-
-    let new_target_amount = _num_target_blocks collection target_type in
-
-    let path_solutions =
-      (* only check in paths that have gotten something new lol *)
-      if current_target_amount = new_target_amount then (
-        print_endline "No new blocks have been added, avoid extraction";
-        [])
-      else check_and_remove_finished_paths collection
-    in
-
-    let acc = path_solutions @ acc in
-
-    if Hashtbl.length collection.path_specific = 0 then acc
-    else if
-      (not (List.is_empty path_solutions))
-      && Extraction.check_types_against_target
-           (List.map (fun (_, (b : ExistentializedBlock.t)) -> b.ty) acc)
-           target_type
-    then acc
-    else
-      let enumeration_result =
-        synthesis_helper target_type (current_cost + 1) collection operations
-          collection_file acc
+      let _ =
+        List.fold_left
+          (fun acc component ->
+            PrioritySynthesisCollection.increment_by_component acc component
+              current_cost;
+            acc)
+          collection operations
       in
-      enumeration_result
+
+      let new_target_amount = _num_target_blocks collection target_type in
+
+      let path_solutions =
+        (* only check in paths that have gotten something new lol *)
+        if current_target_amount = new_target_amount then (
+          print_endline "No new blocks have been added, avoid extraction";
+          [])
+        else check_and_remove_finished_paths collection
+      in
+
+      let acc = path_solutions @ acc in
+
+      if Hashtbl.length collection.path_specific = 0 then acc
+      else if
+        (not (List.is_empty path_solutions))
+        && Extraction.check_types_against_target
+             (List.map (fun (_, (b : ExistentializedBlock.t)) -> b.ty) acc)
+             target_type
+      then acc
+      else
+        let enumeration_result =
+          synthesis_helper target_type (current_cost + 1) collection operations
+            collection_file acc
+        in
+        enumeration_result)
 
   let synthesis (target_type : rty) (max_cost : int)
       (inital_seeds : PrioritySynthesisCollection.t)
