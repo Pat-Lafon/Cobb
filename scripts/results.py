@@ -14,23 +14,23 @@ results_file_regex = r"prog[0-9]+\.ml.result.csv$"
 
 def fix_name(name):
     if "sized" in name:
-        return "Sized List"
+        return "Sized List$^*$"
     elif "even" in name:
-        return "Even List"
+        return "Even List$^*$"
     elif "sorted" in name:
-        return "Sorted List"
+        return "Sorted List$^*$"
     elif "bst" in name:
-        return "BST"
+        return "BST$^\\star$"
     elif "duplicate" in name:
-        return "Duplicate List"
+        return "Duplicate List$^*$"
     elif "unique" in name:
-        return "Unique List"
+        return "Unique List$^\\Diamond$"
     elif "depth" in name:
-        return "Sized Tree"
+        return "Sized Tree$^*$"
     elif "complete" in name:
-        return "Complete Tree"
+        return "Complete Tree$^\\star$"
     elif "rbtree" in name:
-        return "Red-Black Tree"
+        return "Red-Black Tree$^*$"
     else:
         return name
 
@@ -210,6 +210,23 @@ if __name__ == "__main__":
 
         return "\n".join(result_lines)
 
+    def fix_latex_escaping(latex_table):
+        """Fix the escaped LaTeX symbols that tabulate creates"""
+        # Fix escaped backslashes in math mode
+        latex_table = latex_table.replace("\\textbackslash{}", "\\")
+
+        # Fix escaped curly braces
+        latex_table = latex_table.replace("\\{", "{")
+        latex_table = latex_table.replace("\\}", "}")
+
+        # Fix escaped dollar signs
+        latex_table = latex_table.replace("\\$", "$")
+
+        # Fix escaped carets
+        latex_table = latex_table.replace("\\^{}", "^")
+
+        return latex_table
+
     # Combine list and tree stats into one table, keep STLC separate
     main_stats = []
 
@@ -244,6 +261,10 @@ if __name__ == "__main__":
 
         # Add midrules between different benchmark types
         latex_table = add_midrules_to_table(latex_table, main_stats)
+
+        # Fix the escaped LaTeX symbols
+        latex_table = fix_latex_escaping(latex_table)
+
         print(latex_table)
 
     # Print STLC table separately
@@ -260,4 +281,8 @@ if __name__ == "__main__":
 
         # Add midrules between different benchmark types
         latex_table = add_midrules_to_table(latex_table, stlc_stats)
+
+        # Fix the escaped LaTeX symbols
+        latex_table = fix_latex_escaping(latex_table)
+
         print(latex_table)
