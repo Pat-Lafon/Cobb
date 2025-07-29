@@ -157,27 +157,27 @@ if __name__ == "__main__":
                     section = "list"
                     if "sized list" in name_part.lower():
                         benchmark_name = "sized_list"
-                    elif "even list" in name_part.lower():
-                        benchmark_name = "even_list"
-                    elif "sorted list" in name_part.lower():
-                        benchmark_name = "sorted_list"
                     elif "duplicate list" in name_part.lower():
                         benchmark_name = "duplicate_list"
                     elif "unique list" in name_part.lower():
                         benchmark_name = "unique_list"
+                    elif "sorted list" in name_part.lower():
+                        benchmark_name = "sorted_list"
+                    elif "even list" in name_part.lower():
+                        benchmark_name = "even_list"
                 elif any(
                     x in name_part.lower()
                     for x in ["red-black tree", "bst", "sized tree", "complete tree"]
                 ):
                     section = "tree"
-                    if "red-black tree" in name_part.lower():
-                        benchmark_name = "rbtree"
-                    elif "bst" in name_part.lower():
-                        benchmark_name = "bst"
-                    elif "sized tree" in name_part.lower():
+                    if "sized tree" in name_part.lower():
                         benchmark_name = "sized_tree"
                     elif "complete tree" in name_part.lower():
                         benchmark_name = "complete_tree"
+                    elif "bst" in name_part.lower():
+                        benchmark_name = "bst"
+                    elif "red-black tree" in name_part.lower():
+                        benchmark_name = "rbtree"
                 elif "stlc" in name_part.lower():
                     section = "stlc"
                     benchmark_name = "stlc"
@@ -186,14 +186,22 @@ if __name__ == "__main__":
                     benchmark_name = current_benchmark_name
                     section = current_section
 
-                # Add \midrule and \hline when transitioning from list to tree section
+                # Add special transitions for specific cases
                 if (
                     section != current_section
                     and current_section == "list"
                     and section == "tree"
                 ):
-                    result_lines.append("\\midrule")
-                    result_lines.append("\\hline")
+                    # Transition from list to tree section - use hhline
+                    result_lines.append("  \\hhline{=|==|=====}")
+                # Add hhline before Red-Black Tree (when transitioning from BST to Red-Black Tree)
+                elif (
+                    benchmark_name == "rbtree"
+                    and current_benchmark_name == "bst"
+                    and section == "tree"
+                ):
+                    # Special transition before Red-Black Tree
+                    result_lines.append("  \\hhline{=|==|=====}")
                 # Add midrule when benchmark name changes within the same section
                 elif (
                     benchmark_name != current_benchmark_name
@@ -235,6 +243,67 @@ if __name__ == "__main__":
 
     # Add tree benchmarks
     main_stats.extend(tree_stats)
+
+    # Sort main_stats to ensure correct ordering while preserving benchmark groupings
+    def sort_benchmarks(stats):
+        # Define the desired order for each benchmark type
+        list_order = ["sized", "duplicate", "unique", "sorted", "even"]
+        tree_order = [
+            "depth",
+            "complete",
+            "bst",
+            "rbtree",
+        ]  # Note: "depth" is the directory name for sized tree, rbtree last
+
+        # Group stats by benchmark type
+        grouped_stats = {}
+        current_benchmark = None
+
+        for stat in stats:
+            name = stat["name"].lower()
+
+            # Determine which benchmark this belongs to
+            if "sized list" in name:
+                current_benchmark = "sized"
+            elif "duplicate list" in name:
+                current_benchmark = "duplicate"
+            elif "unique list" in name:
+                current_benchmark = "unique"
+            elif "sorted list" in name:
+                current_benchmark = "sorted"
+            elif "even list" in name:
+                current_benchmark = "even"
+            elif "bst" in name:
+                current_benchmark = "bst"
+            elif "sized tree" in name:
+                current_benchmark = "depth"
+            elif "complete tree" in name:
+                current_benchmark = "complete"
+            elif "red-black tree" in name:
+                current_benchmark = "rbtree"
+            # For numbered entries and sketches, use the last benchmark
+
+            if current_benchmark:
+                if current_benchmark not in grouped_stats:
+                    grouped_stats[current_benchmark] = []
+                grouped_stats[current_benchmark].append(stat)
+
+        # Rebuild the list in the correct order
+        ordered_stats = []
+
+        # First add list benchmarks in order
+        for benchmark in list_order:
+            if benchmark in grouped_stats:
+                ordered_stats.extend(grouped_stats[benchmark])
+
+        # Then add tree benchmarks in order
+        for benchmark in tree_order:
+            if benchmark in grouped_stats:
+                ordered_stats.extend(grouped_stats[benchmark])
+
+        return ordered_stats
+
+    main_stats = sort_benchmarks(main_stats)
 
     # Create custom headers with shorter names
     headers = {
