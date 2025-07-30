@@ -9,7 +9,7 @@ out_dir_str = "../Cobb_PBT/bin/"
 
 folder_names = {
     "completetree":"complete_tree",
-    "depth_bst":"bsts",
+    "depth_bst":"bst",
     "depthtree":"depth_tree",
     "duplicatelist":"duplicate_list",
     "even_list":"even_list",
