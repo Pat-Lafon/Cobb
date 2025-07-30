@@ -14,75 +14,6 @@ let rec remove_excess_ast_aux (t : ('t, 't term) typed) =
       (CAppOp { op = { x = DtConstructor "::"; ty }; appopargs })#:t.ty
   | CErr | CApp _ | CAppOp _ | CVal _ -> t
   | CLetE
-      (* other branch Err *)
-      {
-        lhs;
-        rhs =
-          {
-            x =
-              CApp
-                {
-                  appf = { x = VVar { x = "bool_gen"; ty = tyrhs1 }; ty = tyrhs2 };
-                  apparg = { x = VConst U; ty = tyrhs3 };
-                };
-            ty = tyrhs4;
-          };
-        body =
-          {
-            x =
-              CMatch
-                {
-                  matched = { x = VVar v; ty = tybody1 };
-                  match_cases =
-                    [
-                      CMatchcase
-                        {
-                          constructor = { x = "True" | "true"; ty = tybody2 };
-                          args = [];
-                          exp = expt;
-                        };
-                      CMatchcase
-                        {
-                          constructor = { x = "False" | "false"; ty = tybody3 };
-                          args = [];
-                          exp = expf;
-                        };
-                    ];
-                };
-            ty = tybody5;
-          };
-      }
-    when Core.String.(lhs.x = v.x) && expt.x = CErr && expf.x != CErr 
-    ->
-      remove_excess_ast_aux ( CLetE 
-        {
-        lhs; 
-        rhs = (CApp
-                {
-                  appf = { x = VVar { x = "bool_gen"; ty = tyrhs1 }; ty = tyrhs2 };
-                  apparg = { x = VConst U; ty = tyrhs3 };
-                })#:tyrhs4; 
-        body = (CMatch
-                {
-                  matched = { x = VVar v; ty = tybody1 };
-                  match_cases =
-                    [
-                      CMatchcase
-                        {
-                          constructor = { x = "True"; ty = tybody2 };
-                          args = [];
-                          exp = remove_excess_ast_aux expt;
-                        };
-                      CMatchcase
-                        {
-                          constructor = { x = "False"; ty = tybody3 };
-                          args = [];
-                          exp = remove_excess_ast_aux expf;
-                        };
-                    ];
-                })#:tybody5}
-      )#:t.ty 
-  | CLetE
       {
         lhs;
         rhs =
@@ -105,7 +36,7 @@ let rec remove_excess_ast_aux (t : ('t, 't term) typed) =
                     [
                       CMatchcase
                         {
-                          constructor = { x = "True" | "false"; _ };
+                          constructor = { x = "True" | "true"; _ };
                           args = [];
                           exp;
                         };
@@ -123,7 +54,7 @@ let rec remove_excess_ast_aux (t : ('t, 't term) typed) =
     when Core.String.(lhs.x = v.x && is_prefix f.x ~prefix:"Hole") ->
       (* let _ = layout_typed_term t |> print_endline in
          let _ = f.x |> print_endline in *)
-      remove_excess_ast_aux exp 
+      remove_excess_ast_aux exp
   | CLetE
       (* True branch Err *)
       {
@@ -212,7 +143,7 @@ let rec remove_excess_ast_aux (t : ('t, 't term) typed) =
       (CLetE { lhs; rhs; body = remove_excess_ast_aux body })#:t.ty
   | CLetDeTu { turhs; tulhs; body } ->
       (CLetDeTu { turhs; tulhs; body = remove_excess_ast_aux body })#:t.ty
-  (* | CMatch
+  | CMatch
       (* To rewrite matches on True/False to true/false*)
       {
         matched;
@@ -247,7 +178,7 @@ let rec remove_excess_ast_aux (t : ('t, 't term) typed) =
                      exp = remove_excess_ast_aux exp2;
                    };
                ];
-           })#:t.ty *)
+           })#:t.ty
   | CMatch { matched; match_cases } ->
       (CMatch
          {

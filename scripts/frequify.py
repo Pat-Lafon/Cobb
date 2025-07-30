@@ -19,6 +19,9 @@ folder_names = {
     "uniquelist":"unique_list",
 }
 
+t_pattern = r"true"
+f_pattern = r"false"
+
 in_dir = Path(in_dir_str)
 assert in_dir.is_dir()
 
@@ -39,12 +42,31 @@ for d in (os.listdir(in_dir)):
                         out_file = f"{out_dir_str}{folder_names[d]}/{base}_syn{ext}"
                     else:
                         out_file = f"{out_dir_str}{d}/{base}_syn{ext}"
-                    
-                    print(f"i = {in_file}   o = {out_file}")
 
+                    try:
+                        with open(in_file, "r") as fin:
+                            lines = fin.readlines()
+
+                        with open(in_file, "w") as fout:
+                            for line in lines:
+                                new_line = re.sub(t_pattern, "True", line) 
+                                new_line = re.sub(f_pattern, "False", new_line) 
+                                fout.write(new_line)
+                    
+                    except FileNotFoundError:
+                        print(f"Error: The file '{file}' was not found.")
+                    
                     if d == "rbtree":
                         cmd = f"dune exec frequify -- -f unif_gen -o {out_file} {in_file}".split(" ")
                     else:
                         cmd = f"dune exec frequify -- -f freq_gen -o {out_file} {in_file}".split(" ")
                     subprocess.run(cmd)
+
+                    try:
+                        with open(in_file, "w") as fout:
+                            for line in lines:
+                                fout.write(line)
+                    
+                    except FileNotFoundError:
+                        print(f"Error: The file '{file}' was not found.")
             
