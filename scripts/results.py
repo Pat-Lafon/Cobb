@@ -16,7 +16,7 @@ def fix_name(name):
     if "sized" in name:
         return "Sized List$^*$"
     elif "even" in name:
-        return "Even List$^*$"
+        return "Even List"
     elif "sorted" in name:
         return "Sorted List$^*$"
     elif "bst" in name:
