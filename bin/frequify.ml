@@ -76,6 +76,10 @@ let is_bool_gen (s : ('t, string) typed) : bool =
 (** recursively traverses through AST to find and replace bool_gen with frequency_gen *)
 let rec replace_bool_gen (t : ('t, 't term) typed) (name : string) (arg : string): ('t, 't term) typed = 
   t #-> ( function
+  | CAppOp { op = { x = DtConstructor "Nil"; ty }; appopargs } ->
+      (CAppOp { op = { x = DtConstructor "[]"; ty }; appopargs })
+  | CAppOp { op = { x = DtConstructor "Cons"; ty }; appopargs } ->
+      (CAppOp { op = { x = DtConstructor "::"; ty }; appopargs })
   | CErr ->     (* raise Bailout *)
     CVal { x = VVar ("raise BailOut" #: Nt.Ty_any); ty = Nt.Ty_any}
   | CVal t -> CVal t #-> (replace_bool_gen_value name arg)
