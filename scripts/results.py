@@ -1,109 +1,16 @@
 import os
-import re
-import csv
-
 from tabulate import tabulate, SEPARATING_LINE
-
-working_dir = "underapproximation_type/data/validation"
-results_file_regex = r"prog[0-9]+\.ml.result.csv$"
-
-
-""" def run_synthesis_aux(cmd):
-    invoc_cmd(verbose, cmd, rescode_non_zero, None, cwd=None) """
-
-
-def fix_name(name):
-    if "sized" in name:
-        return "Sized List$^*$"
-    elif "even" in name:
-        return "Even List"
-    elif "sorted" in name:
-        return "Sorted List$^*$"
-    elif "bst" in name:
-        return "BST$^\\star$"
-    elif "duplicate" in name:
-        return "Duplicate List$^*$"
-    elif "unique" in name:
-        return "Unique List$^\\Diamond$"
-    elif "depth" in name:
-        return "Sized Tree$^*$"
-    elif "complete" in name:
-        return "Complete Tree$^\\star$"
-    elif "rbtree" in name:
-        return "Red-Black Tree$^*$"
-    else:
-        return name
+from benchmark_data import BenchmarkDataProcessor
 
 
 if __name__ == "__main__":
-    list_stats = []
-    tree_stats = []
-    stlc_stats = []
-    for benchmark_dir in os.listdir(working_dir):
-        if "combined_stlc_gen" in benchmark_dir or "excess" in benchmark_dir:
-            continue
-        b_path = "{}/{}".format(working_dir, benchmark_dir)
-        benchmark_stats = []
-        if os.path.isdir(b_path):
-            print("looking in {}".format(b_path))
-            d = os.listdir(b_path)
-            d.sort()
+    # Initialize the data processor
+    processor = BenchmarkDataProcessor()
 
-            d = list(
-                filter(
-                    lambda filename: re.search(
-                        results_file_regex, filename, re.MULTILINE
-                    ),
-                    d,
-                )
-            )
-
-            for idx, filename in enumerate(d, start=1):
-                stats = {}
-                n = filename.split(".")[0].removeprefix("prog")
-                name = ""
-                if n == "1":
-                    name = "{} {}".format(fix_name(benchmark_dir), n)
-                elif idx == len(d):
-                    name = "sketch"
-                else:
-                    name = n
-                print(name)
-                stats["name"] = name
-                with open("{}/{}".format(b_path, filename), "r") as f:
-                    reader = csv.DictReader(f)
-                    """  reader["fielname"] = filename """
-                    for row in reader:
-                        print(row[" Queries"])
-                        stats["#Holes"] = row[" #Holes"]
-                        stats["Repair Size"] = row[" Repair Size"]
-                        stats["#Queries"] = row[" Queries"]
-                        stats["#Terms"] = row[" #Terms"]
-                        print(row[" Abd Time"])
-                        stats["Abduction Time(s)"] = row[" Abd Time"]
-
-                        print(row[" Synth Time"])
-                        stats["Synthesis Time(s)"] = row[" Synth Time"]
-
-                        print(row[" Total Time"])
-                        stats["Total Time(s)"] = row[" Total Time"]
-                benchmark_stats.append(stats)
-            # print(benchmark_stats)
-            """ print(
-                tabulate(
-                    benchmark_stats, headers="keys", tablefmt="latex", stralign="right"
-                )
-            ) """
-
-        if benchmark_stats:
-            """if evaluation_stats:
-            evaluation_stats.append((SEPARATING_LINE,))"""
-            if "list" in benchmark_dir:
-                list_stats += benchmark_stats
-            elif "tree" in benchmark_dir or "bst" in benchmark_dir:
-                tree_stats += benchmark_stats
-            else:
-                stlc_stats += benchmark_stats
+    # Get all benchmark data with LaTeX formatting
+    main_stats, tree_stats, stlc_stats = processor.get_all_stats(use_latex_names=True)
+    # Combine main and tree stats for the main table
+    combined_main_stats = main_stats + tree_stats
 
     def add_midrules_to_table(latex_table, stats):
         lines = latex_table.split("\n")
@@ -235,76 +142,6 @@ if __name__ == "__main__":
 
         return latex_table
 
-    # Combine list and tree stats into one table, keep STLC separate
-    main_stats = []
-
-    # Add list benchmarks first
-    main_stats.extend(list_stats)
-
-    # Add tree benchmarks
-    main_stats.extend(tree_stats)
-
-    # Sort main_stats to ensure correct ordering while preserving benchmark groupings
-    def sort_benchmarks(stats):
-        # Define the desired order for each benchmark type
-        list_order = ["sized", "duplicate", "unique", "sorted", "even"]
-        tree_order = [
-            "depth",
-            "complete",
-            "bst",
-            "rbtree",
-        ]  # Note: "depth" is the directory name for sized tree, rbtree last
-
-        # Group stats by benchmark type
-        grouped_stats = {}
-        current_benchmark = None
-
-        for stat in stats:
-            name = stat["name"].lower()
-
-            # Determine which benchmark this belongs to
-            if "sized list" in name:
-                current_benchmark = "sized"
-            elif "duplicate list" in name:
-                current_benchmark = "duplicate"
-            elif "unique list" in name:
-                current_benchmark = "unique"
-            elif "sorted list" in name:
-                current_benchmark = "sorted"
-            elif "even list" in name:
-                current_benchmark = "even"
-            elif "bst" in name:
-                current_benchmark = "bst"
-            elif "sized tree" in name:
-                current_benchmark = "depth"
-            elif "complete tree" in name:
-                current_benchmark = "complete"
-            elif "red-black tree" in name:
-                current_benchmark = "rbtree"
-            # For numbered entries and sketches, use the last benchmark
-
-            if current_benchmark:
-                if current_benchmark not in grouped_stats:
-                    grouped_stats[current_benchmark] = []
-                grouped_stats[current_benchmark].append(stat)
-
-        # Rebuild the list in the correct order
-        ordered_stats = []
-
-        # First add list benchmarks in order
-        for benchmark in list_order:
-            if benchmark in grouped_stats:
-                ordered_stats.extend(grouped_stats[benchmark])
-
-        # Then add tree benchmarks in order
-        for benchmark in tree_order:
-            if benchmark in grouped_stats:
-                ordered_stats.extend(grouped_stats[benchmark])
-
-        return ordered_stats
-
-    main_stats = sort_benchmarks(main_stats)
-
     # Create custom headers with shorter names
     headers = {
         "name": "Benchmark",
@@ -317,10 +154,18 @@ if __name__ == "__main__":
         "Total Time(s)": "Total Time(s)",
     }
 
-    # Print main table (lists and trees)
-    if main_stats:
+    # Create output directory if it doesn't exist
+    output_dir = "data"
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, "benchmark_results.tex")
+
+    # Collect all LaTeX output
+    latex_output = []
+
+    # Generate main table (lists and trees)
+    if combined_main_stats:
         latex_table = tabulate(
-            main_stats, headers=headers, tablefmt="latex", stralign="right"
+            combined_main_stats, headers=headers, tablefmt="latex", stralign="right"
         )
 
         # Replace the default tabular definition with custom column specification
@@ -329,16 +174,17 @@ if __name__ == "__main__":
         )
 
         # Add midrules between different benchmark types
-        latex_table = add_midrules_to_table(latex_table, main_stats)
+        latex_table = add_midrules_to_table(latex_table, combined_main_stats)
 
         # Fix the escaped LaTeX symbols
         latex_table = fix_latex_escaping(latex_table)
 
-        print(latex_table)
+        latex_output.append("% Main Benchmarks (Lists and Trees):")
+        latex_output.append(latex_table)
 
-    # Print STLC table separately
+    # Generate STLC table separately
     if stlc_stats:
-        print("\n% STLC Benchmarks:")
+        latex_output.append("\n% STLC Benchmarks:")
         latex_table = tabulate(
             stlc_stats, headers=headers, tablefmt="latex", stralign="right"
         )
@@ -354,4 +200,13 @@ if __name__ == "__main__":
         # Fix the escaped LaTeX symbols
         latex_table = fix_latex_escaping(latex_table)
 
-        print(latex_table)
+        latex_output.append(latex_table)
+
+    # Write all LaTeX output to file
+    with open(output_file, "w") as f:
+        f.write("\n".join(latex_output))
+
+    print(f"LaTeX tables written to: {output_file}")
+
+    # Also print to stdout for backward compatibility
+    print("\n".join(latex_output))

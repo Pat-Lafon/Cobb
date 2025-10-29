@@ -1,0 +1,42 @@
+<svg viewBox="0 0 2000 1600"
+    xmlns="http://www.w3.org/2000/svg">
+
+    <!-- Column headers -->
+    <text x="650" y="80" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">Safety</text>
+    <text x="1300" y="80" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">Coverage</text>
+
+    <!-- Horizontal line 1 -->
+    <line x1="0" y1="140" x2="1600" y2="140" stroke="black" stroke-width="2"/>
+
+    <!-- Row headers -->
+    <text x="175" y="360" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">Type-Based</text>
+    <text x="175" y="440" font-size="48" font-family="Arial, sans-serif"
+    text-anchor="middle">Verification</text>
+    <text x="175" y="840" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">Type-Based</text>
+    <text x="175" y="920" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">Synthesis</text>
+
+    <!-- Horizontal line 2 -->
+    <line x1="0" y1="710" x2="1600" y2="710" stroke="black" stroke-width="2"/>
+
+    <!-- Safety + Verification quadrant (top-left) -->
+    <text x="650" y="260" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">Liquid Haskell</text>
+    <text x="650" y="340" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">Flux</text>
+    <text x="650" y="420" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">RefinedRust</text>
+    <text x="650" y="500" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">RefinedC</text>
+    <text x="650" y="580" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">refined(scala)</text>
+    <text x="650" y="660" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">...</text>
+
+    <!-- Coverage + Verification quadrant (top-right) -->
+    <text x="1300" y="440" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">Poirot</text>
+
+    <!-- Safety + Synthesis quadrant (bottom-left) -->
+    <text x="650" y="820" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">Synquid</text>
+    <text x="650" y="900" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">Cobalt</text>
+    <text x="650" y="980" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">ReSyn</text>
+    <text x="650" y="1060" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">SuSLik</text>
+    <text x="650" y="1140" font-size="48" font-family="Arial, sans-serif" text-anchor="middle">...</text>
+
+    <!-- Coverage + Synthesis quadrant (bottom-right) -->
+    <text x="1300" y="920" font-size="100" font-family="Arial, sans-serif" font-weight="bold" text-anchor="middle">Cobb</text>
+    <text x="1300" y="1000" font-size="100" font-family="Arial, sans-serif" font-weight="bold" text-anchor="middle">(This work)</text>
+</svg>
