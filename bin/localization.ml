@@ -241,7 +241,12 @@ module Localization = struct
     (* print_endline ("Inferred whole type" ^ layout_rty inferred_body.ty); *)
     let exnified = term_exnify body in
 
-    let new_body = exnified.hole_variation in
+    let new_body =
+      if exnified.hole_variation = body then
+        let a, b, c = exnified.other |> List.hd in
+        id_to_term c#:a.ty
+      else exnified.hole_variation
+    in
 
     let program_variations = exnified.other in
 
@@ -463,6 +468,8 @@ module Localization = struct
         (fun (x, local_vs, s) ->
           match x with
           | Prop.Not p -> (p, local_vs, s)
+          | Prop.Lit x when x.x = Lit.AC (Constant.B false) ->
+              (Prop.Lit (Lit.AC (Constant.B true))#:x.ty, local_vs, s)
           | _ -> failwith (layout_prop x))
         useful_props
     in
