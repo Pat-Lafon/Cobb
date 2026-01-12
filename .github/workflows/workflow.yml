@@ -30,15 +30,6 @@ jobs:
                   opam-${{ runner.os }}-5.1.1-
                   opam-${{ runner.os }}-
 
-            - name: Cache dune build directory
-              uses: actions/cache@v5
-              with:
-                path: _build
-                key: dune-${{ runner.os }}-5.1.1-${{ hashFiles('**/dune', '**/dune-project', '**/*.ml', '**/*.mli') }}
-                restore-keys: |
-                  dune-${{ runner.os }}-5.1.1-
-                  dune-${{ runner.os }}-
-
             - name: Cache Python dependencies
               uses: actions/cache@v5
               with:
@@ -83,8 +74,8 @@ jobs:
                 restore-keys: |
                   proof-${{ runner.os }}-coq-
 
-            - name: Install Coq
-              run: opam install coq -y
+            - name: Install Rocq
+              run: opam install rocq -y
 
             - name: Regenerate Makefile
               run: cd underapproximation_type/data/validation/proofs && opam exec -- coq_makefile -f _CoqProject -o Makefile
