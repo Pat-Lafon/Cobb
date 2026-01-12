@@ -1,4 +1,4 @@
-.PHONY: all build test sync
+.PHONY: all build test sync proof
 
 build:
 	opam exec -- dune build
