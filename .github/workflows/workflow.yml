@@ -75,12 +75,10 @@ jobs:
               with:
                 ocaml-compiler: 5.1.1
 
-            - name: Cache proof build artifacts
+            - name: Cache proof artifacts
               uses: actions/cache@v4
               with:
-                path: |
-                  underapproximation_type/data/validation/proofs/_build
-                  underapproximation_type/data/validation/proofs/.lia.cache
+                path: underapproximation_type/data/validation/proofs
                 key: proof-${{ runner.os }}-coq-${{ hashFiles('underapproximation_type/data/validation/proofs/**') }}
                 restore-keys: |
                   proof-${{ runner.os }}-coq-
@@ -91,4 +89,5 @@ jobs:
             - name: Regenerate Makefile
               run: cd underapproximation_type/data/validation/proofs && opam exec -- coq_makefile -f _CoqProject -o Makefile
 
-            - run: make proof
+            - name: Build proofs
+              run: opam exec -- make proof
