@@ -74,8 +74,8 @@ jobs:
                 restore-keys: |
                   proof-${{ runner.os }}-coq-
 
-            - name: Install Rocq
-              run: opam install rocq -y
+            - name: Install Coq
+              run: opam install coq -y
 
             - name: Regenerate Makefile
               run: cd underapproximation_type/data/validation/proofs && opam exec -- coq_makefile -f _CoqProject -o Makefile
