@@ -22,7 +22,7 @@ jobs:
                 dune-cache: true
 
             - name: Cache opam dependencies
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               with:
                 path: ~/.opam
                 key: opam-${{ runner.os }}-5.1.1-${{ hashFiles('**/*.opam') }}
@@ -31,7 +31,7 @@ jobs:
                   opam-${{ runner.os }}-
 
             - name: Cache dune build directory
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               with:
                 path: _build
                 key: dune-${{ runner.os }}-5.1.1-${{ hashFiles('**/dune', '**/dune-project', '**/*.ml', '**/*.mli') }}
@@ -40,7 +40,7 @@ jobs:
                   dune-${{ runner.os }}-
 
             - name: Cache Python dependencies
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               with:
                 path: ~/.cache/pip
                 key: pip-${{ runner.os }}-${{ hashFiles('scripts/*.py') }}
@@ -76,7 +76,7 @@ jobs:
                 ocaml-compiler: 5.1.1
 
             - name: Cache proof artifacts
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               with:
                 path: underapproximation_type/data/validation/proofs
                 key: proof-${{ runner.os }}-coq-${{ hashFiles('underapproximation_type/data/validation/proofs/**') }}
