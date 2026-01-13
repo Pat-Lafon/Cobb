@@ -15,20 +15,24 @@ jobs:
               with:
                 submodules: recursive
 
+            # Restore cache BEFORE setup-ocaml so it can detect the existing switch
+            - name: Restore opam switch cache
+              id: opam-cache
+              uses: actions/cache@v5
+              with:
+                path: |
+                  _opam
+                  ~/.opam/download-cache
+                key: opam-${{ runner.os }}-5.1.1-${{ hashFiles('**/*.opam') }}
+                restore-keys: |
+                  opam-${{ runner.os }}-5.1.1-
+
             - name: Set-up OCaml
               uses: ocaml/setup-ocaml@v3
               with:
                 ocaml-compiler: 5.1.1
                 dune-cache: true
-
-            - name: Cache opam dependencies
-              uses: actions/cache@v5
-              with:
-                path: ~/.opam
-                key: opam-${{ runner.os }}-5.1.1-${{ hashFiles('**/*.opam') }}
-                restore-keys: |
-                  opam-${{ runner.os }}-5.1.1-
-                  opam-${{ runner.os }}-
+                opam-pin: false
 
             - name: Cache Python dependencies
               uses: actions/cache@v5
@@ -38,7 +42,8 @@ jobs:
                 restore-keys: |
                   pip-${{ runner.os }}-
 
-            - run: opam install . --deps-only --with-test
+            - name: Install dependencies
+              run: opam install . --deps-only --with-test --yes
 
             - run: make config
 
@@ -61,18 +66,23 @@ jobs:
               with:
                 submodules: recursive
 
+            # Restore cache BEFORE setup-ocaml
+            - name: Restore Coq opam cache
+              id: coq-cache
+              uses: actions/cache@v5
+              with:
+                path: |
+                  _opam
+                  ~/.opam/download-cache
+                key: opam-coq-${{ runner.os }}-5.1.1-v1
+                restore-keys: |
+                  opam-coq-${{ runner.os }}-5.1.1-
+
             - name: Set-up OCaml
               uses: ocaml/setup-ocaml@v3
               with:
                 ocaml-compiler: 5.1.1
-
-            - name: Cache Coq installation
-              uses: actions/cache@v5
-              with:
-                path: ~/.opam
-                key: opam-coq-${{ runner.os }}-5.1.1
-                restore-keys: |
-                  opam-coq-${{ runner.os }}-
+                opam-pin: false
 
             - name: Cache proof artifacts
               uses: actions/cache@v5
