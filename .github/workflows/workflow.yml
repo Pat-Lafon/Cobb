@@ -24,8 +24,6 @@ jobs:
                   _opam
                   ~/.opam/download-cache
                 key: opam-${{ runner.os }}-5.1.1-${{ hashFiles('**/*.opam') }}
-                restore-keys: |
-                  opam-${{ runner.os }}-5.1.1-
 
             - name: Set-up OCaml
               uses: ocaml/setup-ocaml@v3
@@ -39,8 +37,6 @@ jobs:
               with:
                 path: ~/.cache/pip
                 key: pip-${{ runner.os }}-${{ hashFiles('scripts/*.py') }}
-                restore-keys: |
-                  pip-${{ runner.os }}-
 
             - name: Install dependencies
               run: opam install . --deps-only --with-test --yes
@@ -66,17 +62,14 @@ jobs:
               with:
                 submodules: recursive
 
-            # Restore cache BEFORE setup-ocaml
+            # Cache BEFORE setup-ocaml so it can detect existing switch
             - name: Restore Coq opam cache
-              id: coq-cache
               uses: actions/cache@v5
               with:
                 path: |
                   _opam
                   ~/.opam/download-cache
-                key: opam-coq-${{ runner.os }}-5.1.1-v1
-                restore-keys: |
-                  opam-coq-${{ runner.os }}-5.1.1-
+                key: opam-coq-${{ runner.os }}-ocaml-5.1.1-coq-8.20.0
 
             - name: Set-up OCaml
               uses: ocaml/setup-ocaml@v3
@@ -88,10 +81,10 @@ jobs:
               uses: actions/cache@v5
               with:
                 path: underapproximation_type/data/validation/proofs
-                key: proof-${{ runner.os }}-coq-${{ hashFiles('underapproximation_type/coq_proof/**/*.v', 'underapproximation_type/coq_proof/_CoqProject') }}
+                key: proof-${{ runner.os }}-coq-8.20.0-${{ hashFiles('underapproximation_type/coq_proof/**/*.v', 'underapproximation_type/coq_proof/_CoqProject') }}
 
             - name: Install Coq
-              run: opam install coq -y
+              run: opam install coq.8.20.0 -y
 
             - name: Regenerate Makefile
               run: cd underapproximation_type/data/validation/proofs && opam exec -- coq_makefile -f _CoqProject -o Makefile
