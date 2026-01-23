@@ -85,7 +85,7 @@ let exn_map_list_match (f : 'a Term.match_case list -> 'b)
                 {
                   constructor;
                   args;
-                  exp = Pieces.mk_ND_choice exp (c#:exp.ty |> id_to_term);
+                  exp = Pieces.mk_ND_choice exp (c #: exp.ty |> id_to_term);
                 }
           | CMatchcase { constructor; args; exp } ->
               CMatchcase { constructor; args; exp } ))
@@ -106,7 +106,10 @@ let exn_map_list_match (f : 'a Term.match_case list -> 'b)
 let promote_true_rty (x : (t, string) typed) : (t rty, string) typed =
   x #=> (fun nty ->
   RtyBase
-    { ou = false; cty = Cty { nty; phi = Prop.Lit (Lit.AC (B true))#:Ty_bool } })
+    {
+      ou = false;
+      cty = Cty { nty; phi = Prop.Lit (Lit.AC (B true)) #: Ty_bool };
+    })
 
 let rec term_exnify (body : (t, t term) typed) : (t, _) typed exn_variations =
   match body.x with
@@ -139,12 +142,12 @@ let rec term_exnify (body : (t, t term) typed) : (t, _) typed exn_variations =
       term_exnify body
       |> exn_map
            (fun (x : (t, t term) typed) : (t, t term) typed ->
-             (CLetE { lhs; rhs; body = x })#:body.ty)
+             (CLetE { lhs; rhs; body = x }) #: body.ty)
            [ promote_true_rty lhs ]
   | CLetDeTu { turhs; tulhs; body } ->
       term_exnify body
       |> exn_map
-           (fun x -> (CLetDeTu { turhs; tulhs; body = x })#:body.ty)
+           (fun x -> (CLetDeTu { turhs; tulhs; body = x }) #: body.ty)
            (List.map promote_true_rty tulhs)
   | CMatch { matched; match_cases } ->
       let exn_cases = List.map case_exnify match_cases in
@@ -168,7 +171,7 @@ and case_exnify (CMatchcase { constructor; args; exp } : _ match_case) :
   }
 
 let mk_path_var (phi : _ Prop.prop) : (t rty, string) typed =
-  let path_name = (Rename.unique path_condition_prefix)#:Ty_unit in
+  let path_name = (Rename.unique path_condition_prefix) #: Ty_unit in
   (path_name |> NameTracking.known_var) #=> (fun l ->
   RtyBase { ou = false; cty = Cty { nty = Nt.Ty_unit; phi } })
 
@@ -244,7 +247,7 @@ module Localization = struct
     let new_body =
       if exnified.hole_variation = body then
         let a, b, c = exnified.other |> List.hd in
-        id_to_term c#:a.ty
+        id_to_term c #: a.ty
       else exnified.hole_variation
     in
 
@@ -469,7 +472,7 @@ module Localization = struct
           match x with
           | Prop.Not p -> (p, local_vs, s)
           | Prop.Lit x when x.x = Lit.AC (Constant.B false) ->
-              (Prop.Lit (Lit.AC (Constant.B true))#:x.ty, local_vs, s)
+              (Prop.Lit (Lit.AC (Constant.B true)) #: x.ty, local_vs, s)
           | _ -> failwith (layout_prop x))
         useful_props
     in
@@ -526,12 +529,42 @@ let%test "bot_list" =
   let t = term_bot ty in
   is_base_bot t
 
+(* Initialize minimal test context *)
+let init_test_context () =
+  try
+    let _ = Context.get_global_uctx () in
+    ()
+  with Failure _ ->
+    let mk_cty nty = Cty.Cty { nty; phi = mk_true } in
+    let mk_gen name retty =
+      {
+        x = name;
+        ty =
+          RtyBaseArr
+            {
+              argcty = mk_cty Nt.Ty_unit;
+              arg = "()";
+              retty = RtyBase { ou = true; cty = mk_cty retty };
+            };
+      }
+    in
+    let builtin_ctx =
+      Typectx.Typectx
+        [
+          mk_gen "int_gen" Nt.Ty_int;
+          mk_gen "hidden_list_gen" (Nt.Ty_constructor ("list", [ Nt.Ty_int ]));
+        ]
+    in
+    Context.set_global_uctx { builtin_ctx; local_ctx = Typectx.emp; axioms = [] }
+
 let%test "top_int" =
+  init_test_context ();
   let ty = Ty_int in
   let t = term_top ty in
   is_base_top t
 
 let%test "top_list" =
+  init_test_context ();
   let ty = Ty_constructor ("list", [ Ty_int ]) in
   let t = term_top ty in
   is_base_top t

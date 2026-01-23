@@ -3,18 +3,34 @@ open Mtyped
 open Nt
 open Utils
 open Cty
+open Rty
+open Prop
+open Language.FrontendTyped
 
-let type_to_generator_mapping : (Nt.t * string) list =
-  [
-    (Ty_int, "int_gen");
-    (ty_intlist, "hidden_list_gen");
-    (ty_inttree, "hidden_tree_gen");
-    (ty_intrbtree, "hidden_rbtree_gen");
-    (ty_stlc_term, "hidden_stlc_term_gen");
-  ]
+let is_true_prop (phi : Nt.t prop) : bool =
+  match phi with
+  | Lit { x = AC (Constant.B b); _ } -> b
+  | _ -> false
 
 let get_ty_gen_name (base_ty : Nt.t) : identifier =
-  (List.assoc base_ty type_to_generator_mapping)#:(Ty_arrow (Ty_unit, base_ty))
+  let uctx = Context.get_global_uctx () in
+  let builtin_list = Typectx.to_list uctx.builtin_ctx in
+  let candidates = 
+    List.filter_map (fun (entry : (Nt.t rty, string) Mtyped.typed) ->
+         match entry.ty with
+         | RtyBaseArr { argcty = Cty { nty = Nt.Ty_unit; _ }; retty = RtyBase { cty = Cty { nty; phi }; _ }; _ } 
+           when nty = base_ty && is_true_prop phi ->
+             Some entry.x
+         | _ -> None)
+    builtin_list
+  in
+  match candidates with
+  | [gen_name] -> gen_name#:(Ty_arrow (Ty_unit, base_ty))
+  | [] -> 
+      failwith (Printf.sprintf "No generator found for type %s" (Nt.layout base_ty))
+  | _ -> 
+      failwith (Printf.sprintf "Multiple generators for type %s: %s" 
+        (Nt.layout base_ty) (String.concat ", " candidates))
 
 let term_bot (base_ty : Nt.t) : _ Mtyped.typed = Term.CErr#:base_ty
 
@@ -41,7 +57,11 @@ let is_base_top (t : _ Mtyped.typed) : bool =
         body = { x = CLetE { body = { x = CVal { x = VVar _; _ }; _ }; _ }; _ };
       } ->
       true
-  | CApp { appf = { x = VVar { x; _ }; _ }; _ }
-    when List.split type_to_generator_mapping |> snd |> List.mem x ->
-      true
+  | CApp { appf = { x = VVar { x = gen_name; _ }; _ }; _ } ->
+      let uctx = Context.get_global_uctx () in
+      (match Typectx.get_opt uctx.builtin_ctx gen_name with
+       | Some (RtyBaseArr { argcty = Cty { nty = Nt.Ty_unit; _ }; retty = RtyBase { cty = Cty { phi; _ }; _ }; _ }) 
+         when is_true_prop phi -> 
+           true
+       | _ -> false)
   | _ -> false

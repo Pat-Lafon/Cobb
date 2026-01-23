@@ -16,10 +16,6 @@ let unique l =
   aux l []
 
 let dbg_sexp sexp = print_endline (Core.Sexp.to_string_hum sexp)
-let ty_intlist = Nt.Ty_constructor ("list", [ Ty_int ])
-let ty_intrbtree = Nt.Ty_constructor ("rbtree", [ Ty_int ])
-let ty_inttree = Nt.Ty_constructor ("tree", [ Ty_int ])
-let ty_stlc_term = Nt.Ty_constructor ("stlc_term", [])
 
 let rty_is_false (rty : Nt.t Rty.rty) : bool =
   match rty with
