@@ -23,7 +23,7 @@ jobs:
                 path: |
                   _opam
                   ~/.opam/download-cache
-                key: opam-${{ runner.os }}-5.1.1-${{ hashFiles('**/*.opam') }}
+                key: opam-v2-${{ runner.os }}-5.1.1-${{ hashFiles('**/*.opam') }}
 
             - name: Set-up OCaml
               uses: ocaml/setup-ocaml@v3
