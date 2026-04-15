@@ -15,22 +15,13 @@ jobs:
               with:
                 submodules: recursive
 
-            # Restore cache BEFORE setup-ocaml so it can detect the existing switch
-            - name: Restore opam switch cache
-              id: opam-cache
-              uses: actions/cache@v5
-              with:
-                path: |
-                  _opam
-                  ~/.opam/download-cache
-                key: opam-v2-${{ runner.os }}-5.1.1-${{ hashFiles('**/*.opam') }}
-
             - name: Set-up OCaml
               uses: ocaml/setup-ocaml@v3
               with:
                 ocaml-compiler: 5.1.1
                 dune-cache: true
                 opam-pin: false
+                cache-prefix: build-v1
 
             - name: Cache Python dependencies
               uses: actions/cache@v5
@@ -62,20 +53,12 @@ jobs:
               with:
                 submodules: recursive
 
-            # Cache BEFORE setup-ocaml so it can detect existing switch
-            - name: Restore Coq opam cache
-              uses: actions/cache@v5
-              with:
-                path: |
-                  _opam
-                  ~/.opam/download-cache
-                key: opam-coq-v2-${{ runner.os }}-ocaml-5.1.1-coq-9.1.0
-
             - name: Set-up OCaml
               uses: ocaml/setup-ocaml@v3
               with:
                 ocaml-compiler: 5.1.1
                 opam-pin: false
+                cache-prefix: proof-v1
 
             - name: Cache proof artifacts
               uses: actions/cache@v5
