@@ -69,7 +69,7 @@ jobs:
                 path: |
                   _opam
                   ~/.opam/download-cache
-                key: opam-coq-${{ runner.os }}-ocaml-5.1.1-coq-9.1.0
+                key: opam-coq-v2-${{ runner.os }}-ocaml-5.1.1-coq-9.1.0
 
             - name: Set-up OCaml
               uses: ocaml/setup-ocaml@v3
