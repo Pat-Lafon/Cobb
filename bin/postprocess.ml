@@ -141,8 +141,8 @@ let rec remove_excess_ast_aux (t : ('t, 't term) typed) =
       remove_excess_ast_aux body
   | CLetE { lhs; rhs; body } ->
       (CLetE { lhs; rhs; body = remove_excess_ast_aux body })#:t.ty
-  | CLetDeTu { turhs; tulhs; body } ->
-      (CLetDeTu { turhs; tulhs; body = remove_excess_ast_aux body })#:t.ty
+  | CLetDeTuple { turhs; tulhs; body } ->
+      (CLetDeTuple { turhs; tulhs; body = remove_excess_ast_aux body })#:t.ty
   | CMatch
       (* To rewrite matches on True/False to true/false*)
       {
@@ -190,6 +190,7 @@ let rec remove_excess_ast_aux (t : ('t, 't term) typed) =
                    { constructor; args; exp = remove_excess_ast_aux exp })
                match_cases;
          })#:t.ty
+  | CRecord _ | CField _ -> failwith "record not supported"
 
 let rec nd_join_list (t : (_, _ term) typed list) : (_, _ term) typed =
   match t with
@@ -201,11 +202,7 @@ let rec nd_join_list (t : (_, _ term) typed list) : (_, _ term) typed =
     and output it somewhere after some cleanup. *)
 let final_program_to_string (reconstruct_code_with_new_body : _ -> _ Item.item)
     new_body : string =
-  let new_frontend_prog =
-    new_body |> reconstruct_code_with_new_body
-    |> Item.map_item (fun x -> Some x)
-  in
-
+  let new_frontend_prog = new_body |> reconstruct_code_with_new_body in
   Frontend_opt.To_item.layout_item new_frontend_prog
 
 let remove_underscores_in_variable_names_string (x : string) : string =
@@ -237,8 +234,8 @@ let rec remove_underscores_in_variable_names_value (x : 't value) : 't value =
           fixarg = remove_helper fixarg;
           body = remove_underscores_in_variable_names_typed body;
         }
-  | VTu l ->
-      VTu (List.map (fun y -> y#->remove_underscores_in_variable_names_value) l)
+  | VTuple l ->
+      VTuple (List.map (fun y -> y#->remove_underscores_in_variable_names_value) l)
 
 (** TODO: This is a hack until I come up with a better uniqufiy/renaming
     strategy for Poirot that doesn't clobber over existing names*)
@@ -254,8 +251,8 @@ and remove_underscores_in_variable_names_typed (x : ('t, 't term) typed) :
           rhs = remove_underscores_in_variable_names_typed rhs;
           body = remove_underscores_in_variable_names_typed body;
         }
-  | CLetDeTu { turhs; tulhs; body } ->
-      CLetDeTu
+  | CLetDeTuple { turhs; tulhs; body } ->
+      CLetDeTuple
         {
           turhs = turhs#->remove_underscores_in_variable_names_value;
           tulhs = List.map remove_helper tulhs;
@@ -290,4 +287,5 @@ and remove_underscores_in_variable_names_typed (x : ('t, 't term) typed) :
                     exp = remove_underscores_in_variable_names_typed exp;
                   })
               match_cases;
-        } )
+        }
+  | CRecord _ | CField _ -> failwith "record not supported" )

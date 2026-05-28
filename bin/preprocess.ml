@@ -15,7 +15,7 @@ let rec unfold_rty_helper rty : _ typed list * _ rty =
       (argrty :: other_args, retty) *)
   | RtyBaseArr { argcty : 't cty; arg : (string[@bound]); retty : 't rty } ->
       let other_args, retty = unfold_rty_helper retty in
-      ((arg #: (RtyBase { ou = true; cty = argcty })) :: other_args, retty)
+      ((arg #: (RtyBase { ou = Over; cty = argcty })) :: other_args, retty)
   | RtyBase _ -> ([], rty)
   | _ -> failwith "unfold_rty_helper::error"
 
@@ -62,8 +62,8 @@ let handle_recursion_args (a : (Nt.t, Nt.t value) typed) (rty : Nt.t rty) =
                       };
                 }
             in
-            let binding = arg #: (RtyBase { ou = true; cty = argcty }) in
-            let binding1 = arg1 #: (RtyBase { ou = true; cty = argcty1 }) in
+            let binding = arg #: (RtyBase { ou = Over; cty = argcty }) in
+            let binding1 = arg1 #: (RtyBase { ou = Over; cty = argcty1 }) in
             let body =
               body
               #-> (subst_term_instance fixarg.x (VVar arg #: fixarg.ty))
@@ -95,7 +95,7 @@ let handle_recursion_args (a : (Nt.t, Nt.t value) typed) (rty : Nt.t rty) =
         (*       Pp.printf "\nSubstituted Return Type: %s\n" (layout_rty retty_a); *)
         (*       Pp.printf "\nRty A: %s\n" (layout_rty rty_a); *)
         (*       Pp.printf "\nRty A: %s\n" (layout_rty rty_a); *)
-        let binding = fixarg.x #: (RtyBase { ou = true; cty = argcty }) in
+        let binding = fixarg.x #: (RtyBase { ou = Over; cty = argcty }) in
         (*       Pp.printf "\nBinding: %s\n" (layout_id_rty binding); *)
         assert (String.equal arg fixarg.x);
         (*

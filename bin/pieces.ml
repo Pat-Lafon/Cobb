@@ -23,8 +23,9 @@ let rec typed_term_replace_block_body (t : (_, _ term) typed) replacement_body :
       (CLetE { lhs; rhs; body = new_body })#:new_body.ty
   | CMatch _ | CApp _ | CAppOp _ | CErr ->
       failwith "Unsupported use of typed_term_replace_block_body"
-  | CLetDeTu _ ->
-      failwith "typed_term_replace_block_body::CLetDeTu::unreachable"
+  | CLetDeTuple _ ->
+      failwith "typed_term_replace_block_body::CLetDeTuple::unreachable"
+  | CRecord _ | CField _ -> failwith "record not supported"
 
 module Pieces = struct
   let mk_let_app_const ~(record : bool) (f : identifier)
@@ -183,7 +184,7 @@ module Pieces = struct
     let new_rty_type =
       Rty.RtyBase
         {
-          ou = false;
+          ou = Under;
           cty =
             Cty
               {
@@ -291,6 +292,8 @@ module Pieces = struct
               (seeds, new_component :: components)
           | RtyArrArr _ ->
               failwith "seeds_and_components::RtyArrArr::unreachable"
-          | RtyTuple _ -> failwith "seeds_and_components::RtyTuple::unreachable")
+          | RtyTuple _ -> failwith "seeds_and_components::RtyTuple::unreachable"
+          | RtyPolyType _ | RtyPolyPred _ ->
+              failwith "seeds_and_components::polymorphic rty not supported")
       ([], []) ctx_list
 end

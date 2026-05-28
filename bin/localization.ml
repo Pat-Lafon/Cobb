@@ -107,7 +107,7 @@ let promote_true_rty (x : (t, string) typed) : (t rty, string) typed =
   x #=> (fun nty ->
   RtyBase
     {
-      ou = false;
+      ou = Under;
       cty = Cty { nty; phi = Prop.Lit (Lit.AC (B true)) #: Ty_bool };
     })
 
@@ -144,10 +144,10 @@ let rec term_exnify (body : (t, t term) typed) : (t, _) typed exn_variations =
            (fun (x : (t, t term) typed) : (t, t term) typed ->
              (CLetE { lhs; rhs; body = x }) #: body.ty)
            [ promote_true_rty lhs ]
-  | CLetDeTu { turhs; tulhs; body } ->
+  | CLetDeTuple { turhs; tulhs; body } ->
       term_exnify body
       |> exn_map
-           (fun x -> (CLetDeTu { turhs; tulhs; body = x }) #: body.ty)
+           (fun x -> (CLetDeTuple { turhs; tulhs; body = x }) #: body.ty)
            (List.map promote_true_rty tulhs)
   | CMatch { matched; match_cases } ->
       let exn_cases = List.map case_exnify match_cases in
@@ -156,6 +156,7 @@ let rec term_exnify (body : (t, t term) typed) : (t, _) typed exn_variations =
           assert (List.length l = List.length match_cases);
           { x = CMatch { matched; match_cases = l }; ty = body.ty })
         exn_cases
+  | CRecord _ | CField _ -> failwith "record not supported"
 
 and case_exnify (CMatchcase { constructor; args; exp } : _ match_case) :
     _ match_case exn_variations =
@@ -173,7 +174,7 @@ and case_exnify (CMatchcase { constructor; args; exp } : _ match_case) :
 let mk_path_var (phi : _ Prop.prop) : (t rty, string) typed =
   let path_name = (Rename.unique path_condition_prefix) #: Ty_unit in
   (path_name |> NameTracking.known_var) #=> (fun l ->
-  RtyBase { ou = false; cty = Cty { nty = Nt.Ty_unit; phi } })
+  RtyBase { ou = Under; cty = Cty { nty = Nt.Ty_unit; phi } })
 
 let remove_local_vars_from_prop (phi : _ Prop.prop) (local_vars : _ list) :
     _ Prop.prop =
@@ -544,7 +545,7 @@ let init_test_context () =
             {
               argcty = mk_cty Nt.Ty_unit;
               arg = "()";
-              retty = RtyBase { ou = true; cty = mk_cty retty };
+              retty = RtyBase { ou = Over; cty = mk_cty retty };
             };
       }
     in

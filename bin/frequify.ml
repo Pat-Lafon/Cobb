@@ -26,7 +26,7 @@ let get_value_constructor (v : 't value) =
   | VVar _ -> "var"
   | VLam _ -> "lam"
   | VFix _ -> "fix"
-  | VTu _ -> "tu"
+  | VTuple _ -> "tu"
 
 (** recursively traverses through AST to find if it calls the recusive function specified by name *)
 let rec has_recursive_call (t : ('t, 't term) typed) (name : string) =
@@ -36,7 +36,7 @@ match t.x with
   | CLetE { lhs; rhs; body} -> 
       (has_recursive_call rhs name) ||
       (has_recursive_call body name)
-  | CLetDeTu { turhs; tulhs; body} ->
+  | CLetDeTuple { turhs; tulhs; body} ->
       (has_recursive_call_value name turhs.x) ||
       (has_recursive_call body name)
   | CApp { appf; apparg} ->
@@ -47,8 +47,9 @@ match t.x with
             acc || (has_recursive_call_value name x.x)) false appopargs
   | CMatch { matched; match_cases } ->
     (has_recursive_call_value name matched.x) ||
-        List.fold_left (fun (acc:bool) (CMatchcase {constructor; args; exp}) -> 
+        List.fold_left (fun (acc:bool) (CMatchcase {constructor; args; exp}) ->
             acc || (has_recursive_call exp name)) false match_cases
+  | CRecord _ | CField _ -> failwith "record not supported"
 and has_recursive_call_value (name : string) (v : 't value) =
   match v with 
   | VConst _ -> false
@@ -62,7 +63,7 @@ and has_recursive_call_value (name : string) (v : 't value) =
       has_recursive_call body name
   | VFix { fixname; fixarg; body } -> 
       has_recursive_call body name
-  | VTu l -> 
+  | VTuple l -> 
     List.fold_left (fun (acc:bool) x -> 
       acc || (has_recursive_call_value name x.x)) false l
 
@@ -131,7 +132,7 @@ let rec replace_bool_gen (t : ('t, 't term) typed) (name : string) (arg : string
               lhs = ("base_case" #: ty);
               rhs = { x = CApp { 
                 appf = { x = VVar (replace_bool_gen_string "bool_gen"#:ty); ty = ty2}; 
-                apparg = { x = VTu [
+                apparg = { x = VTuple [
                   { x = VVar ("w_base" #: Nt.Ty_any); ty = Nt.Ty_any};
                   { x = VLam {
                       lamarg = ("_" #: ty); 
@@ -147,7 +148,7 @@ let rec replace_bool_gen (t : ('t, 't term) typed) (name : string) (arg : string
                 lhs = ("recursive_case" #: ty);
                 rhs = { x = CApp {
                   appf = { x = VVar ("base_case" #: ty); ty = Nt.Ty_any};
-                  apparg = { x = VTu [
+                  apparg = { x = VTuple [
                     { x = VVar ("w_recursive" #: Nt.Ty_any); ty = Nt.Ty_any};
                     { x = VLam {
                         lamarg = ("_" #: ty); 
@@ -232,8 +233,8 @@ let rec replace_bool_gen (t : ('t, 't term) typed) (name : string) (arg : string
       rhs = replace_bool_gen rhs name arg;
       body = replace_bool_gen body name arg
     }
-  | CLetDeTu { turhs; tulhs; body} ->
-    CLetDeTu {
+  | CLetDeTuple { turhs; tulhs; body} ->
+    CLetDeTuple {
       turhs = turhs #-> (replace_bool_gen_value name arg);
       tulhs; 
       body = replace_bool_gen body name arg;
@@ -295,7 +296,7 @@ let rec replace_bool_gen (t : ('t, 't term) typed) (name : string) (arg : string
     CMatch {
       matched = matched #-> (replace_bool_gen_value name arg);
       match_cases =
-        List.map (function (CMatchcase {constructor; args; exp}) -> 
+        List.map (function (CMatchcase {constructor; args; exp}) ->
           CMatchcase {
             constructor;
             args;
@@ -304,6 +305,7 @@ let rec replace_bool_gen (t : ('t, 't term) typed) (name : string) (arg : string
         )
         match_cases
     }
+  | CRecord _ | CField _ -> failwith "record not supported"
   )
 and replace_bool_gen_value (name : string) (arg : string) (v : 't value) =
   match v with 
@@ -325,8 +327,8 @@ and replace_bool_gen_value (name : string) (arg : string) (v : 't value) =
       fixarg;
       body = replace_bool_gen body name arg;
     }
-  | VTu l -> (* tuples *)
-    VTu (List.map (function y -> y #-> (replace_bool_gen_value name arg)) l)
+  | VTuple l -> (* tuples *)
+    VTuple (List.map (function y -> y #-> (replace_bool_gen_value name arg)) l)
 
 (* #-> applies function to arg, returning it as `typed` *)
 
@@ -376,8 +378,9 @@ let final_program_to_string name if_rec new_body : string =
         body = new_body;
       }
   in
-  (* Change to (fun x -> None) to remove type annotations and improve clarity *)
-  let reconstructed_body = Item.map_item (fun x -> None) body_as_item in
+  let reconstructed_body =
+    Item.map_item (fun _ -> Nt.Ty_unknown) body_as_item
+  in
   Frontend_opt.To_item.layout_item reconstructed_body
 
 

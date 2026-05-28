@@ -121,10 +121,12 @@ module NameTracking = struct
           in
           (args, t)
       | Some { x = CLetE _; _ }
-      | Some { x = CLetDeTu _; _ }
+      | Some { x = CLetDeTuple _; _ }
       | Some { x = CVal _; _ }
       | Some { x = CErr; _ }
       | Some { x = CMatch _; _ }
+      | Some { x = CRecord _; _ }
+      | Some { x = CField _; _ }
       | None ->
           print_endline ("get_term: " ^ a.x);
           debug ();
