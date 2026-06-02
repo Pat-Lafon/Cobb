@@ -13,23 +13,20 @@
   localization
   preprocess
   postprocess
-  underapproximation_type.translate
-  underapproximation_type.typing
-  underapproximation_type.preprocessing
-  underapproximation_type.commands)
+  CoverageType.typing)
  (preprocess
   (pps ppx_jane)))
 
 (library
  (public_name Cobb.context)
  (name context)
- (libraries underapproximation_type.typing tracking)
+ (libraries CoverageType.typing tracking)
  (modules context))
 
 (library
  (name blocks)
  (libraries
-  underapproximation_type.typing
+  CoverageType.typing
   context
   timeout
   tracking
@@ -48,25 +45,24 @@
 (library
  (public_name Cobb.pieces)
  (name pieces)
- (libraries underapproximation_type.typing utils tracking context)
+ (libraries CoverageType.typing utils tracking context)
  (modules pieces))
 
 (library
  (name timeout)
- (libraries underapproximation_type.typing utils)
+ (libraries CoverageType.typing utils)
  (modules timeout))
 
 (library
  (public_name Cobb.tracking)
  (name tracking)
- (libraries underapproximation_type.typing utils)
+ (libraries CoverageType.typing utils)
  (modules tracking))
 
 (library
  (name localization)
  (libraries
-  underapproximation_type.typing
-  underapproximation_type.syntax
+  CoverageType.typing
   pieces
   block
   blocks
@@ -83,28 +79,26 @@
  (name preprocess)
  (libraries
   tracking
-  underapproximation_type.typing
-  underapproximation_type.commands)
+  CoverageType.typing)
  (modules preprocess))
 
 (library
  (public_name Cobb.postprocess)
  (name postprocess)
- (libraries pieces underapproximation_type.typing)
+ (libraries pieces CoverageType.typing)
  (modules postprocess))
 
 (library
  (public_name Cobb.utils)
  (name utils)
  (modules utils)
- (libraries core underapproximation_type.typing language_utils.zzdatatype))
+ (libraries core CoverageType.typing zutils.zdatatype))
 
 (library
  (name term_utils)
  (modules term_utils)
  (libraries
-  underapproximation_type.typing
-  underapproximation_type.syntax
+  CoverageType.typing
   block
   timeout
   utils))
@@ -125,11 +119,9 @@
   (public_name frequify)
   (name frequify)
   (modules frequify)
-  (libraries 
-    language_utils.metalang
-    underapproximation_type.commands 
-    underapproximation_type.syntax
-    underapproximation_type.frontend_opt
+  (libraries
+    zutils.sugar
+    CoverageType.frontend_opt
   ))
 
 (env
