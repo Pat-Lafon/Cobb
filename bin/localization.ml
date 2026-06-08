@@ -1,12 +1,9 @@
-open Term
-open Mtyped
+open Zutils
 open Nt
-open Rty
+open Language
 open Typing.Termcheck
-open Language.FrontendTyped
-open Subtyping.Subrty
+open Auxtyping
 open Utils
-open Cty
 open Tracking
 open Pieces
 open Context
@@ -66,8 +63,8 @@ let exn_map_list_term (f : 'a list -> 'b) (v : 'a exn_variations list) :
   { full_exn = f exn_list; hole_variation = f hole_list; other }
 
 (** Applies multiple exn_variations as a arguments to f *)
-let exn_map_list_match (f : 'a Term.match_case list -> 'b)
-    (v : 'a Term.match_case exn_variations list) : 'b exn_variations =
+let exn_map_list_match (f : 'a match_case list -> 'b)
+    (v : 'a match_case exn_variations list) : 'b exn_variations =
   let exn_list, hole_list =
     List.map
       (fun x ->
@@ -108,7 +105,7 @@ let promote_true_rty (x : (t, string) typed) : (t rty, string) typed =
   RtyBase
     {
       ou = Under;
-      cty = Cty { nty; phi = Prop.Lit (Lit.AC (B true)) #: Ty_bool };
+      cty = { nty; phi = Lit (AC (B true)) #: Nt.bool_ty };
     })
 
 let rec term_exnify (body : (t, t term) typed) : (t, _) typed exn_variations =
@@ -117,26 +114,26 @@ let rec term_exnify (body : (t, t term) typed) : (t, _) typed exn_variations =
       {
         full_exn = term_bot body.ty;
         hole_variation = body;
-        other = [ (term_top body.ty, [], Rename.unique "Hole") ];
+        other = [ (term_top body.ty, [], Rename.unique_var "Hole") ];
       }
   | CVal { ty; _ } ->
       assert (body.ty = ty);
       {
         full_exn = term_bot body.ty;
         hole_variation = body;
-        other = [ (term_top body.ty, [], Rename.unique "Hole") ];
+        other = [ (term_top body.ty, [], Rename.unique_var "Hole") ];
       }
   | CApp _ ->
       {
         full_exn = term_bot body.ty;
         hole_variation = body;
-        other = [ (term_top body.ty, [], Rename.unique "Hole") ];
+        other = [ (term_top body.ty, [], Rename.unique_var "Hole") ];
       }
   | CAppOp _ ->
       {
         full_exn = term_bot body.ty;
         hole_variation = body;
-        other = [ (term_top body.ty, [], Rename.unique "Hole") ];
+        other = [ (term_top body.ty, [], Rename.unique_var "Hole") ];
       }
   | CLetE { lhs; rhs; body } ->
       term_exnify body
@@ -171,34 +168,34 @@ and case_exnify (CMatchcase { constructor; args; exp } : _ match_case) :
         other;
   }
 
-let mk_path_var (phi : _ Prop.prop) : (t rty, string) typed =
-  let path_name = (Rename.unique path_condition_prefix) #: Ty_unit in
+let mk_path_var (phi : _ prop) : (t rty, string) typed =
+  let path_name = (Rename.unique_var path_condition_prefix) #: Nt.unit_ty in
   (path_name |> NameTracking.known_var) #=> (fun l ->
-  RtyBase { ou = Under; cty = Cty { nty = Nt.Ty_unit; phi } })
+  RtyBase { ou = Under; cty = { nty = Nt.unit_ty; phi } })
 
-let remove_local_vars_from_prop (phi : _ Prop.prop) (local_vars : _ list) :
-    _ Prop.prop =
+let remove_local_vars_from_prop (phi : _ prop) (local_vars : _ list) :
+    _ prop =
   let local_var_names = List.map (fun x -> x.x) local_vars in
-  let rec remove_local_vars_from_prop' (phi : _ Prop.prop) : _ Prop.prop =
+  let rec remove_local_vars_from_prop' (phi : _ prop) : _ prop =
     match phi with
-    | Prop.Lit _ -> phi
-    | Prop.Not p -> Prop.Not (remove_local_vars_from_prop' p)
-    | Prop.And ps -> Prop.And (List.map remove_local_vars_from_prop' ps)
-    | Prop.Or ps -> Prop.Or (List.map remove_local_vars_from_prop' ps)
-    | Prop.Implies (p1, p2) ->
-        Prop.Implies
+    | Lit _ -> phi
+    | Not p -> Not (remove_local_vars_from_prop' p)
+    | And ps -> And (List.map remove_local_vars_from_prop' ps)
+    | Or ps -> Or (List.map remove_local_vars_from_prop' ps)
+    | Implies (p1, p2) ->
+        Implies
           (remove_local_vars_from_prop' p1, remove_local_vars_from_prop' p2)
-    | Prop.Iff (p1, p2) ->
-        Prop.Iff
+    | Iff (p1, p2) ->
+        Iff
           (remove_local_vars_from_prop' p1, remove_local_vars_from_prop' p2)
-    | Prop.Forall { qv; body } ->
+    | Forall { qv; body } ->
         if List.mem qv.x local_var_names then remove_local_vars_from_prop' body
-        else Prop.Forall { qv; body = remove_local_vars_from_prop' body }
-    | Prop.Exists { qv; body } ->
+        else Forall { qv; body = remove_local_vars_from_prop' body }
+    | Exists { qv; body } ->
         if List.mem qv.x local_var_names then remove_local_vars_from_prop' body
-        else Prop.Exists { qv; body = remove_local_vars_from_prop' body }
-    | Prop.Ite (p1, p2, p3) ->
-        Prop.Ite
+        else Exists { qv; body = remove_local_vars_from_prop' body }
+    | Ite (p1, p2, p3) ->
+        Ite
           ( remove_local_vars_from_prop' p1,
             remove_local_vars_from_prop' p2,
             remove_local_vars_from_prop' p3 )
@@ -206,41 +203,43 @@ let remove_local_vars_from_prop (phi : _ Prop.prop) (local_vars : _ list) :
   remove_local_vars_from_prop' phi
 
 let prop_eq_up_to_non_det_choice p1 p2 : bool =
-  let p1' = Prop.simplify p1 in
-  let p2' = Prop.simplify p2 in
+  let p1' = Prop.SimplProp.simpl_query p1 in
+  let p2' = Prop.SimplProp.simpl_query p2 in
 
   print_endline "Props under question";
   print_endline (layout_prop p1');
   print_endline (layout_prop p2');
 
-  Prop.eq_prop_under_alpha_equivalence p1' p2'
+  Prop.eq_prop (Prop.fresh_name_prop p1') (Prop.fresh_name_prop p2')
 
 module Localization = struct
-  let add_props_to_base_inner (base : _ rty) (props : _ Prop.prop list) : _ rty
+  let pprint_simple_typectx_judge (uctx : uctx) (e, rty) =
+    Typing.pprint_typing_check_term uctx.rctx (e, rty)
+
+  let add_props_to_base_inner (base : _ rty) (props : _ prop list) : _ rty
       =
     match base with
-    | RtyBase { ou; cty = Cty { nty; phi } } ->
-        RtyBase { ou; cty = Cty { nty; phi = smart_and (phi :: props) } }
+    | RtyBase { ou; cty = { nty; phi } } ->
+        RtyBase { ou; cty = { nty; phi = smart_and (phi :: props) } }
     | _ -> failwith "add_props_to_base_inner::unreachable"
 
-  let add_props_to_base (base : _ rty) (props : (_ Prop.prop * _ * _) list) :
+  let add_props_to_base (base : _ rty) (props : (_ prop * _ * _) list) :
       _ rty =
     let props = List.map (fun (a, _, _) -> a) props in
     add_props_to_base_inner base props
 
-  let localization (uctx : uctx) (body : (Nt.t, Nt.t Term.term) Mtyped.typed)
+  let localization (uctx : uctx) (body : (Nt.t, Nt.t term) typed)
       (target_ty : Nt.t rty) :
       (LocalCtx.t * BlockMap.t * string) list
-      * (Nt.t, Nt.t Term.term) Mtyped.typed =
+      * (Nt.t, Nt.t term) typed =
     (* print_endline "LOCALIZATION"; *)
-    pprint_simple_typectx_judge uctx (layout_typed_term body, target_ty);
+    pprint_simple_typectx_judge uctx (body, target_ty);
 
     (* print_endline (layout_rty target_ty);
        print_endline ("BODY: " ^ layout_typed_term body); *)
     let inferred_body = term_type_infer uctx body |> Option.get in
     pprint_simple_typectx_judge uctx
-      ( inferred_body |> map_typed_term erase_rty |> layout_typed_term,
-        inferred_body.ty );
+      (typed_map_term erase_rty inferred_body, inferred_body.ty);
 
     (* print_endline ("Inferred whole type" ^ layout_rty inferred_body.ty); *)
     let exnified = term_exnify body in
@@ -264,8 +263,8 @@ module Localization = struct
                conditions and nothing more *)
             List.filter
               (fun x ->
-                (not (Rename.has_been_uniqified x.x))
-                && erase_rty x.ty <> Ty_bool
+                (not (Option.is_some (snd (Rename.name_of_string x.x))))
+                && erase_rty x.ty <> Nt.bool_ty
                 && Nt.is_base_tp (erase_rty x.ty))
               b,
             s ))
@@ -274,25 +273,21 @@ module Localization = struct
     in
 
     (* print_string "\nInitial subtyping check: "; *)
-    (* sub_rty_bool uctx (target_ty, target_ty) |> string_of_bool |> print_endline; *)
+    (* sub_rty uctx.rctx (target_ty, target_ty) |> string_of_bool |> print_endline; *)
     let possible_props =
       List.split inferred_program_types
       |> snd
       |> List.map (fun ((x : _ typed), local_vs, s) ->
-             (x.ty |> assume_base_rty |> snd, local_vs, s))
-      |> List.map (fun (Cty { phi; _ }, local_vs, s) ->
-             (Prop.Not phi, local_vs, s))
+             (x.ty |> destruct_base_rty |> snd, local_vs, s))
+      |> List.map (fun ({ phi; _ }, local_vs, s) ->
+             (Not phi, local_vs, s))
     in
 
     let possible_props =
       List.filter_map
         (fun (p, x, y) ->
-          let p = Prop.simplify p in
-          if
-            Prop.eq_prop
-              (Lit.eq_lit Constant.equal_constant)
-              p (Prop.from_const (B true))
-          then None
+          let p = Prop.SimplProp.simpl_query p in
+          if eq_prop p mk_true then None
           else Some (p, x, y))
         possible_props
     in
@@ -301,19 +296,19 @@ module Localization = struct
     List.iter
       (fun (x, local_vs, s) ->
         print_endline (layout_prop x);
-        List.iter (fun x -> print_endline (layout_id_rty x)) local_vs)
+        List.iter (fun x -> print_endline (layout_rtyed_var x)) local_vs)
       possible_props;
 
     (* Check that on it's own, the inferred type is not sufficient *)
-    assert (not (sub_rty_bool uctx (inferred_body.ty, target_ty)));
+    assert (not (sub_rty uctx.rctx (inferred_body.ty, target_ty)));
 
     ((* Check that with all path conditions negated, the inferred type is trivially sufficient *)
      let modified_target_ty = add_props_to_base target_ty possible_props in
-     assert (sub_rty_bool uctx (inferred_body.ty, modified_target_ty));
+     assert (sub_rty uctx.rctx (inferred_body.ty, modified_target_ty));
 
      if not (rty_is_false inferred_body.ty) then
        (* but not vaciously so *)
-       assert (not (sub_rty_bool uctx (modified_target_ty, inferred_body.ty))));
+       assert (not (sub_rty uctx.rctx (modified_target_ty, inferred_body.ty))));
 
     (* Lets try and exclude all paths with local variables and see if it still
        checks out
@@ -330,7 +325,7 @@ module Localization = struct
 
       (* TODO: Not worried about timeout here I think? *)
       let subtyping_res =
-        sub_rty_bool uctx
+        sub_rty uctx.rctx
           (inferred_body.ty, add_props_to_base target_ty local_free_subset)
       in
 
@@ -363,7 +358,7 @@ module Localization = struct
 
             (* print_endline "Rest of the props: ";
                List.map (fun (a, _, _) -> a) (List.concat [ acc; rest_props ])
-               |> Zzdatatype.Datatype.List.split_by_comma layout_prop
+               |> Zdatatype.List.split_by_comma layout_prop
                |> print_endline; *)
 
             (* todo: Does the check work without this prop?*)
@@ -372,7 +367,7 @@ module Localization = struct
             in
             (* TODO: Not worried about timeout here I think? *)
             let subtyping_res =
-              sub_rty_bool uctx (inferred_body.ty, modified_target_ty)
+              sub_rty uctx.rctx (inferred_body.ty, modified_target_ty)
             in
 
             (* subtyping_res |> string_of_bool |> print_endline; *)
@@ -385,7 +380,7 @@ module Localization = struct
     List.iter
       (fun (x, local_vs, s) ->
         print_endline (layout_prop x);
-        List.iter (fun x -> print_endline (layout_id_rty x)) local_vs)
+        List.iter (fun x -> print_endline (layout_rtyed_var x)) local_vs)
       useful_props;
 
     (* Lets filter out props that are equivalent
@@ -410,7 +405,7 @@ module Localization = struct
     List.iter
       (fun (x, local_vs, s) ->
         print_endline (layout_prop x);
-        List.iter (fun x -> print_endline (layout_id_rty x)) local_vs)
+        List.iter (fun x -> print_endline (layout_rtyed_var x)) local_vs)
       useful_props;
 
     (* TODO: Lets look for pairs of path conditions where one is the
@@ -425,12 +420,14 @@ module Localization = struct
         let p2, _, _ = second_path in
 
         let bool_res1 =
-          Subtyping.Subcty.sub_cty_bool uctx
-            (Cty { nty = Ty_unit; phi = p1 }, Cty { nty = Ty_unit; phi = p2 })
+          sub_cty Over uctx.rctx
+            { nty = Ty_constructor ("unit", []); phi = p1 }
+            { nty = Ty_constructor ("unit", []); phi = p2 }
         in
         let bool_res2 =
-          Subtyping.Subcty.sub_cty_bool uctx
-            (Cty { nty = Ty_unit; phi = p2 }, Cty { nty = Ty_unit; phi = p1 })
+          sub_cty Over uctx.rctx
+            { nty = Ty_constructor ("unit", []); phi = p2 }
+            { nty = Ty_constructor ("unit", []); phi = p1 }
         in
 
         print_endline "Subtyping check between path conditions: ";
@@ -452,7 +449,7 @@ module Localization = struct
             in
 
             let subtyping_res =
-              sub_rty_bool uctx (inferred_body.ty, modified_target_ty)
+              sub_rty uctx.rctx (inferred_body.ty, modified_target_ty)
             in
 
             print_endline "Subtyping check with more specific path condition: ";
@@ -471,18 +468,18 @@ module Localization = struct
       List.map
         (fun (x, local_vs, s) ->
           match x with
-          | Prop.Not p -> (p, local_vs, s)
-          | Prop.Lit x when x.x = Lit.AC (Constant.B false) ->
-              (Prop.Lit (Lit.AC (Constant.B true)) #: x.ty, local_vs, s)
+          | Not p -> (p, local_vs, s)
+          | Lit x when x.x = AC (B false) ->
+              (Lit (AC (B true)) #: x.ty, local_vs, s)
           | _ -> failwith (layout_prop x))
         useful_props
     in
 
     print_string "\nUseful path props and local vars: ";
     remove_negations_in_props
-    |> Zzdatatype.Datatype.List.split_by_comma (fun (x, vs, _) ->
+    |> Zdatatype.List.split_by_comma (fun (x, vs, _) ->
            layout_prop x ^ " : "
-           ^ Zzdatatype.Datatype.List.split_by_comma layout_id_rty vs
+           ^ Zdatatype.List.split_by_comma layout_rtyed_var vs
            ^ "\n")
     |> print_endline;
     let res =
@@ -501,7 +498,7 @@ module Localization = struct
                (* let _ =
                     NameTracking.known_var path_var.x #: (erase_rty path_var.ty)
                   in *)
-               Typectx (local_vs @ [ path_var ])
+               Typectx.ctx_from_list (local_vs @ [ path_var ])
              in
              LocalCtx.layout local_ctx |> print_endline;
 
@@ -521,51 +518,11 @@ module Localization = struct
 end
 
 let%test "bot_int" =
-  let ty = Ty_int in
+  let ty = Nt.int_ty in
   let t = term_bot ty in
   is_base_bot t
 
 let%test "bot_list" =
-  let ty = Ty_constructor ("list", [ Ty_int ]) in
+  let ty = Ty_constructor ("list", [ Nt.int_ty ]) in
   let t = term_bot ty in
   is_base_bot t
-
-(* Initialize minimal test context *)
-let init_test_context () =
-  try
-    let _ = Context.get_global_uctx () in
-    ()
-  with Failure _ ->
-    let mk_cty nty = Cty.Cty { nty; phi = mk_true } in
-    let mk_gen name retty =
-      {
-        x = name;
-        ty =
-          RtyBaseArr
-            {
-              argcty = mk_cty Nt.Ty_unit;
-              arg = "()";
-              retty = RtyBase { ou = Over; cty = mk_cty retty };
-            };
-      }
-    in
-    let builtin_ctx =
-      Typectx.Typectx
-        [
-          mk_gen "int_gen" Nt.Ty_int;
-          mk_gen "hidden_list_gen" (Nt.Ty_constructor ("list", [ Nt.Ty_int ]));
-        ]
-    in
-    Context.set_global_uctx { builtin_ctx; local_ctx = Typectx.emp; axioms = [] }
-
-let%test "top_int" =
-  init_test_context ();
-  let ty = Ty_int in
-  let t = term_top ty in
-  is_base_top t
-
-let%test "top_list" =
-  init_test_context ();
-  let ty = Ty_constructor ("list", [ Ty_int ]) in
-  let t = term_top ty in
-  is_base_top t

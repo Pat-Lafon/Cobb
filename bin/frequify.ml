@@ -1,6 +1,5 @@
-open Mtyped
-open Term
-module Env = Zzenv
+open Zutils
+open Language
 
 let source = ref "" 
 let all = ref false
@@ -16,8 +15,8 @@ let freq_gen_list = ["freq_gen"; "unif_gen"; "frequency_gen_list"]
 
 (** calls poirot to get AST of source_file *)
 let process meta_config_file source_file () =
-  let () = Env.load_meta meta_config_file in
-  let code = Commands.Cre.preprocess source_file () in
+  let () = Myconfig.meta_config_path := meta_config_file in
+  let code = Preprocess.preprocess [ source_file ] in
   code
 
 let get_value_constructor (v : 't value) =
@@ -82,7 +81,7 @@ let rec replace_bool_gen (t : ('t, 't term) typed) (name : string) (arg : string
   | CAppOp { op = { x = DtConstructor "Cons"; ty }; appopargs } ->
       (CAppOp { op = { x = DtConstructor "::"; ty }; appopargs })
   | CErr ->     (* raise Bailout *)
-    CVal { x = VVar ("raise BailOut" #: Nt.Ty_any); ty = Nt.Ty_any}
+    CVal { x = VVar ("raise BailOut" #: Nt.Ty_unknown); ty = Nt.Ty_unknown}
   | CVal t -> CVal t #-> (replace_bool_gen_value name arg)
 
   (* leaves bool_gen that have no rec calls *)
@@ -119,21 +118,21 @@ let rec replace_bool_gen (t : ('t, 't term) typed) (name : string) (arg : string
         CLetE {     (* w_base = get_weight_idx 0 *)
           lhs = ("w_base" #: ty);
           rhs = { x = CApp {
-            appf = { x = VVar ("get_weight_idx" #: ty); ty = Nt.Ty_any};
-            apparg = {x = VConst (I 0); ty = Nt.Ty_any};
-          }; ty = Nt.Ty_any}; 
+            appf = { x = VVar ("get_weight_idx" #: ty); ty = Nt.Ty_unknown};
+            apparg = {x = VConst (I 0); ty = Nt.Ty_unknown};
+          }; ty = Nt.Ty_unknown}; 
           body = { x = CLetE {    (* w_recursive = get_weight_idx 1 *)
             lhs = ("w_recursive" #: ty);
             rhs = { x = CApp {
-              appf = { x = VVar ("get_weight_idx" #: ty); ty = Nt.Ty_any};
-              apparg = {x = VConst (I 1); ty = Nt.Ty_any};
-            }; ty = Nt.Ty_any}; 
+              appf = { x = VVar ("get_weight_idx" #: ty); ty = Nt.Ty_unknown};
+              apparg = {x = VConst (I 1); ty = Nt.Ty_unknown};
+            }; ty = Nt.Ty_unknown}; 
             body = { x = CLetE {    (* let (base_case) = frequency_gen (w_base, []) *)
               lhs = ("base_case" #: ty);
               rhs = { x = CApp { 
                 appf = { x = VVar (replace_bool_gen_string "bool_gen"#:ty); ty = ty2}; 
                 apparg = { x = VTuple [
-                  { x = VVar ("w_base" #: Nt.Ty_any); ty = Nt.Ty_any};
+                  { x = VVar ("w_base" #: Nt.Ty_unknown); ty = Nt.Ty_unknown};
                   { x = VLam {
                       lamarg = ("_" #: ty); 
                       body = 
@@ -141,15 +140,15 @@ let rec replace_bool_gen (t : ('t, 't term) typed) (name : string) (arg : string
                           replace_bool_gen exp1 name arg 
                         else 
                           replace_bool_gen exp2 name arg;
-                  }; ty = Nt.Ty_any}; ]    
-                  ; ty = Nt.Ty_any (* placeholder *) }
+                  }; ty = Nt.Ty_unknown}; ]    
+                  ; ty = Nt.Ty_unknown (* placeholder *) }
                 }; ty = ty3 }; 
               body = { x = CLetE {    (* let (recursive_case) = base_case (w_base, ...) *)
                 lhs = ("recursive_case" #: ty);
                 rhs = { x = CApp {
-                  appf = { x = VVar ("base_case" #: ty); ty = Nt.Ty_any};
+                  appf = { x = VVar ("base_case" #: ty); ty = Nt.Ty_unknown};
                   apparg = { x = VTuple [
-                    { x = VVar ("w_recursive" #: Nt.Ty_any); ty = Nt.Ty_any};
+                    { x = VVar ("w_recursive" #: Nt.Ty_unknown); ty = Nt.Ty_unknown};
                     { x = VLam {
                         lamarg = ("_" #: ty); 
                         body = 
@@ -157,13 +156,13 @@ let rec replace_bool_gen (t : ('t, 't term) typed) (name : string) (arg : string
                             replace_bool_gen exp1 name arg 
                           else 
                             replace_bool_gen exp2 name arg;
-                    }; ty = Nt.Ty_any}; ]    
-                    ; ty = Nt.Ty_any (* placeholder *) }
-                }; ty = Nt.Ty_any};
-                body = { x = CVal { x = VVar ("recursive_case" #: ty); ty = Nt.Ty_any} ; ty = Nt.Ty_any}
-              }; ty = Nt.Ty_any (* placeholder *) };
-            }; ty = Nt.Ty_any}
-          }; ty = Nt.Ty_any}}
+                    }; ty = Nt.Ty_unknown}; ]    
+                    ; ty = Nt.Ty_unknown (* placeholder *) }
+                }; ty = Nt.Ty_unknown};
+                body = { x = CVal { x = VVar ("recursive_case" #: ty); ty = Nt.Ty_unknown} ; ty = Nt.Ty_unknown}
+              }; ty = Nt.Ty_unknown (* placeholder *) };
+            }; ty = Nt.Ty_unknown}
+          }; ty = Nt.Ty_unknown}}
 
       (* freq_gen *)
       else if !freq_name = "freq_gen" then
@@ -171,12 +170,12 @@ let rec replace_bool_gen (t : ('t, 't term) typed) (name : string) (arg : string
           lhs = ("size" #: ty);
           rhs = { x = CApp { 
             appf = { x = VVar (replace_bool_gen_string "bool_gen"#:ty); ty = ty2}; 
-            apparg = { x = VVar (arg #: Nt.Ty_any); ty = Nt.Ty_any}  
+            apparg = { x = VVar (arg #: Nt.Ty_unknown); ty = Nt.Ty_unknown}  
             }; ty = ty3 }; 
           body = { x = CLetE {   (* let (base_case) = size exp *) 
             lhs = ("base_case" #: ty);
             rhs = { x = CApp {
-              appf = { x = VVar ("size ~base_case:" #: ty); ty = Nt.Ty_any};
+              appf = { x = VVar ("size ~base_case:" #: ty); ty = Nt.Ty_unknown};
               apparg = { x = VLam {
                       lamarg = ("_" #: ty); 
                       body = 
@@ -184,12 +183,12 @@ let rec replace_bool_gen (t : ('t, 't term) typed) (name : string) (arg : string
                           replace_bool_gen exp1 name arg 
                         else 
                           replace_bool_gen exp2 name arg;
-                  }; ty = Nt.Ty_any};
-            }; ty = Nt.Ty_any};
+                  }; ty = Nt.Ty_unknown};
+            }; ty = Nt.Ty_unknown};
             body = { x = CLetE {    (* let (recursive_case) = base_case exp *)
                 lhs = ("recursive_case" #: ty);
                 rhs = { x = CApp {
-                  appf = { x = VVar ("base_case ~recursive_case:" #: ty); ty = Nt.Ty_any};
+                  appf = { x = VVar ("base_case ~recursive_case:" #: ty); ty = Nt.Ty_unknown};
                   apparg = { x = VLam {
                         lamarg = ("_" #: ty); 
                         body = 
@@ -197,11 +196,11 @@ let rec replace_bool_gen (t : ('t, 't term) typed) (name : string) (arg : string
                             replace_bool_gen exp1 name arg 
                           else 
                             replace_bool_gen exp2 name arg;
-                    }; ty = Nt.Ty_any};
-                }; ty = Nt.Ty_any};
-                body = { x = CVal { x = VVar ("recursive_case" #: ty); ty = Nt.Ty_any} ; ty = Nt.Ty_any}
-              }; ty = Nt.Ty_any }
-          }; ty = Nt.Ty_any }
+                    }; ty = Nt.Ty_unknown};
+                }; ty = Nt.Ty_unknown};
+                body = { x = CVal { x = VVar ("recursive_case" #: ty); ty = Nt.Ty_unknown} ; ty = Nt.Ty_unknown}
+              }; ty = Nt.Ty_unknown }
+          }; ty = Nt.Ty_unknown }
         }
 
       (* unif_gen *)
@@ -213,19 +212,19 @@ let rec replace_bool_gen (t : ('t, 't term) typed) (name : string) (arg : string
                 apparg = { x = VLam {
                         lamarg = ("_" #: ty); 
                         body = replace_bool_gen exp1 name arg
-                    }; ty = Nt.Ty_any};
-              }; ty = Nt.Ty_any};
+                    }; ty = Nt.Ty_unknown};
+              }; ty = Nt.Ty_unknown};
               body = { x = CLetE {    (* let (recursive_case) = base_case exp *)
                   lhs = ("snd_case" #: ty);
                   rhs = { x = CApp {
-                    appf = { x = VVar ("fst_case" #: ty); ty = Nt.Ty_any};
+                    appf = { x = VVar ("fst_case" #: ty); ty = Nt.Ty_unknown};
                     apparg = { x = VLam {
                           lamarg = ("_" #: ty); 
                           body = replace_bool_gen exp2 name arg
-                      }; ty = Nt.Ty_any};
-                  }; ty = Nt.Ty_any};
-                  body = { x = CVal { x = VVar ("snd_case" #: ty); ty = Nt.Ty_any} ; ty = Nt.Ty_any}
-                }; ty = Nt.Ty_any }
+                      }; ty = Nt.Ty_unknown};
+                  }; ty = Nt.Ty_unknown};
+                  body = { x = CVal { x = VVar ("snd_case" #: ty); ty = Nt.Ty_unknown} ; ty = Nt.Ty_unknown}
+                }; ty = Nt.Ty_unknown }
             }
   | CLetE { lhs; rhs; body} -> 
     CLetE {
@@ -310,9 +309,9 @@ let rec replace_bool_gen (t : ('t, 't term) typed) (name : string) (arg : string
 and replace_bool_gen_value (name : string) (arg : string) (v : 't value) =
   match v with 
   | VConst (B true) -> 
-    VVar ("true" #: Nt.Ty_bool) 
+    VVar ("true" #: Nt.bool_ty) 
   | VConst (B false) -> 
-    VVar ("false" #: Nt.Ty_bool) 
+    VVar ("false" #: Nt.bool_ty) 
   | VConst _ -> v
   | VVar s ->
       VVar s
@@ -360,7 +359,7 @@ let print_code (config:string) (source:string) =
   in
 
   (* gets string of AST *)
-  let body_str = Language.FrontendTyped.layout_typed_term body in
+  let body_str = layout_typed_term body in
 
   
   print_endline name.x;
@@ -371,7 +370,7 @@ in ()
 (** returns string version of AST *)
 let final_program_to_string name if_rec new_body : string = 
   let body_as_item = 
-    Item.MFuncImp
+    MFuncImp
       {
         name = name;
         if_rec = if_rec;
@@ -379,9 +378,9 @@ let final_program_to_string name if_rec new_body : string =
       }
   in
   let reconstructed_body =
-    Item.map_item (fun _ -> Nt.Ty_unknown) body_as_item
+    map_item (fun _ -> Nt.Ty_unknown) body_as_item
   in
-  Frontend_opt.To_item.layout_item reconstructed_body
+  Frontend_opt.layout_item reconstructed_body
 
 
 let frequify_program (config : string) (source : string ) = 

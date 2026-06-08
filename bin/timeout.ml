@@ -1,5 +1,4 @@
-open Rty
-open Language.FrontendTyped
+open Language
 
 module Timeout = struct
   type bool_or_timeout = Result of bool | Timeout
@@ -13,9 +12,9 @@ module Timeout = struct
     | Result b -> string_of_bool b
     | Timeout -> "timeout"
 
-  let sub_rty_bool_or_timeout (ctx : uctx) (l : t rty * t rty) : bool_or_timeout
-      =
-    let r = Typing.Termcheck.sub_rty_bool ctx l in
+  let sub_rty_bool_or_timeout (ctx : Context.uctx)
+      (l : Nt.t rty * Nt.t rty) : bool_or_timeout =
+    let r = Auxtyping.sub_rty ctx.rctx l in
     Result r
   (* Commented out because everything that is false timesout at the moment *)
   (* if !Backend.Check.smt_timeout_flag then Timeout else Result r *)

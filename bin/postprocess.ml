@@ -1,5 +1,5 @@
-open Mtyped
-open Term
+open Zutils
+open Language
 open Pieces
 
 let rec remove_excess_ast_aux (t : ('t, 't term) typed) =
@@ -200,10 +200,10 @@ let rec nd_join_list (t : (_, _ term) typed list) : (_, _ term) typed =
 
 (** Take the body of the function, a lambda to convert the body into full code,
     and output it somewhere after some cleanup. *)
-let final_program_to_string (reconstruct_code_with_new_body : _ -> _ Item.item)
+let final_program_to_string (reconstruct_code_with_new_body : _ -> _ item)
     new_body : string =
   let new_frontend_prog = new_body |> reconstruct_code_with_new_body in
-  Frontend_opt.To_item.layout_item new_frontend_prog
+  Frontend_opt.layout_item new_frontend_prog
 
 let remove_underscores_in_variable_names_string (x : string) : string =
   match String.split_on_char '_' x with

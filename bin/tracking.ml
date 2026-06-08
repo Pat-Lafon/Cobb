@@ -1,8 +1,6 @@
-open Rty
-open Language.FrontendTyped
+open Zutils
+open Language
 open Utils
-open Term
-open Mtyped
 
 module NameTracking = struct
   let asts : (identifier, _ typed) Hashtbl.t = Hashtbl.create 12800
@@ -14,14 +12,14 @@ module NameTracking = struct
       (fun a b ->
         Printf.printf "%s ->\n" a.x;
         Utils.dbg_sexp
-          (Mtyped.sexp_of_typed Nt.sexp_of_t (Term.sexp_of_term Nt.sexp_of_t) b))
+          (sexp_of_typed Nt.sexp_of_nt (sexp_of_term Nt.sexp_of_nt) b))
       asts;
     print_endline "KNOWN";
     Hashtbl.iter (fun a _ -> Printf.printf "%s\n" a.x) known
 
   let is_known (name : identifier) = Hashtbl.mem known name
 
-  let add_ast (a : identifier) (term : (t, t term) typed) =
+  let add_ast (a : identifier) (term : (Nt.t, Nt.t term) typed) =
     assert (not (Hashtbl.mem asts a));
     Hashtbl.replace asts a term
 
@@ -32,7 +30,7 @@ module NameTracking = struct
        parts that are not removed *)
     if recursive then
       let removed_ast = Hashtbl.find asts a in
-      match (removed_ast.x : t term) with
+      match (removed_ast.x : Nt.t term) with
       | CApp { appf = { x = VVar v; _ }; apparg } ->
           if is_known v || not (Hashtbl.mem asts v) then ()
           else remove_ast v ~recursive
@@ -53,7 +51,7 @@ module NameTracking = struct
       a)
 
   (** Add an ast as known while being duplicate sensative *)
-  let known_ast (a : identifier) (term : (t, t term) typed) =
+  let known_ast (a : identifier) (term : (Nt.t, Nt.t term) typed) =
     assert (not (Hashtbl.mem asts a));
     Hashtbl.add known a ();
     add_ast a term
@@ -69,8 +67,8 @@ module NameTracking = struct
     let expr = get_ast a in
     Option.value expr ~default:(a |> id_to_term)
 
-  let get_term (a : identifier) : (t, t term) typed =
-    let rec aux a : _ list * (t, t term) typed =
+  let get_term (a : identifier) : (Nt.t, Nt.t term) typed =
+    let rec aux a : _ list * (Nt.t, Nt.t term) typed =
       let t = get_ast a in
       match t with
       | Some { x = CVal { x = VConst _; _ }; ty } -> failwith "unimplemented"
@@ -138,10 +136,10 @@ module NameTracking = struct
       b
       (List.rev bindings |> unique)
 
-  let ctx_subst (ctx : t rty Typectx.ctx) (ht : (string, identifier) Hashtbl.t)
-      : t rty Typectx.ctx =
+  let ctx_subst (ctx : Nt.t rty Typectx.ctx) (ht : (string, identifier) Hashtbl.t)
+      : Nt.t rty Typectx.ctx =
     Typectx.map_ctx_typed
-      (fun ({ x; ty } : (t rty, string) typed) : (t rty, string) typed ->
+      (fun ({ x; ty } : (Nt.t rty, string) typed) : (Nt.t rty, string) typed ->
         let renamed_ty =
           List.fold_left
             (fun t name ->
@@ -153,14 +151,14 @@ module NameTracking = struct
             ty (fv_rty ty)
         in
         let new_name = Hashtbl.find ht x in
-        assert (new_name.ty = Rty.erase_rty renamed_ty);
+        assert (new_name.ty = erase_rty renamed_ty);
         new_name.x#:renamed_ty)
       ctx
 
   let rename (id : identifier) : identifier =
     (* if is_known id then id
     else *)
-      let new_name = (Rename.unique id.x)#:id.ty in
+      let new_name = (Rename.unique_var id.x)#:id.ty in
       assert (not (Hashtbl.mem asts new_name));
       let () =
         match get_ast id with
@@ -169,20 +167,20 @@ module NameTracking = struct
       in
       new_name
 
-  let freshen (Typectx lst : t rty Typectx.ctx) =
-    let ctx = Typectx.Typectx lst in
+  let freshen (ctx : Nt.t rty Typectx.ctx) =
+    let lst = Typectx.ctx_to_list ctx in
     let ht : (string, identifier) Hashtbl.t =
       Hashtbl.create (List.length lst)
     in
 
-    let maybe_freshen_one (name_rty : (t rty, string) typed) :
-        (t rty, string) typed =
+    let maybe_freshen_one (name_rty : (Nt.t rty, string) typed) :
+        (Nt.t rty, string) typed =
       let name = name_rty#=>erase_rty in
       if is_known name then (
         Hashtbl.replace ht name.x name;
         name_rty)
       else
-        let new_name = (Rename.unique name.x)#:name.ty in
+        let new_name = (Rename.unique_var name.x)#:name.ty in
         let () =
           match get_ast name with
           | None -> failwith name.x
@@ -219,7 +217,7 @@ module NameTracking = struct
                 print_endline (layout_typed_value apparg);
                 failwith "I don't think I should hit that?")
         | CAppOp { op; appopargs } ->
-            Op.op_name_for_typectx op.x |> String.equal c
+            op_name_for_typectx op.x |> String.equal c
             || List.exists
                  (fun x ->
                    match x.x with

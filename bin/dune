@@ -11,9 +11,13 @@
   blocks
   pieces
   localization
-  preprocess
+  cobb_preprocess
   postprocess
-  CoverageType.typing)
+  CoverageType.typing
+  CoverageType.auxtyping
+  CoverageType.inference
+  CoverageType.preprocess
+  yojson)
  (preprocess
   (pps ppx_jane)))
 
@@ -50,19 +54,20 @@
 
 (library
  (name timeout)
- (libraries CoverageType.typing utils)
+ (libraries CoverageType.typing context utils)
  (modules timeout))
 
 (library
  (public_name Cobb.tracking)
  (name tracking)
- (libraries CoverageType.typing utils)
+ (libraries CoverageType.typing CoverageType.language zutils utils)
  (modules tracking))
 
 (library
  (name localization)
  (libraries
   CoverageType.typing
+  CoverageType.auxtyping
   pieces
   block
   blocks
@@ -76,23 +81,26 @@
   (pps ppx_inline_test)))
 
 (library
- (name preprocess)
+ (name cobb_preprocess)
  (libraries
+  context
   tracking
-  CoverageType.typing)
- (modules preprocess))
+  CoverageType.typing
+  CoverageType.auxtyping
+  CoverageType.preprocess)
+ (modules cobb_preprocess))
 
 (library
  (public_name Cobb.postprocess)
  (name postprocess)
- (libraries pieces CoverageType.typing)
+ (libraries pieces CoverageType.typing CoverageType.frontend_opt)
  (modules postprocess))
 
 (library
  (public_name Cobb.utils)
  (name utils)
  (modules utils)
- (libraries core CoverageType.typing zutils.zdatatype))
+ (libraries core CoverageType.typing CoverageType.language zutils))
 
 (library
  (name term_utils)
@@ -113,15 +121,18 @@
   blockcollection
   term_utils
   tracking
-  synthesiscollection))
+  synthesiscollection
+  CoverageType.auxtyping))
 
 (executable
   (public_name frequify)
   (name frequify)
   (modules frequify)
   (libraries
-    zutils.sugar
+    zutils
+    CoverageType.language
     CoverageType.frontend_opt
+    CoverageType.preprocess
   ))
 
 (env

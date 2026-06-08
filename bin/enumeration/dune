@@ -7,19 +7,19 @@
 
 (library
  (name block)
- (libraries CoverageType.typing context tracking pieces relation)
+ (libraries zutils CoverageType.typing context tracking pieces relation)
  (modules block)
  (preprocess
   (pps ppx_optcomp ppx_compare ppx_sexp_conv)))
 
 (library
  (name blockset)
- (libraries block relation pomap)
+ (libraries block relation pomap CoverageType.language)
  (modules blockset))
 
 (library
  (name blockmap)
- (libraries block blockset context)
+ (libraries zutils block blockset context)
  (modules blockmap))
 
 (library
@@ -34,7 +34,7 @@
 
 (library
  (name blockqueue)
- (libraries core block core_kernel.pairing_heap blockmap blockset utils)
+ (libraries zutils core block core_kernel.pairing_heap blockmap blockset utils)
  (modules blockqueue)
  (preprocess
   (pps ppx_inline_test ppx_assert ppx_compare))

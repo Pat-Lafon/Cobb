@@ -18,7 +18,7 @@
         "data_type_decls": "underapproximation_type/data/predefined/data_type_decls.ml",
         "templates": "underapproximation_type/data/predefined/templates.ml",
         "normal_typing": "underapproximation_type/data/predefined/normal_typing.ml",
-        "axioms": "underapproximation_type/data/predefined/axioms.ml",
+        "axioms": "underapproximation_type/data/predefined/wf_decreasing_axioms.ml",
         "coverage_typing": "underapproximation_type/data/predefined/coverage_typing.ml"
     }
 }

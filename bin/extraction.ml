@@ -1,3 +1,4 @@
+open Zutils
 open Pomap
 open Context
 
@@ -8,12 +9,11 @@ open Blockmap
 
 (* open Blockcollection *)
 open Utils
-open Zzdatatype.Datatype
-open Language.FrontendTyped
+open Zdatatype
+open Auxtyping
 open Typing.Termcheck
 
 (* open Synthesiscollection *)
-open Frontend_opt.To_typectx
 open Language
 
 type rty = Nt.t Language.rty
@@ -60,7 +60,7 @@ module Extraction = struct
       let current_min = unioned_rty_type3 x in
 
       (* Assert that current min passes subtyping check *)
-      assert (sub_rty_bool uctx (current_min, target_ty));
+      assert (sub_rty uctx.rctx (current_min, target_ty));
 
       print_endline (current_min |> layout_rty);
 
@@ -70,10 +70,10 @@ module Extraction = struct
             let proposed_min = unioned_rty_type3 proposed_list in
             if
               (* The proposed min implies the target*)
-              sub_rty_bool uctx (proposed_min, target_ty)
+              sub_rty uctx.rctx (proposed_min, target_ty)
               &&
               (* And it is implied by the current min*)
-              sub_rty_bool uctx (current_min, proposed_min)
+              sub_rty uctx.rctx (current_min, proposed_min)
             then (proposed_min, proposed_list)
             else (current_min, current_list))
           (current_min, x)
@@ -81,7 +81,7 @@ module Extraction = struct
         |> snd
       in
 
-      assert (sub_rty_bool uctx (unioned_rty_type3 res, target_ty));
+      assert (sub_rty uctx.rctx (unioned_rty_type3 res, target_ty));
       res
 
   (* Repeat trying to reduce the number of blocks until minimum is found *)
@@ -112,8 +112,8 @@ module Extraction = struct
 
       let uctx = !global_uctx |> Option.get in
 
-      if sub_rty_bool uctx (new_covered_rty, target_ty) then
-        if sub_rty_bool uctx (current_minimum, new_covered_rty) then
+      if sub_rty uctx.rctx (new_covered_rty, target_ty) then
+        if sub_rty uctx.rctx (current_minimum, new_covered_rty) then
           Some (new_covered_rty, new_thing :: acc)
         else
           minimize_type_helper lc map target_ty acc remaining_set
@@ -131,7 +131,7 @@ module Extraction = struct
       (LocalCtx.t * BlockSetE.t * ExistentializedBlock.t * Ptset.t) list =
     let uctx = !global_uctx |> Option.get in
     let current_coverage_type = unioned_rty_type2 x in
-    assert (sub_rty_bool uctx (current_coverage_type, target_ty));
+    assert (sub_rty uctx.rctx (current_coverage_type, target_ty));
 
     let res =
       List.fold_left
@@ -160,13 +160,13 @@ module Extraction = struct
         (range (List.length x))
       |> snd
     in
-    assert (sub_rty_bool uctx (unioned_rty_type2 res, target_ty));
+    assert (sub_rty uctx.rctx (unioned_rty_type2 res, target_ty));
     res
 
-  let check_types_against_target (tys : t Rty.rty list) (target_ty : t Rty.rty)
+  let check_types_against_target (tys : rty list) (target_ty : rty)
       : bool =
     let uctx = !global_uctx |> Option.get in
-    sub_rty_bool uctx (union_rtys tys, target_ty)
+    sub_rty uctx.rctx (union_rtys tys, target_ty)
 
   let pset_is_sufficient_coverage (map : BlockSetE.t) (pset : Ptset.t)
       (target_ty : rty) : bool =
@@ -214,7 +214,7 @@ module Extraction = struct
 
     assert (not (List.is_empty res));
 
-    if not (sub_rty_bool uctx (unioned_rty_type2 res, target_ty)) then (
+    if not (sub_rty uctx.rctx (unioned_rty_type2 res, target_ty)) then (
       List.iter
         (fun (lc, _, eb, _) ->
           LocalCtx.layout lc |> print_endline;
@@ -292,7 +292,7 @@ module Extraction = struct
            (layout_rty (unioned_rty_type2 block_choices));
          List.iter
            (fun (lc, _, b, _) ->
-             Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
+             Pp.printf "Local Context: %s\n" (Typectx.layout_ctx layout_rty lc);
              Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
            block_choices;
 
@@ -322,7 +322,7 @@ module Extraction = struct
 
     (let set = BlockSetE.add_block bset target_path_block in
      Printf.printf "Path Specific Collection: %s\n"
-       (layout_typectx layout_rty lc);
+       (Typectx.layout_ctx layout_rty lc);
      BlockSetE.print set);
 
     (* Does the target exist in this path? *)
@@ -382,7 +382,7 @@ module Extraction = struct
               (layout_rty (unioned_rty_type2 block_choices));
             List.iter
               (fun (lc, _, b, _) ->
-                Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
+                Pp.printf "Local Context: %s\n" (Typectx.layout_ctx layout_rty lc);
                 Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
               block_choices;
 
@@ -480,7 +480,7 @@ module Extraction = struct
 
           List.iter
             (fun (lc, _, b, _) ->
-              Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
+              Pp.printf "Local Context: %s\n" (Typectx.layout_ctx layout_rty lc);
               Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
             block_choices;
 
@@ -488,7 +488,7 @@ module Extraction = struct
 
           List.iter
             (fun (lc, _, b, _) ->
-              Pp.printf "Local Context: %s\n" (layout_typectx layout_rty lc);
+              Pp.printf "Local Context: %s\n" (Typectx.layout_ctx layout_rty lc);
               Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
             block_choices;
 
@@ -587,7 +587,7 @@ module Extraction = struct
       (fun ctx (path_target_ty, set) ->
         let set = BlockSetE.add_block set path_target_ty in
         Printf.printf "Path Specific Collection: %s\n"
-          (layout_typectx layout_rty ctx);
+          (Typectx.layout_ctx layout_rty ctx);
         BlockSetE.print set)
       path_specific_sets;
 

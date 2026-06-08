@@ -1,19 +1,16 @@
+open Zutils
+open Zdatatype
+open Language
 open Typing
-open Mtyped
-open Rty
-open Cty
-open Term
+open Auxtyping
 open Tracking
-open Language.FrontendTyped
-open Zzdatatype.Datatype
-module Env = Zzenv
 
 let rec unfold_rty_helper rty : _ typed list * _ rty =
   match rty with
   (* | RtyArrArr { argrty : 't rty; retty : 't rty } ->
       let other_args, retty = unfold_rty_helper retty in
       (argrty :: other_args, retty) *)
-  | RtyBaseArr { argcty : 't cty; arg : (string[@bound]); retty : 't rty } ->
+  | RtyArr { argrty = RtyBase { cty = argcty; _ }; arg; retty } ->
       let other_args, retty = unfold_rty_helper retty in
       ((arg #: (RtyBase { ou = Over; cty = argcty })) :: other_args, retty)
   | RtyBase _ -> ([], rty)
@@ -26,9 +23,9 @@ let rec strip_lam (t : (_, _ term) typed) : (_, _ term) typed =
 
 (* Largely taken straight from value_type_check::VFix *)
 let handle_recursion_args (a : (Nt.t, Nt.t value) typed) (rty : Nt.t rty) =
-  assert (Nt.eq a.ty (Rty.erase_rty rty));
+  assert (Nt.equal_nt a.ty (erase_rty rty));
   match (a.x, rty) with
-  | VFix { fixname; fixarg; body }, RtyBaseArr { argcty; arg; retty } ->
+  | VFix { fixname; fixarg; body }, RtyArr { argrty = RtyBase { cty = argcty; _ }; arg; retty } ->
       assert (String.equal fixarg.x arg);
 
       let ret_nt_ty = Nt.destruct_arr_tp fixname.ty |> snd in
@@ -36,25 +33,25 @@ let handle_recursion_args (a : (Nt.t, Nt.t value) typed) (rty : Nt.t rty) =
       if String.equal "stlc_term" (ret_nt_ty |> Nt.layout) then
         match (body.x, retty) with
         | ( CVal { x = VLam { lamarg; body }; _ },
-            RtyBaseArr { argcty = argcty1; arg = arg1; retty } ) ->
+            RtyArr { argrty = RtyBase { cty = argcty1; _ }; arg = arg1; retty } ) ->
             let rty' =
-              let arg' = { x = Rename.unique arg; ty = fixarg.ty } in
+              let arg' = { x = Rename.unique_var arg; ty = fixarg.ty } in
               let arg = arg #: fixarg.ty in
-              let arg1' = { x = Rename.unique arg1; ty = lamarg.ty } in
+              let arg1' = { x = Rename.unique_var arg1; ty = lamarg.ty } in
               let arg1 = arg1 #: lamarg.ty in
               let rec_constraint_cty = Termcheck.apply_rec_arg2 arg arg' arg1 in
               let () =
                 Termcheck.init_cur_rec_func_name
                   (fixname.x, rec_constraint_cty, ret_nt_ty)
               in
-              RtyBaseArr
+              RtyArr
                 {
-                  argcty;
+                  argrty = RtyBase { ou = Over; cty = argcty };
                   arg = arg'.x;
                   retty =
-                    RtyBaseArr
+                    RtyArr
                       {
-                        argcty = intersect_ctys [ argcty1; rec_constraint_cty ];
+                        argrty = RtyBase { ou = Over; cty = intersect_ctys [ argcty1; rec_constraint_cty ] };
                         arg = arg1'.x;
                         retty =
                           subst_rty_instance arg1.x (AVar arg1')
@@ -83,10 +80,10 @@ let handle_recursion_args (a : (Nt.t, Nt.t value) typed) (rty : Nt.t rty) =
             (fixname.x, rec_constraint_cty, ret_nt_ty)
         in
         let rty' =
-          let a = { x = Rename.unique fixarg.x; ty = fixarg.ty } in
-          RtyBaseArr
+          let a = { x = Rename.unique_var fixarg.x; ty = fixarg.ty } in
+          RtyArr
             {
-              argcty = intersect_ctys [ argcty; rec_constraint_cty ];
+              argrty = RtyBase { ou = Over; cty = intersect_ctys [ argcty; rec_constraint_cty ] };
               arg = a.x;
               retty =
                 subst_rty_instance arg (AVar (NameTracking.known_var a)) retty;
@@ -107,35 +104,19 @@ let handle_recursion_args (a : (Nt.t, Nt.t value) typed) (rty : Nt.t rty) =
         (*       Pp.printf "\nSubstituted Return Type: %s\n" (layout_rty _retty); *)
         assert (
           Core.Sexp.( = )
-            (Rty.sexp_of_rty Nt.sexp_of_t _retty)
-            (Rty.sexp_of_rty Nt.sexp_of_t retty));
+            (sexp_of_rty Nt.sexp_of_nt _retty)
+            (sexp_of_rty Nt.sexp_of_nt retty));
         let rec_fix = fixname.x #: rty' in
 
         ([ binding ], rec_fix, strip_lam body)
   | _ -> failwith "Did not recieve a fixpoint value and a base arrow type"
 
-let build_initial_typing_context () : uctx =
-  let prim_path = Env.get_prim_path () in
-
-  let predefine = Commands.Cre.preprocess prim_path.coverage_typing () in
-
-  (*   Pp.printf "\nPredefined:\n%s\n" (layout_structure predefine); *)
-  let builtin_ctx = Typing.Itemcheck.gather_uctx predefine in
-
-  (*   Pp.printf "\nBuiltin Context:\n%s\n" (layout_typectx layout_rty builtin_ctx); *)
-  assert (List.length predefine = List.length (Typectx.to_list builtin_ctx));
-
-  let lemmas = Commands.Cre.preprocess prim_path.axioms () in
-
-  (* Pp.printf "\nLemmas:\n%s\n" (layout_structure lemmas); *)
-  let axioms =
-    Typing.Itemcheck.gather_axioms lemmas |> List.map Mtyped._get_ty
-  in
-
-  { builtin_ctx; local_ctx = Typectx.emp; axioms }
+let build_initial_typing_context () : Typing.Termcheck.uctx =
+  let bctx = Preprocess.load_bctx () in
+  { bctx; rctx = Typing.Rctx.emp "synth" [] [] }
 
 let rec swap_in_body (code : (Nt.t, Nt.t value) typed) :
-    (t, t term) typed -> (Nt.t, Nt.t value) typed =
+    (Nt.t, Nt.t term) typed -> (Nt.t, Nt.t value) typed =
   match code.x with
   | VFix { fixname; fixarg; body = { x = CVal body; ty } } ->
       fun x ->
@@ -154,7 +135,7 @@ let rec swap_in_body (code : (Nt.t, Nt.t value) typed) :
   | _ -> failwith "swap_in_body::failure"
 
 let get_args_rec_retty_body_from_source source_file =
-  let processed_file = Commands.Cre.preprocess source_file () in
+  let processed_file = Preprocess.preprocess [ source_file ] in
 
   assert (List.length processed_file = 2);
 
@@ -163,7 +144,7 @@ let get_args_rec_retty_body_from_source source_file =
     List.find_map
       (fun item ->
         match item with
-        | Item.MRty { name; is_assumption; rty } ->
+        | MRty { name; is_assumption; rty } ->
             assert (not is_assumption);
             Some (name, rty)
         | _ -> None)
@@ -180,7 +161,7 @@ let get_args_rec_retty_body_from_source source_file =
     List.find_map
       (fun item ->
         match item with
-        | Item.MFuncImp { name = { x; _ }; if_rec = true; body }
+        | MFuncImp { name = { x; _ }; if_rec = true; body }
           when String.equal x synth_name ->
             Some body
         | _ -> None)
@@ -194,7 +175,7 @@ let get_args_rec_retty_body_from_source source_file =
 
   let reconstruct_code_with_new_body x =
     let b = swap_in_body code in
-    Item.MFuncImp
+    MFuncImp
       {
         name = synth_name #: (erase_rty synth_type);
         if_rec = true;

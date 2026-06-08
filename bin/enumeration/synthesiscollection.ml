@@ -2,8 +2,6 @@ open Blockcollection
 open Context
 open Utils
 open Blockmap
-open Frontend_opt.To_typectx
-open Language.FrontendTyped
 open Pieces
 open Language
 open Block
@@ -360,7 +358,7 @@ module PrioritySynthesisCollection = struct
            (fun acc (local_ctx, (_, block_collection, _)) ->
              let res =
                "In Path:\n"
-               ^ layout_typectx layout_rty local_ctx
+               ^ Typectx.layout_ctx layout_rty local_ctx
                ^ "\n"
                ^ PriorityBBMap.layout block_collection
              in

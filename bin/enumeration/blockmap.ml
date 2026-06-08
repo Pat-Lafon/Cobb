@@ -1,8 +1,8 @@
+open Zutils
 open Block
 open Blockset
 open Context
 open Utils
-open Typing.Termcheck
 
 module BlockMapF (B : Block_intf) = struct
   module BlockSet = BlockSetF (B)
@@ -33,7 +33,7 @@ module BlockMapF (B : Block_intf) = struct
     | [] -> [ (B.to_nty term, BlockSet.singleton term) ]
     | (ty', terms) :: rest ->
         let ty = B.to_nty term in
-        if Nt.eq ty ty' then (ty, BlockSet.add_block terms term) :: rest
+        if Nt.equal_nt ty ty' then (ty, BlockSet.add_block terms term) :: rest
         else (ty', terms) :: add rest term
 
   (** Add the (type, term pair to the map) *)
@@ -41,7 +41,7 @@ module BlockMapF (B : Block_intf) = struct
     match map with
     | [] -> [ (ty, term_list) ]
     | (ty', terms) :: rest ->
-        if Nt.eq ty ty' then (ty, BlockSet.union terms term_list) :: rest
+        if Nt.equal_nt ty ty' then (ty, BlockSet.union terms term_list) :: rest
         else (ty', terms) :: add_list rest term_list ty
 
   let init (inital_seeds : B.t list) : t =
@@ -62,7 +62,7 @@ module BlockMapF (B : Block_intf) = struct
 
   let layout (map : t) : string =
     let aux (ty, terms) =
-      Printf.sprintf "Type: %s\n" (layout_ty ty) ^ BlockSet.layout terms
+      Printf.sprintf "Type: %s\n" (Nt.layout ty) ^ BlockSet.layout terms
     in
     List.fold_left (fun acc x -> acc ^ aux x) "" map
 

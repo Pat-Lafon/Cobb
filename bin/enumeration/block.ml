@@ -1,10 +1,7 @@
+open Zutils
 open Typing
-open Typing.Termcheck
-open Language.FrontendTyped
 open Utils
 open Pieces
-open Frontend_opt.To_typectx
-open Zzdatatype.Datatype
 open Tracking
 open Language
 open Context
@@ -79,14 +76,14 @@ end = struct
 
   let layout ({ id; ty } : t) : string =
     Printf.sprintf "%s : %s :\n%s\n"
-      (NameTracking.get_term id |> layout_typed_erased_term)
-      (layout_ty id.ty) (layout_rty ty)
+      (NameTracking.get_term id |> layout_typed_term)
+      (Nt.layout id.ty) (layout_rty ty)
 
   let print (x : t) : unit = print_endline (layout x)
   let get_id ({ id; _ } : t) : identifier = id
 
   (* In the case of an existentialiszed block, the only thing in context is itself*)
-  let get_local_ctx ({ id; ty } : t) : LocalCtx.t = Typectx.Typectx [ id.x#:ty ]
+  let get_local_ctx ({ id; ty } : t) : LocalCtx.t = Typectx.ctx_from_list [ id.x#:ty ]
 
   (* let new_X (id : identifier) (ty : Nt.t rty) : t = { id; ty } *)
 
@@ -94,7 +91,7 @@ end = struct
     (* Create a target block that we are missing *)
     {
       id =
-        (Rename.unique "missing")#:(erase_rty target_ty)
+        (Rename.unique_var "missing")#:(erase_rty target_ty)
         |> NameTracking.known_var;
       ty = target_ty;
     }
@@ -114,7 +111,7 @@ end = struct
     Relations.typed_relation uctx id.x#:ty id'.x#:ty'
 
   let path_promotion (lc : LocalCtx.t) ({ id; ty } : t) : t =
-    let fresh_id = (Rename.unique id.x)#:id.ty in
+    let fresh_id = (Rename.unique_var id.x)#:id.ty in
     NameTracking.add_ast fresh_id (NameTracking.get_ast id |> Option.get);
     let fresh_rty = LocalCtx.exists_rtys_to_rty lc ty in
 
@@ -143,11 +140,11 @@ end = struct
 
   let layout ({ id; ty; lc; _ } : t) : string =
     Printf.sprintf "%s ⊢ %s as %s : %s :\n%s\n"
-      (layout_typectx layout_rty lc
-      ^ if List.is_empty (Typectx.to_list lc) then "" else " \n")
+      (Typectx.layout_ctx layout_rty lc
+      ^ if List.is_empty (Typectx.ctx_to_list lc) then "" else " \n")
       id.x
-      (NameTracking.get_term id |> layout_typed_erased_term)
-      (layout_ty id.ty) (layout_rty ty)
+      (NameTracking.get_term id |> layout_typed_term)
+      (Nt.layout id.ty) (layout_rty ty)
 
   let print (x : t) : unit = print_endline (layout x)
   let get_id ({ id; _ } : t) : identifier = id
@@ -157,11 +154,11 @@ end = struct
     (* Kind of awkward, we want to filter out the current blocks name from the
        type(which would be redundant, unless that name is important) *)
     let local_ctx =
-      Typectx.to_list lc
+      Typectx.ctx_to_list lc
       |> List.filter (fun { x; ty } ->
              if x = id.x then NameTracking.is_known x#:(erase_rty ty) else true)
     in
-    let ext_rty = exists_rtys_to_rty local_ctx ty in
+    let ext_rty = Auxtyping.exists_rtys local_ctx ty in
     { id; ty = ext_rty }
 
   let is_sub_rty (block : t) (block' : t) : bool =
@@ -243,7 +240,7 @@ end = struct
                     (fun k v -> Printf.printf "%s -> %s\n" k v.x)
                     mapping;
                   List.iter
-                    (fun l -> layout_typectx layout_rty l |> print_endline)
+                    (fun l -> Typectx.layout_ctx layout_rty l |> print_endline)
                     ctxs;
 
                   NameTracking.debug ();
@@ -276,7 +273,7 @@ module PreBlock = struct
     Printf.sprintf "Cost: %d\nComponent: %s\nArgs: %s\nReturn Type: %s\n" t.cost
       (Pieces.layout_component t.component)
       (List.map Block.layout t.args |> String.concat "\n")
-      (layout_ty t.ret_type)
+      (Nt.layout t.ret_type)
 
   let create (component : Pieces.component) (args : Block.t list)
       (ret_type : Nt.t) : t =
@@ -315,7 +312,7 @@ module PreBlock = struct
 
     print_endline "Block in question:";
     LocalCtx.layout joined_ctx |> print_endline;
-    NameTracking.get_term block_id |> layout_typed_erased_term |> print_endline;
+    NameTracking.get_term block_id |> layout_typed_term |> print_endline;
 
     assert (block_id.ty = ret_type);
     assert (term.ty = block_id.ty);
@@ -361,7 +358,10 @@ end
 (* Take a term/block and see if it works inside of a path *)
 (* Should probably only be used to promote a block to a path *)
 let try_path path_ctx optional_filter_type ret_type
-    (block_id, term, local_ctx, cost) : Block.t option =
+    ((block_id : identifier),
+     (term : (Nt.t, Nt.t term) typed),
+     local_ctx,
+     cost) : Block.t option =
   assert (term.ty = block_id.ty);
 
   let new_path_ctx =
@@ -415,7 +415,7 @@ let apply (pre_block : PreBlock.t) (filter_type : Nt.t rty option)
 
   print_endline "Block in question:";
   LocalCtx.layout joined_ctx |> print_endline;
-  layout_typed_erased_term term |> print_endline;
+  layout_typed_term term |> print_endline;
 
   assert (block_id.ty = ret_type);
   assert (term.ty = block_id.ty);

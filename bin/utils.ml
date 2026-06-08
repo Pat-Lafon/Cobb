@@ -1,6 +1,9 @@
+open Zutils
+open Language
+
 let path_condition_prefix = "pathcond"
 
-type identifier = (Nt.t, string) Mtyped.typed
+type identifier = (Nt.t, string) typed
 
 (*** Replace the element at pos of l with a *)
 let replace l pos a = List.mapi (fun i x -> if i = pos then a else x) l
@@ -17,9 +20,9 @@ let unique l =
 
 let dbg_sexp sexp = print_endline (Core.Sexp.to_string_hum sexp)
 
-let rty_is_false (rty : Nt.t Rty.rty) : bool =
+let rty_is_false (rty : Nt.t rty) : bool =
   match rty with
-  | RtyBase { cty = Cty { phi = Lit { x = AC (B false); _ }; _ }; _ } -> true
+  | RtyBase { cty = { phi = Lit { x = AC (B false); _ }; _ }; _ } -> true
   | _ -> false
 
 let map_fst f (l, r) = (f l, r)
@@ -97,7 +100,7 @@ let _stripe_fun (l : 'b option list) (n : int) (v : 'b option) =
   range n
   |> List.filter_map (fun x ->
          if List.nth l x <> None then None
-         else Some (Zzdatatype.Zlist.List.replace_exn l x v))
+         else Some (Zdatatype.List.replace_exn l x v))
 
 (* Not the most efficient but it works *)
 

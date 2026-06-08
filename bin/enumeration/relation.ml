@@ -1,7 +1,10 @@
-open Language.FrontendTyped
+open Zutils
 open Timeout
 open Language
 open Utils
+open Context
+
+type t = Nt.t
 
 (** The goal of this module is to provide utilites for the subtyping relation*)
 module Relations : sig
@@ -135,7 +138,9 @@ end = struct
       bool =
     List.exists
       (fun ({ x; _ } : identifier) ->
-        let arg_t = FrontendTyped.get_opt uctx x |> Option.get in
+        let arg_t =
+          Typing.lookup_id uctx.rctx (Context.get_bctx ()) x |> Option.get
+        in
 
         if not (is_sub_id_rty uctx x#:arg_t block_id.x#:new_ut) then false
         else is_sub_id_rty uctx block_id.x#:new_ut x#:arg_t

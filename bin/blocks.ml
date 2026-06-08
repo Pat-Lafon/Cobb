@@ -1,7 +1,6 @@
-open Language.FrontendTyped
+open Zutils
 open Utils
 open Pieces
-open Zzdatatype.Datatype
 open Language
 open Context
 open Block
@@ -36,7 +35,7 @@ let check_and_remove_finished_paths (coll : PrioritySynthesisCollection.t) :
 
 let _num_target_blocks (collection : PrioritySynthesisCollection.t)
     (target_type : rty) : int =
-  let nty_target_type = Rty.erase_rty target_type in
+  let nty_target_type = erase_rty target_type in
   PrioritySynthesisCollection.fold_by_type collection nty_target_type 0
     (fun acc bset -> acc + BlockSet.size bset)
 
@@ -51,7 +50,7 @@ module PrioritySynthesis = struct
       (LocalCtx.t * _) list =
     if !max_cost_ref < current_cost then
       if !imprecise then
-        let target_nty = Rty.erase_rty target_type in
+        let target_nty = erase_rty target_type in
         let list_of_paths = Hashtbl.to_seq collection.path_specific in
         let found_less_precise_solutions =
           Seq.map

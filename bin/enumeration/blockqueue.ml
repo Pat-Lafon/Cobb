@@ -1,5 +1,14 @@
+open Zutils
 open Block
 open Core
+
+module Nt_key = struct
+  type t = Nt.t
+
+  let compare = Stdlib.compare
+  let hash = Stdlib.Hashtbl.hash
+  let sexp_of_t = Nt.sexp_of_nt
+end
 
 type priority_list = (int, Block.t list) Hashtbl.t
 
@@ -86,7 +95,7 @@ module PriorityBBMap = struct
               match blst with None -> [ block ] | Some lst -> block :: lst);
           blocks
       | None ->
-          Hashtbl.of_alist_exn (module Nt) [ (Block.to_nty block, [ block ]) ])
+          Hashtbl.of_alist_exn (module Nt_key) [ (Block.to_nty block, [ block ]) ])
 
   let init (seeds : Block.t list) : t =
     let t = empty () in
