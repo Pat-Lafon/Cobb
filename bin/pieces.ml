@@ -88,20 +88,20 @@ module Pieces = struct
     | Fun f
       when Option.fold ~none:false
              ~some:(fun (n, _, _) -> String.equal n f.x)
-             (Typing.Termcheck.get_cur_rec_func_name ()) ->
+             (Typing.Common.get_cur_rec_func_name ()) ->
         1
         (* Component produces a type of the same type as a recursive call(goal
            type) *)
     | Fun f
       when Option.fold ~none:false
              ~some:(fun (_, _, ty) -> Nt.equal_nt (Nt.destruct_arr_tp f.ty |> snd) ty)
-             (Typing.Termcheck.get_cur_rec_func_name ()) ->
+             (Typing.Common.get_cur_rec_func_name ()) ->
         10
     | Fun _ -> 15
     | Op f
       when Option.fold ~none:false
              ~some:(fun (_, _, ty) -> Nt.equal_nt (Nt.destruct_arr_tp f.ty |> snd) ty)
-             (Typing.Termcheck.get_cur_rec_func_name ()) ->
+             (Typing.Common.get_cur_rec_func_name ()) ->
         10
     | Op _ -> 15
 
@@ -116,7 +116,7 @@ module Pieces = struct
     Option.fold ~none:5
       ~some:(fun (_, _, ty) ->
         if Nt.equal_nt s_ty ty then 10 else if Nt.equal_nt s_ty Nt.bool_ty then 1 else 5)
-      (Typing.Termcheck.get_cur_rec_func_name ())
+      (Typing.Common.get_cur_rec_func_name ())
 
   let layout_component (c : component) : string =
     match c with Fun f -> f.x | Op op -> op_name_for_typectx op.x
