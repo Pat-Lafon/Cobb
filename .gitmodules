@@ -4,4 +4,4 @@
 	url = https://github.com/Pat-Lafon/underapproximation_type.git
 [submodule "zutils"]
 	path = zutils
-	url = https://github.com/OCamlRefinementType/zutils.git
+	url = https://github.com/Pat-Lafon/zutils.git
