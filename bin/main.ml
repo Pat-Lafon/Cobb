@@ -206,8 +206,36 @@ let abduce_or_provide_missing ~(use_missing_coverage_file : bool)
         temp_names
     in
     Inference.Feature.init_template templates;
-    let _ = Typing.Itemcheck.struc_infer bctx items in
-    let rty = Typing.Termsyn.get_inferred_result () in
+    let has_annotated_function =
+      List.exists
+        (function MRty { is_assumption = false; _ } -> true | _ -> false)
+        items
+    in
+    if not has_annotated_function then
+      failwith
+        (Printf.sprintf
+           "abduce_or_provide_missing: %s contains no function annotated \
+            with `let[@assert] ...`; nothing to abduce"
+           source_file);
+    let _, passed, failed = Typing.Itemcheck.struc_infer bctx items in
+    let rty =
+      match !Typing.Termsyn.inferred_result with
+      | Some res -> res
+      | None when passed = [] ->
+          failwith
+            (Printf.sprintf
+               "abductive inference failed for every annotated function (%s): \
+                refinement-type inference returned None, meaning an SMT \
+                subtyping check did not discharge"
+               (String.concat ", " failed))
+      | None ->
+          failwith
+            (Printf.sprintf
+               "abductive inference completed but produced no coverage type: \
+                the annotated function(s) (%s) had bare-value bodies, which \
+                need no abduction"
+               (String.concat ", " passed))
+    in
     let time = Unix.gettimeofday () -. start_time in
     Abduced { rty; time }
 
