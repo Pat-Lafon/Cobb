@@ -13,20 +13,14 @@ The synthesizer performs:
 
 ## Build Commands
 
+General dune/opam workflow lives in the `ocaml-dune-project` skill. Project-specific:
+
 ```bash
-# Build the project
-dune build
-# or
-make build
-
-# Run tests
-make test
-# or
-dune runtest bin --always-show-command-line
-
-# Clean build artifacts
-dune clean
+make build                # = dune build
+make test                 # = dune runtest bin --always-show-command-line
 ```
+
+The `--always-show-command-line` flag on `dune runtest bin` is required here — `make test` invokes it.
 
 ## Running Cobb
 
@@ -120,7 +114,7 @@ Build Coq proofs for the type system soundness:
 ```bash
 make proof
 # or
-cd underapproximation_type/coq_proof && make
+cd underapproximation_type/data/validation/proofs && make
 ```
 
 ## Dependencies
