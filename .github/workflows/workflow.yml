@@ -18,7 +18,7 @@ jobs:
             # Restore cache BEFORE setup-ocaml so it can detect the existing switch
             - name: Restore opam switch cache
               id: opam-cache
-              uses: actions/cache@v5
+              uses: actions/cache@v6
               with:
                 path: |
                   _opam
@@ -33,7 +33,7 @@ jobs:
                 opam-pin: false
 
             - name: Cache Python dependencies
-              uses: actions/cache@v5
+              uses: actions/cache@v6
               with:
                 path: ~/.cache/pip
                 key: pip-${{ runner.os }}-${{ hashFiles('scripts/*.py') }}
@@ -64,7 +64,7 @@ jobs:
 
             # Cache BEFORE setup-ocaml so it can detect existing switch
             - name: Restore Coq opam cache
-              uses: actions/cache@v5
+              uses: actions/cache@v6
               with:
                 path: |
                   _opam
@@ -78,7 +78,7 @@ jobs:
                 opam-pin: false
 
             - name: Cache proof artifacts
-              uses: actions/cache@v5
+              uses: actions/cache@v6
               with:
                 path: underapproximation_type/data/validation/proofs
                 key: proof-${{ runner.os }}-coq-8.20.0-${{ hashFiles('underapproximation_type/coq_proof/**/*.v', 'underapproximation_type/coq_proof/_CoqProject') }}
