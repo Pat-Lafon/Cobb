@@ -16,9 +16,6 @@ is a background editor holding `_build/.lock` through `dune ocaml-merlin` or `vs
 synthesis crash; use the prebuilt binary or quiesce the LSP. `scripts/runner.py` makes that `chdir`
 for every script, so they take `../integration_tests/` paths directly.
 
-`docs/debugging-synthesis.md` is the playbook for a synthesis that won't converge: the log tags to set,
-and the two output figures that are routinely misread.
-
 ## Project Architecture
 
 `test/` is an empty `dune` stub — the real suite is `../integration_tests/`. The whole Z3 interface
@@ -36,8 +33,7 @@ The arrow runs one way: `abduction → CoverageType`. Abduction is built *on* `t
 it: `zutils` (`zutils/config/zUtilsConfig.ml`), `typechecker`
 (`underapproximation_type/typechecker_config/`), `abduction` (`abduction/abductionConfig.ml`), and
 `cobb` (`bin/cobbConfig.ml`). The parse is strict — unknown fields within a section fail it — so read
-those modules for the field rosters; what each `prim_path` file must hold is in
-`underapproximation_type/CLAUDE.md`.
+those modules for the field rosters.
 
 `log_tags` appears in two sections, each enabling only the trace channels its owning library emits:
 `zutils.log_tags` for `zutils/config/zUtilsLog.ml` and `typechecker.log_tags` for

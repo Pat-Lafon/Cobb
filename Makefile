@@ -4,7 +4,6 @@ build:
 	opam exec -- dune build
 
 axioms:
-	cd underapproximation_type && dune exec -- bin/main.exe export-axioms-lean -config meta-config.json -output axioms.lean
 	cd underapproximation_type && dune exec -- bin/main.exe export-axioms-coq -config meta-config.json -output axioms.v
 
 clean:
