@@ -1,5 +1,5 @@
 [submodule "underapproximation_type"]
-	branch = meta
+	branch = upstream-jfp-base
 	path = underapproximation_type
 	url = https://github.com/Pat-Lafon/underapproximation_type.git
 [submodule "zutils"]
