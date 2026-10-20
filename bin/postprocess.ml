@@ -235,7 +235,8 @@ let rec remove_underscores_in_variable_names_value (x : 't value) : 't value =
           body = remove_underscores_in_variable_names_typed body;
         }
   | VTuple l ->
-      VTuple (List.map (fun y -> y#->remove_underscores_in_variable_names_value) l)
+      VTuple
+        (List.map (fun y -> y#->remove_underscores_in_variable_names_value) l)
 
 (** TODO: This is a hack until I come up with a better uniqufiy/renaming
     strategy for Poirot that doesn't clobber over existing names*)

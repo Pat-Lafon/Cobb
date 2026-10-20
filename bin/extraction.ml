@@ -11,7 +11,6 @@ open Blockmap
 open Utils
 open Zdatatype
 open Auxtyping
-open Typing.Termcheck
 
 (* open Synthesiscollection *)
 open Language
@@ -53,14 +52,13 @@ module Extraction = struct
     else
       let () = assert (List.length x > 1) in
 
-      let uctx = !global_uctx |> Option.get in
+      let rctx = Context.get_rctx () in
 
       print_endline (layout_rty target_ty);
 
       let current_min = unioned_rty_type3 x in
 
-      (* Assert that current min passes subtyping check *)
-      assert (sub_rty uctx.rctx (current_min, target_ty));
+      assert (sub_rty rctx (current_min, target_ty));
 
       print_endline (current_min |> layout_rty);
 
@@ -70,10 +68,10 @@ module Extraction = struct
             let proposed_min = unioned_rty_type3 proposed_list in
             if
               (* The proposed min implies the target*)
-              sub_rty uctx.rctx (proposed_min, target_ty)
+              sub_rty rctx (proposed_min, target_ty)
               &&
               (* And it is implied by the current min*)
-              sub_rty uctx.rctx (current_min, proposed_min)
+              sub_rty rctx (current_min, proposed_min)
             then (proposed_min, proposed_list)
             else (current_min, current_list))
           (current_min, x)
@@ -81,7 +79,7 @@ module Extraction = struct
         |> snd
       in
 
-      assert (sub_rty uctx.rctx (unioned_rty_type3 res, target_ty));
+      assert (sub_rty rctx (unioned_rty_type3 res, target_ty));
       res
 
   (* Repeat trying to reduce the number of blocks until minimum is found *)
@@ -110,10 +108,10 @@ module Extraction = struct
 
       let new_covered_rty = unioned_rty_type2 (new_thing :: acc) in
 
-      let uctx = !global_uctx |> Option.get in
+      let rctx = Context.get_rctx () in
 
-      if sub_rty uctx.rctx (new_covered_rty, target_ty) then
-        if sub_rty uctx.rctx (current_minimum, new_covered_rty) then
+      if sub_rty rctx (new_covered_rty, target_ty) then
+        if sub_rty rctx (current_minimum, new_covered_rty) then
           Some (new_covered_rty, new_thing :: acc)
         else
           minimize_type_helper lc map target_ty acc remaining_set
@@ -129,9 +127,9 @@ module Extraction = struct
       (x : (LocalCtx.t * BlockSetE.t * ExistentializedBlock.t * Ptset.t) list)
       (target_ty : rty) :
       (LocalCtx.t * BlockSetE.t * ExistentializedBlock.t * Ptset.t) list =
-    let uctx = !global_uctx |> Option.get in
+    let rctx = Context.get_rctx () in
     let current_coverage_type = unioned_rty_type2 x in
-    assert (sub_rty uctx.rctx (current_coverage_type, target_ty));
+    assert (sub_rty rctx (current_coverage_type, target_ty));
 
     let res =
       List.fold_left
@@ -160,13 +158,12 @@ module Extraction = struct
         (range (List.length x))
       |> snd
     in
-    assert (sub_rty uctx.rctx (unioned_rty_type2 res, target_ty));
+    assert (sub_rty rctx (unioned_rty_type2 res, target_ty));
     res
 
-  let check_types_against_target (tys : rty list) (target_ty : rty)
-      : bool =
-    let uctx = !global_uctx |> Option.get in
-    sub_rty uctx.rctx (union_rtys tys, target_ty)
+  let check_types_against_target (tys : rty list) (target_ty : rty) : bool =
+    let rctx = Context.get_rctx () in
+    sub_rty rctx (union_rtys tys, target_ty)
 
   let pset_is_sufficient_coverage (map : BlockSetE.t) (pset : Ptset.t)
       (target_ty : rty) : bool =
@@ -190,7 +187,7 @@ module Extraction = struct
       (target_ty : rty) :
       (LocalCtx.t * BlockSetE.t * ExistentializedBlock.t * Ptset.t) list =
     print_endline "Setup type";
-    let uctx = !global_uctx |> Option.get in
+    let rctx = Context.get_rctx () in
 
     (* print_endline (layout_rty target_ty); *)
     let res =
@@ -214,7 +211,7 @@ module Extraction = struct
 
     assert (not (List.is_empty res));
 
-    if not (sub_rty uctx.rctx (unioned_rty_type2 res, target_ty)) then (
+    if not (sub_rty rctx (unioned_rty_type2 res, target_ty)) then (
       List.iter
         (fun (lc, _, eb, _) ->
           LocalCtx.layout lc |> print_endline;
@@ -235,11 +232,6 @@ module Extraction = struct
     print_endline "Target block";
     ExistentializedBlock.layout target_path_block |> print_endline;
 
-    (* (let set = BlockSetE.add_block bset target_path_block in
-       Printf.printf "Path Specific Collection: %s\n"
-         (layout_typectx layout_rty lc);
-       BlockSetE.print set); *)
-
     (* Does the target exist in this path? *)
     match BlockSetE.find_block_opt bset target_path_block with
     | Some b ->
@@ -249,65 +241,6 @@ module Extraction = struct
     | None ->
         print_endline "No solution from this path";
         []
-  (* (* No: Return a new bs with the target block, any preds, and
-        possibly a starting block from the succs *)
-     let bs = BlockSetE.add_block bset target_path_block in
-     let p = BlockSetE.get_preds bs target_path_block in
-     let s = BlockSetE.get_succs bs target_path_block in
-     BlockSetE.print_ptset bs p;
-
-     (* Smallest block that covers the target fully *)
-     (* let b =
-          Ptset.min_elt_opt s
-          |> Option.map (fun idx -> BlockSetE.get_idx bs idx)
-        in
-
-        (print_endline "Have a partial solution: ";
-         match b with
-         | Some b -> print_endline (ExistentializedBlock.layout b)
-         | None -> print_endline "None"); *)
-     (* TODO, we are going to avoid blocks that are too large for the moment *)
-     let b = None in
-
-     (* Some paths might not get blocks that aid in getting the
-        target? *)
-     if not (Ptset.is_empty p && Ptset.is_empty s) then
-       if
-         Option.is_none b
-         && not (pset_is_sufficient_coverage bs p target_path_block.ty)
-       then (
-         print_endline "return nothing2";
-         [])
-       else (
-         print_endline "return a block";
-         let starting_point = (lc, bs, (b, p)) in
-
-         let target_path_ty = target_path_block.ty in
-
-         let block_choices = setup_type starting_point target_path_ty in
-
-         let block_choices = minimize_type block_choices target_path_ty in
-
-         Pp.printf "Improved Type: %s\n"
-           (layout_rty (unioned_rty_type2 block_choices));
-         List.iter
-           (fun (lc, _, b, _) ->
-             Pp.printf "Local Context: %s\n" (Typectx.layout_ctx layout_rty lc);
-             Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
-           block_choices;
-
-         let block_choices =
-           List.map (fun (lc, _, b, _) -> (lc, b)) block_choices
-         in
-
-         let block_choices = minimize_num block_choices target_path_ty in
-
-         (* When we are done, drop any remaining predesessors and the block
-            map *)
-         block_choices)
-     else (
-       print_endline "return nothing";
-       []) *)
 
   (** Lets try and simplify the extraction process by only considering one path
       at a time *)
@@ -334,29 +267,12 @@ module Extraction = struct
     | Added bset ->
         (* No: Return a new bs with the target block, any preds, and
            possibly a starting block from the succs *)
-        (*         let starting_len = BlockSetE.size bset in
-
-        let bs = BlockSetE.add_block bset target_path_block in
-        (*  assert (starting_len < BlockSetE.size bs); *)
-
-        print_endline "lol"; *)
         BlockSetE.print bset;
 
         let p = BlockSetE.get_preds bset target_path_block in
         let s = BlockSetE.get_succs bset target_path_block in
         BlockSetE.print_ptset bset p;
 
-        (* Smallest block that covers the target fully *)
-        (* let b =
-             Ptset.min_elt_opt s
-             |> Option.map (fun idx -> BlockSetE.get_idx bs idx)
-           in
-
-           (print_endline "Have a partial solution: ";
-            match b with
-            | Some b -> print_endline (ExistentializedBlock.layout b)
-            | None -> print_endline "None"); *)
-        (* TODO, we are going to avoid blocks that are too large for the moment *)
         let b = None in
 
         (* Some paths might not get blocks that aid in getting the
@@ -382,7 +298,8 @@ module Extraction = struct
               (layout_rty (unioned_rty_type2 block_choices));
             List.iter
               (fun (lc, _, b, _) ->
-                Pp.printf "Local Context: %s\n" (Typectx.layout_ctx layout_rty lc);
+                Pp.printf "Local Context: %s\n"
+                  (Typectx.layout_ctx layout_rty lc);
                 Pp.printf "Block:\n%s\n" (ExistentializedBlock.layout b))
               block_choices;
 
@@ -424,10 +341,10 @@ module Extraction = struct
           term
     in
 
-    let new_uctx : uctx = LocalCtx.uctx_add_local_ctx lc in
+    let new_rctx : rctx = LocalCtx.extend_rctx lc in
 
     let top_rty =
-      match TypeInference.infer_type new_uctx top_gen with
+      match TypeInference.infer_type new_rctx top_gen with
       | NoCoverage | FailedTyping -> failwith "Failed to infer type for top_gen"
       | Res rty -> rty
     in
@@ -501,106 +418,4 @@ module Extraction = struct
           (* When we are done, drop any remaining predesessors and the block
                map *)
           block_choices)
-
-  (* let extract_best_effort_solution (collection : SynthesisCollection.t) (target_ty : rty) :
-      (LocalCtx.t * ExistentializedBlock.t) list =
-    let target_nty = erase_rty target_ty in
-
-    let target_block : ExistentializedBlock.t =
-      ExistentializedBlock.create_target target_ty
-    in
-
-    print_endline "Existentializing the general set";
-    (* Get all blocks from the general collection *)
-    let general_block_list =
-      let ({ new_blocks; old_blocks } : BlockCollection.t) =
-        collection.general_coll
-      in
-
-      List.append
-        (BlockMap.existentialized_list new_blocks target_nty)
-        (BlockMap.existentialized_list old_blocks target_nty)
-    in
-
-    let uctx = Context.get_global_uctx () in
-
-    assert (Hashtbl.length collection.path_specific > 0);
-
-    print_endline "Existentializing the path specific sets";
-    Relations.clear_cache ();
-
-    (* Get the sets for each path *)
-    let path_specific_sets =
-      Hashtbl.map
-        (fun (lc, bc) ->
-          LocalCtx.layout lc |> print_endline;
-          ( lc,
-            let ({ new_blocks; old_blocks } : BlockCollection.t) = bc in
-
-            List.append
-              (BlockMap.existentialized_list new_blocks target_nty)
-              (BlockMap.existentialized_list old_blocks target_nty) ))
-        collection.path_specific
-    in
-
-    (* We are going to do some normalization setup *)
-    (* All General terms are going to get pushed into paths *)
-    let path_specific_sets =
-      Hashtbl.map
-        (fun ((lc : LocalCtx.t), (path_blocks : _ list)) ->
-          let res = BlockSetE.empty in
-          (* TODO: We should only use this block once and enable caching *)
-          (* Existentialization should rename the block... Maybe still worth
-             it to clear cache lol just to not flood things*)
-          let path_target_ty =
-            ExistentializedBlock.path_promotion lc target_block
-          in
-
-          let conditional_add (bs : BlockSetE.t) (b : ExistentializedBlock.t) :
-              BlockSetE.t =
-            if ExistentializedBlock.is_sub_rty uctx b path_target_ty then
-              BlockSetE.add_block bs b
-            else if ExistentializedBlock.is_sub_rty uctx path_target_ty b then
-              BlockSetE.add_block bs b
-            else bs
-          in
-
-          (* Fold over general_terms for this path and path promote them *)
-          let res =
-            List.fold_left
-              (fun acc b ->
-                conditional_add acc (ExistentializedBlock.path_promotion lc b))
-              res general_block_list
-          in
-
-          (* Fold over path specific terms for this path *)
-          let res =
-            List.fold_left (fun acc b -> conditional_add acc b) res path_blocks
-          in
-
-          (lc, (path_target_ty, res)))
-        path_specific_sets
-    in
-
-    Printf.printf "\n\n Path Specific collections we are interested in\n";
-    Hashtbl.iter
-      (fun ctx (path_target_ty, set) ->
-        let set = BlockSetE.add_block set path_target_ty in
-        Printf.printf "Path Specific Collection: %s\n"
-          (Typectx.layout_ctx layout_rty ctx);
-        BlockSetE.print set)
-      path_specific_sets;
-
-    let path_specific_sets_list =
-      Hashtbl.to_seq path_specific_sets |> List.of_seq
-    in
-
-    let extracted_blocks =
-      List.fold_left
-        (fun acc (lc, (target_path_ty, set)) ->
-          List.append acc (extract_for_path lc target_path_ty set))
-        [] path_specific_sets_list
-    in
-
-    minimize_num extracted_blocks target_ty *)
 end

@@ -136,8 +136,8 @@ module NameTracking = struct
       b
       (List.rev bindings |> unique)
 
-  let ctx_subst (ctx : Nt.t rty Typectx.ctx) (ht : (string, identifier) Hashtbl.t)
-      : Nt.t rty Typectx.ctx =
+  let ctx_subst (ctx : Nt.t rty Typectx.ctx)
+      (ht : (string, identifier) Hashtbl.t) : Nt.t rty Typectx.ctx =
     Typectx.map_ctx_typed
       (fun ({ x; ty } : (Nt.t rty, string) typed) : (Nt.t rty, string) typed ->
         let renamed_ty =
@@ -158,14 +158,14 @@ module NameTracking = struct
   let rename (id : identifier) : identifier =
     (* if is_known id then id
     else *)
-      let new_name = (Rename.unique_var id.x)#:id.ty in
-      assert (not (Hashtbl.mem asts new_name));
-      let () =
-        match get_ast id with
-        | None -> failwith id.x
-        | Some x -> add_ast new_name x
-      in
-      new_name
+    let new_name = (Rename.unique id.x)#:id.ty in
+    assert (not (Hashtbl.mem asts new_name));
+    let () =
+      match get_ast id with
+      | None -> failwith id.x
+      | Some x -> add_ast new_name x
+    in
+    new_name
 
   let freshen (ctx : Nt.t rty Typectx.ctx) =
     let lst = Typectx.ctx_to_list ctx in
@@ -180,7 +180,7 @@ module NameTracking = struct
         Hashtbl.replace ht name.x name;
         name_rty)
       else
-        let new_name = (Rename.unique_var name.x)#:name.ty in
+        let new_name = (Rename.unique name.x)#:name.ty in
         let () =
           match get_ast name with
           | None -> failwith name.x

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/Users/patricklafontaine/Desktop/Github/Totem_Artifact/Cobb/_build/default/bin/main.exe:*)",
+      "Bash(/Users/patricklafontaine/Desktop/Github/Totem_Artifact/Cobb/_build/default/underapproximation_type/bin/main.exe:*)",
+      "Bash(bash /Users/patricklafontaine/Desktop/Github/Totem_Artifact/zutils_patches/verify.sh:*)",
+      "Bash(bash /Users/patricklafontaine/Desktop/Github/Totem_Artifact/coveragetype_patches/verify.sh:*)"
+    ]
+  }
+}

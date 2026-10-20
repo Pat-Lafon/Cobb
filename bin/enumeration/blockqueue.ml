@@ -63,9 +63,9 @@ let _more_efficient_gen_priority_list_helper (target_cost : int) (arity : int) :
   in
   List.map l ~f:(fun (_, lst) -> lst)
 
-(** Given a priority and an arity, find all valid smaller combinations
- * Zero is not allowed, must be of length arity, must be smaller than priority
- * Hacks are allowed *)
+(** Given a priority and an arity, find all valid smaller combinations * Zero is
+    not allowed, must be of length arity, must be smaller than priority * Hacks
+    are allowed *)
 let _gen_priority_list (target_cost : int) (arity : int) : int list list =
   if target_cost < arity then (
     print_endline "Warning: target_cost < arity";
@@ -95,7 +95,9 @@ module PriorityBBMap = struct
               match blst with None -> [ block ] | Some lst -> block :: lst);
           blocks
       | None ->
-          Hashtbl.of_alist_exn (module Nt_key) [ (Block.to_nty block, [ block ]) ])
+          Hashtbl.of_alist_exn
+            (module Nt_key)
+            [ (Block.to_nty block, [ block ]) ])
 
   let init (seeds : Block.t list) : t =
     let t = empty () in

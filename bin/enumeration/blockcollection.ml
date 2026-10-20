@@ -6,8 +6,9 @@ module BlockCollection = struct
   (* `new_blocks` get shifted over to `old_blocks` when we increment to a new, larger set of blocks *)
   type t = { new_blocks : BlockMap.t; old_blocks : BlockMap.t }
 
-  (** Initialize a block collection with the given seeds values
-    * Seeds are initial blocks that are just variables, constants, or operations that take no arguments (or just unit) *)
+  (** Initialize a block collection with the given seeds values * Seeds are
+      initial blocks that are just variables, constants, or operations that take
+      no arguments (or just unit) *)
   let init (inital_seeds : Block.t list) : t =
     let new_blocks : BlockMap.t = BlockMap.init inital_seeds in
     { new_blocks; old_blocks = [] }

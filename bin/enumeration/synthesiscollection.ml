@@ -117,11 +117,6 @@ module SynthesisCollection = struct
               optional_filter_type
           in
 
-          (* Iterate over sets of possible new maps *)
-          (* let new_map, path_specific_maps =
-               BlockMap.increment general_new_blocks general_old_blocks op
-                 promotable_paths optional_filter_type
-             in *)
           print_endline "general new_map";
           BlockMap.print new_map;
           print_endline "path_specific promotions";
@@ -408,8 +403,8 @@ module PrioritySynthesisCollection = struct
         List.partition
           (fun b ->
             let res =
-              ExistentializedBlock.is_sub_rty target_block (Block.existentialize b)
-
+              ExistentializedBlock.is_sub_rty target_block
+                (Block.existentialize b)
             in
             print_endline (b.id.x ^ ": " ^ string_of_bool res);
             (* if b.id.x = "idx379_0" then failwith "stop here to investigate"; *)

@@ -17,80 +17,28 @@ One who searches underneath the bottom of consciousness: Inception(2010)
 
 ## Running benchmarks
 
-`cd underapproximation_type/ && dune exec Cobb -- synthesis data/validation/sizedlist/prog1.ml`
+The corpus is `../integration_tests/<bench>/`. Cobb expects `underapproximation_type/` as its working
+directory, and `meta-config.json`'s paths are authored relative to it.
 
-or
+`cd underapproximation_type/ && dune exec Cobb -- synthesis ../../integration_tests/sizedlist/sizedlist_gen_synth_prog1.ml`
 
-`python scripts/synth.py underapproximation_type/data/validation/sizedlist/`
+`python3 scripts/synth.py ../integration_tests/sizedlist` synthesizes every `progN.ml` under a
+directory (`abduce.py` likewise abduces). `../totem_runner/` drives the whole pipeline.
 
-## Running excess benchmarks and comparing results
+## Collecting results
 
-### What are excess benchmarks?
+Each synthesis run writes `<prog>.ml.result.csv` beside its program. `make results` gathers them into
+`data/benchmark_results.tex`; `uv run scripts/chart_results.py` plots the sketch rows to `charts/`.
+Their dependencies live in `scripts/pyproject.toml`; `uv sync --project scripts` builds the
+`scripts/.venv` the editor's Python interpreter points at. A row with blank fields is a run that never finished, and the chart refuses
+it by name.
 
-Excess benchmarks test how a most precise set of components affect synthesis
-performance. Each `_excess` directory contains fewer components than its base
-counterpart. Why is it called excess if there are fewer components? Originally
-this was flipped, but we decided to add more components to the main evaluation to
-create the contrast instead. I never updated the names
-
-### Running the benchmarks
-
-1. **Run base benchmarks** (if not already done)
-
-2. **Run excess benchmarks**:
-
-   ```bash
-   python scripts/synth.py underapproximation_type/data/validation/sizedlist_excess/
-   python scripts/synth.py underapproximation_type/data/validation/uniquelist_excess/
-   python scripts/synth.py underapproximation_type/data/validation/sortedlist_excess/
-   python scripts/synth.py underapproximation_type/data/validation/duplicatelist_excess/
-   python scripts/synth.py underapproximation_type/data/validation/even_list_excess/
-   python scripts/synth.py underapproximation_type/data/validation/complete_tree_excess/
-   python scripts/synth.py underapproximation_type/data/validation/depthtree_excess/
-   python scripts/synth.py underapproximation_type/data/validation/depth_bst_excess/
-   ```
-
-### Comparing results
-
-Compare performance differences:
-
-```bash
-python scripts/excess_results.py
-```
-
-This generates CSV comparison files in the `data/` folder.
-
-## Running imprecise benchmarks
-
-### What are imprecise benchmarks?
-
-Imprecise benchmarks test synthesis process when missing a key component. Each
-`_imprecise` directory contains programs with a hand selected list of components
-from the excess benchmarks minus one crucial component
-
-### Running the imprecise benchmarks
-
-**Run imprecise benchmarks**:
-
-```bash
-python scripts/synth_imprecise.py underapproximation_type/data/validation/sizedlist_imprecise/
-python scripts/synth_imprecise.py underapproximation_type/data/validation/uniquelist_imprecise/
-python scripts/synth_imprecise.py underapproximation_type/data/validation/sortedlist_imprecise/
-python scripts/synth_imprecise.py underapproximation_type/data/validation/duplicatelist_imprecise/
-python scripts/synth_imprecise.py underapproximation_type/data/validation/even_list_imprecise/
-python scripts/synth_imprecise.py underapproximation_type/data/validation/complete_tree_imprecise/
-python scripts/synth_imprecise.py underapproximation_type/data/validation/depthtree_imprecise/
-python scripts/synth_imprecise.py underapproximation_type/data/validation/depth_bst_imprecise/
-python scripts/synth_imprecise.py underapproximation_type/data/validation/rbtree_imprecise/
-```
+`python3 scripts/frequify.py <out-dir>` rewrites each `.syn` into a frequency-weighted generator under
+`<out-dir>/<bench>/progN_syn.ml`.
 
 ## Typechecking a specific example
 
-`dune exec -- bin/main.exe type-check meta-config.json data/issue/singleton_unique.ml`
-
-## Getting the list of axioms as Coq
-
-`dune exec -- bin/main.exe coq-axioms meta-config.json`
+`cd underapproximation_type/ && dune exec -- bin/main.exe type-check -config ../../integration_tests/sizedlist/meta-config.json ../../integration_tests/sizedlist/sizedlist_gen.ml`
 
 ## Getting lines of code
 
@@ -102,6 +50,9 @@ python scripts/synth_imprecise.py underapproximation_type/data/validation/rbtree
 Often this is hit with an error message like `(len: none) =? none`. Add the type
 signature in the files pointed to by the `normal_typing` and `coverage_typing`
 fields in your `meta-config.json` file.
+
+A measure defined as `let rec` in `program.ml` is the exception: its relational signature is derived
+automatically, so adding a `val` for one to `normal_typing` is wrong even though the error asks for it.
 
 ## Useful links for Development
 

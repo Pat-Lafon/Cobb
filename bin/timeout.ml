@@ -12,10 +12,7 @@ module Timeout = struct
     | Result b -> string_of_bool b
     | Timeout -> "timeout"
 
-  let sub_rty_bool_or_timeout (ctx : Context.uctx)
-      (l : Nt.t rty * Nt.t rty) : bool_or_timeout =
-    let r = Auxtyping.sub_rty ctx.rctx l in
+  let sub_rty_bool_or_timeout ctx (l : Nt.t rty * Nt.t rty) : bool_or_timeout =
+    let r = Auxtyping.sub_rty ctx l in
     Result r
-  (* Commented out because everything that is false timesout at the moment *)
-  (* if !Backend.Check.smt_timeout_flag then Timeout else Result r *)
 end

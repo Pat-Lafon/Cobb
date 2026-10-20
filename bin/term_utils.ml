@@ -3,29 +3,36 @@ open Language
 open Utils
 
 let is_true_prop (phi : Nt.t prop) : bool =
-  match phi with
-  | Lit { x = AC (B b); _ } -> b
-  | _ -> false
+  match phi with Lit { x = AC (B b); _ } -> b | _ -> false
 
 let get_ty_gen_name (base_ty : Nt.t) : identifier =
   let builtin_list = Typectx.ctx_to_list (Context.get_bctx ()).builtin_ctx in
   let candidates =
-    List.filter_map (fun (entry : (Nt.t rty, string) typed) ->
-         match entry.ty with
-         | RtyArr { argrty = RtyBase { cty = { nty = Nt.Ty_constructor ("unit", []); _ }; _ };
-                    retty = RtyBase { cty = { nty; phi }; _ }; _ }
-           when nty = base_ty && is_true_prop phi ->
-             Some entry.x
-         | _ -> None)
-    builtin_list
+    List.filter_map
+      (fun (entry : (Nt.t rty, string) typed) ->
+        match entry.ty with
+        | RtyArr
+            {
+              argrty =
+                RtyBase { cty = { nty = Nt.Ty_constructor ("unit", []); _ }; _ };
+              retty = RtyBase { cty = { nty; phi }; _ };
+              _;
+            }
+          when nty = base_ty && is_true_prop phi ->
+            Some entry.x
+        | _ -> None)
+      builtin_list
   in
   match candidates with
-  | [gen_name] -> gen_name#:(Nt.Ty_arrow (Nt.unit_ty, base_ty))
+  | [ gen_name ] -> gen_name#:(Nt.Ty_arrow (Nt.unit_ty, base_ty))
   | [] ->
-      failwith (Printf.sprintf "No generator found for type %s" (Nt.layout base_ty))
+      failwith
+        (Printf.sprintf "No generator found for type %s" (Nt.layout base_ty))
   | _ ->
-      failwith (Printf.sprintf "Multiple generators for type %s: %s"
-        (Nt.layout base_ty) (String.concat ", " candidates))
+      failwith
+        (Printf.sprintf "Multiple generators for type %s: %s"
+           (Nt.layout base_ty)
+           (String.concat ", " candidates))
 
 let term_bot (base_ty : Nt.t) : _ typed = CErr#:base_ty
 
@@ -52,11 +59,18 @@ let is_base_top (t : _ typed) : bool =
         body = { x = CLetE { body = { x = CVal { x = VVar _; _ }; _ }; _ }; _ };
       } ->
       true
-  | CApp { appf = { x = VVar { x = gen_name; _ }; _ }; _ } ->
-      (match Typectx.get_opt (Context.get_bctx ()).builtin_ctx gen_name with
-       | Some (RtyArr { argrty = RtyBase { cty = { nty = Nt.Ty_constructor ("unit", []); _ }; _ };
-                        retty = RtyBase { cty = { phi; _ }; _ }; _ })
-         when is_true_prop phi ->
-           true
-       | _ -> false)
+  | CApp { appf = { x = VVar { x = gen_name; _ }; _ }; _ } -> (
+      match Typectx.get_opt (Context.get_bctx ()).builtin_ctx gen_name with
+      | Some
+          (RtyArr
+             {
+               argrty =
+                 RtyBase
+                   { cty = { nty = Nt.Ty_constructor ("unit", []); _ }; _ };
+               retty = RtyBase { cty = { phi; _ }; _ };
+               _;
+             })
+        when is_true_prop phi ->
+          true
+      | _ -> false)
   | _ -> false

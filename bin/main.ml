@@ -1,7 +1,6 @@
 open Zutils
 open Language
 open Auxtyping
-open Typing.Termcheck
 open Pieces
 open Blocks
 open Blockmap
@@ -35,20 +34,20 @@ let rec ast_size_term (t : _ term) : int =
   | CRecord _ | CField _ ->
       failwith "ast_size_term::CRecord/CField::unimplemented"
 
+let abd_ext = ".abd"
+let syn_ext = ".syn"
+let res_ext = ".result"
+let collect_ext = ".collect"
+
 type config = {
   bound : int;
-  res_ext : string;
-  abd_ext : string;
-  syn_ext : string;
-  syn_rlimit : int;
+  syn_rlimit : int option;
   syn_timeout : int option;
-  abd_rlimit : int;
-  type_rlimit : int;
-  collect_ext : string;
+  type_rlimit : int option;
   component_list : string list;
-      (** If true, when we hit a cost upper bound, we will attempt to extract
-          out the best possible solution with what we have *)
   imprecise : bool;
+      (** On hitting the cost upper bound, extract the best solution found so
+          far. *)
 }
 
 type benchmark_results = {
@@ -111,51 +110,27 @@ let write_results_to_file results_file
   in
   Core.Out_channel.write_all results_file ~data:results_csv_contents
 
-let get_synth_config_values meta_config_file : config =
-  let open Yojson.Basic.Util in
-  let metaj = Yojson.Basic.from_file meta_config_file in
-  let bound = metaj |> member "synth_bound" |> to_int in
-  let res_ext = metaj |> member "resfile" |> to_string in
-  let abd_ext = metaj |> member "abdfile" |> to_string in
-  let syn_ext = metaj |> member "synfile" |> to_string in
-  let syn_rlimit = metaj |> member "synth_rlimit" |> to_int in
-  let syn_timeout = metaj |> member "synth_timeout" |> to_int_option in
-  let abd_rlimit = metaj |> member "abduce_rlimit" |> to_int in
-  let type_rlimit = metaj |> member "type_rlimit" |> to_int in
-  let collect_ext = metaj |> member "collectfile" |> to_string in
-  let comp_path = metaj |> member "comp_path" |> to_string in
-  let imprecise =
-    metaj |> member "imprecise" |> to_bool_option |> Option.value ~default:false
-  in
-
-  (*
-I found this assertion doesn't scale as well given more complex repairs to synthesize
-assert (abd_rlimit >= syn_rlimit); *)
+let load_config meta_config_file : config =
+  let root = Yojson.Safe.from_file meta_config_file in
+  CobbConfig.bootstrap root;
+  let c = CobbConfig.get () in
   let comp_path =
-    Filename.concat (Filename.dirname meta_config_file) comp_path
+    Filename.concat (Filename.dirname meta_config_file) c.comp_path
   in
-
-  let component_list = Core.In_channel.read_lines comp_path in
-
   {
-    bound;
-    res_ext;
-    abd_ext;
-    syn_ext;
-    abd_rlimit;
-    syn_rlimit;
-    syn_timeout;
-    type_rlimit;
-    collect_ext;
-    component_list;
-    imprecise;
+    bound = c.synth_bound;
+    syn_rlimit = c.synth_rlimit;
+    syn_timeout = c.synth_timeout;
+    type_rlimit = c.type_rlimit;
+    component_list = Core.In_channel.read_lines comp_path;
+    imprecise = c.imprecise;
   }
 
 let set_z3_rlimit = Prover.set_z3_rlimit
 let set_z3_timeout = Prover.set_z3_timeout
 
 let check_config _use_missing _ meta_config_file =
-  let _config = get_synth_config_values meta_config_file in
+  let _config = load_config meta_config_file in
   ()
 
 type abduction_result =
@@ -163,9 +138,8 @@ type abduction_result =
   | Abduced of { rty : t rty; time : float }
 
 let abduce_or_provide_missing ~(use_missing_coverage_file : bool)
-    (source_file : string) (meta_config_file : string)
-    (start_time : float) : abduction_result =
-  Myconfig.meta_config_path := meta_config_file;
+    (source_file : string) (meta_config_file : string) (start_time : float) :
+    abduction_result =
   if use_missing_coverage_file then (
     let missing_type_filename = source_file ^ ".missing" in
     let missing_type_code = Preprocess.preprocess [ missing_type_filename ] in
@@ -177,74 +151,39 @@ let abduce_or_provide_missing ~(use_missing_coverage_file : bool)
   else
     let bctx = Preprocess.load_bctx () in
     let items = Preprocess.preprocess [ source_file ] in
-    let prim_path = Myconfig.get_prim_path () in
-    let templates_path =
-      match prim_path.templates with
-      | Some p -> p
-      | None ->
-          failwith
-            "abduce_or_provide_missing: prim_path.templates is required for \
-             abductive inference"
-    in
-    let template_items = Preprocess.preprocess [ templates_path ] in
-    let template_axioms =
-      List.filter_map
-        (function MAxiom { name; prop; _ } -> Some (name, prop) | _ -> None)
-        template_items
-    in
-    let temp_names = Myconfig.get_uninterops () in
-    let templates =
-      List.map
-        (fun name ->
-          match List.assoc_opt name template_axioms with
-          | None ->
-              failwith
-                (Printf.sprintf
-                   "abduce_or_provide_missing: template %s not found in %s"
-                   name templates_path)
-          | Some prop -> prop)
-        temp_names
-    in
-    Inference.Feature.init_template templates;
-    let has_annotated_function =
-      List.exists
-        (function MRty { is_assumption = false; _ } -> true | _ -> false)
-        items
-    in
-    if not has_annotated_function then
-      failwith
-        (Printf.sprintf
-           "abduce_or_provide_missing: %s contains no function annotated \
-            with `let[@assert] ...`; nothing to abduce"
-           source_file);
-    let _, passed, failed = Typing.Itemcheck.struc_infer bctx items in
-    let rty =
-      match !Typing.Termsyn.inferred_result with
-      | Some res -> res
-      | None when passed = [] ->
-          failwith
-            (Printf.sprintf
-               "abductive inference failed for every annotated function (%s): \
-                refinement-type inference returned None, meaning an SMT \
-                subtyping check did not discharge"
-               (String.concat ", " failed))
-      | None ->
-          failwith
-            (Printf.sprintf
-               "abductive inference completed but produced no coverage type: \
-                the annotated function(s) (%s) had bare-value bodies, which \
-                need no abduction"
-               (String.concat ", " passed))
-    in
+    let rty = Abduction.Iteminfer.infer_one bctx items in
     let time = Unix.gettimeofday () -. start_time in
     Abduced { rty; time }
 
-let abduce_benchmark use_missing_coverage_file source_file meta_config_file =
-  Myconfig.meta_config_path := meta_config_file;
-  let config = get_synth_config_values meta_config_file in
+(* Parsing a rendered prop reshapes it — n-ary [And]/[Or] come back binary — so
+   an inferred coverage compares against a parsed one only through this. *)
+let normalize_rty rty = rty_of_source (layout_rty_source rty)
 
-  set_z3_rlimit config.abd_rlimit;
-  set_z3_timeout None;
+(* The committed [.abd] is the known-correct coverage. *)
+let check_or_write_abduction_file abduction_file missing_coverage =
+  if Sys_unix.is_file_exn abduction_file then
+    let previous_coverage =
+      rty_of_source (Core.In_channel.read_all abduction_file)
+    in
+    if
+      equal_rty Nt.equal_nt
+        (normalize_rty previous_coverage)
+        (normalize_rty missing_coverage)
+    then ()
+    else (
+      Printf.eprintf
+        "Abduced coverage does not match %s:\n  expected: %s\n  inferred: %s\n"
+        abduction_file
+        (layout_rty previous_coverage)
+        (layout_rty missing_coverage);
+      failwith
+        (Printf.sprintf "abduced coverage does not match %s" abduction_file))
+  else
+    Core.Out_channel.write_all abduction_file
+      ~data:(layout_rty_source missing_coverage)
+
+let abduce_benchmark use_missing_coverage_file source_file meta_config_file =
+  let _config = load_config meta_config_file in
 
   let start_time = Unix.gettimeofday () in
 
@@ -257,31 +196,19 @@ let abduce_benchmark use_missing_coverage_file source_file meta_config_file =
     | Abduced { rty; time } -> (rty, Some time)
   in
 
-  let abduction_file = source_file ^ config.abd_ext in
+  let abduction_file = source_file ^ abd_ext in
 
-  let results_file = source_file ^ config.res_ext ^ ".csv" in
+  let results_file = source_file ^ res_ext ^ ".csv" in
 
   let results = new_benchmark_results () in
   let results = { results with queries = Some !Prover.query_counter } in
   let results = { results with abd_time } in
 
-  let () =
-    if Sys_unix.is_file_exn abduction_file then
-      let previous_coverage = Core.In_channel.read_all abduction_file in
-      let current_coverage = layout_rty_ocaml missing_coverage in
-      assert (String.equal previous_coverage current_coverage)
-    else
-      Core.Out_channel.write_all abduction_file
-        ~data:(layout_rty_ocaml missing_coverage)
-  in
+  check_or_write_abduction_file abduction_file missing_coverage;
   write_results_to_file results_file results
 
 let localize_benchmark use_missing_coverage_file source_file meta_config_file =
-  Myconfig.meta_config_path := meta_config_file;
-  let config = get_synth_config_values meta_config_file in
-
-  set_z3_rlimit config.abd_rlimit;
-  set_z3_timeout None;
+  let config = load_config meta_config_file in
 
   let start_time = Unix.gettimeofday () in
 
@@ -296,28 +223,28 @@ let localize_benchmark use_missing_coverage_file source_file meta_config_file =
   set_z3_rlimit config.syn_rlimit;
   set_z3_timeout config.syn_timeout;
 
-  let uctx = build_initial_typing_context () in
+  let rctx = init_typing_context () in
 
-  let args, rec_fix, retty, body, reconstruct_code_with_new_body =
+  let args, rec_fix, rec_bound, retty, body, reconstruct_code_with_new_body =
     get_args_rec_retty_body_from_source source_file
   in
 
-  let uctx = add_to_rights uctx (rec_fix :: args) in
+  let rctx = Typing.Rctx.add_vars rctx (rec_fix :: args) in
+  let rctx = { rctx with rec_bound = Some (rec_fix.x, rec_bound) } in
 
-  Statistic.create_stat uctx.rctx.task_name body;
+  Statistic.create_stat rctx.task_name body;
 
-  Context.set_global_uctx uctx;
+  Context.set_rctx rctx;
 
   let path_maps, new_body =
-    Localization.localization uctx body missing_coverage
+    Localization.localization rctx body missing_coverage
   in
 
   let num_localized_paths = List.length path_maps in
   Printf.printf "Number of paths: %d\n" num_localized_paths
 
 let synthesis_benchmark use_missing_coverage_file source_file meta_config_file =
-  Myconfig.meta_config_path := meta_config_file;
-  let config = get_synth_config_values meta_config_file in
+  let config = load_config meta_config_file in
 
   imprecise := config.imprecise;
   let start_time = Unix.gettimeofday () in
@@ -337,45 +264,45 @@ let synthesis_benchmark use_missing_coverage_file source_file meta_config_file =
 
   if Utils.rty_is_false missing_coverage then failwith "No missing coverage";
 
+  check_or_write_abduction_file (source_file ^ abd_ext) missing_coverage;
+
   set_z3_rlimit config.syn_rlimit;
   set_z3_timeout config.syn_timeout;
 
   let synth_start_time = Unix.gettimeofday () in
 
-  let collection_file = source_file ^ config.collect_ext in
+  let collection_file = source_file ^ collect_ext in
 
-  let uctx = build_initial_typing_context () in
+  let rctx = init_typing_context () in
 
-  let args, rec_fix, retty, body, reconstruct_code_with_new_body =
+  let args, rec_fix, rec_bound, retty, body, reconstruct_code_with_new_body =
     get_args_rec_retty_body_from_source source_file
   in
 
-  let uctx = add_to_rights uctx (rec_fix :: args) in
+  let rctx = Typing.Rctx.add_vars rctx (rec_fix :: args) in
+  let rctx = { rctx with rec_bound = Some (rec_fix.x, rec_bound) } in
 
-  Statistic.create_stat uctx.rctx.task_name body;
+  Statistic.create_stat rctx.task_name body;
 
-  Context.set_global_uctx uctx;
+  Context.set_rctx rctx;
 
   Pp.printf "\nBuiltinTypingContext Before Synthesis:\n%s\n"
     (Typectx.layout_ctx layout_rty (Context.get_bctx ()).builtin_ctx);
   Pp.printf "\nLocalTypingContext Before Synthesis:\n%s\n"
-    (Typectx.layout_ctx layout_rty uctx.rctx.rty_ctx);
+    (Typectx.layout_ctx layout_rty rctx.rty_ctx);
 
-  (match Typing.Termcheck.term_type_check uctx body retty with
+  (match Typing.term_type_check (Context.get_bctx ()) rctx (body, retty) with
   | None -> ()
   | Some _ -> failwith "Nothing to repair");
 
-  (*   Typing.Termcheck.term_type_infer uctx body
-  |> Option.fold ~none:() ~some:(fun t ->
-         print_endline ("Type: " ^ layout_rty t.ty)
-         (* TODO: remove this print *));
-
-  failwith "stop"; *)
-  assert (Typing.Termcheck.term_type_infer uctx body |> Option.is_some);
+  assert (
+    Typing.term_type_infer (Context.get_bctx ()) rctx body |> Option.is_some);
 
   assert (
-    not (Typing.Termcheck.term_type_check uctx body retty |> Option.is_some));
-  assert (sub_rty uctx.rctx (retty, missing_coverage));
+    not
+      (Typing.term_type_check (Context.get_bctx ()) rctx (body, retty)
+      |> Option.is_some));
+  assert (sub_rty rctx (retty, missing_coverage));
 
   let ( (seeds : Block.t list),
         (components : (Pieces.component * (t list * t)) list) ) =
@@ -383,14 +310,14 @@ let synthesis_benchmark use_missing_coverage_file source_file meta_config_file =
       config.component_list
   in
 
-  let seeds = List.concat [ seeds; Pieces.seeds_from_args uctx.rctx.rty_ctx ] in
+  let seeds = List.concat [ seeds; Pieces.seeds_from_args rctx.rty_ctx ] in
 
   let components =
-    List.concat [ components; Pieces.components_from_args uctx.rctx.rty_ctx ]
+    List.concat [ components; Pieces.components_from_args rctx.rty_ctx ]
   in
 
   let path_maps, new_body =
-    Localization.localization uctx body missing_coverage
+    Localization.localization rctx body missing_coverage
   in
 
   let num_localized_paths = List.length path_maps in
@@ -459,7 +386,8 @@ let synthesis_benchmark use_missing_coverage_file source_file meta_config_file =
   set_z3_timeout None;
 
   let result =
-    Typing.Termcheck.term_type_check uctx new_body retty |> Option.is_some
+    Typing.term_type_check (Context.get_bctx ()) rctx (new_body, retty)
+    |> Option.is_some
   in
   if not result then failwith "Failed to type check result";
 
@@ -469,9 +397,8 @@ let synthesis_benchmark use_missing_coverage_file source_file meta_config_file =
     final_program_to_string reconstruct_code_with_new_body new_body
   in
 
-  let abduction_file = source_file ^ config.abd_ext in
-  let synthesis_file = source_file ^ config.syn_ext in
-  let results_file = source_file ^ config.res_ext ^ ".csv" in
+  let synthesis_file = source_file ^ syn_ext in
+  let results_file = source_file ^ res_ext ^ ".csv" in
 
   let results = new_benchmark_results () in
   let results = { results with synth_result = Some result } in
@@ -479,7 +406,7 @@ let synthesis_benchmark use_missing_coverage_file source_file meta_config_file =
   let results =
     { results with num_localized_paths = Some num_localized_paths }
   in
-  let results = { results with resource_limit = Some config.syn_rlimit } in
+  let results = { results with resource_limit = config.syn_rlimit } in
   let results = { results with queries = Some !Prover.query_counter } in
   let results = { results with abd_time } in
   let results = { results with synth_time = Some synth_time } in
@@ -492,13 +419,9 @@ let synthesis_benchmark use_missing_coverage_file source_file meta_config_file =
   write_results_to_file results_file results;
 
   Core.Out_channel.write_all synthesis_file ~data:synthesized_program;
-  Core.Out_channel.write_all abduction_file
-    ~data:(layout_rty_ocaml missing_coverage);
 
   print_endline "Finished Synthesis"
 
-(** Benchmarks can be provided as a command line argument * Default is
-    "sizedlist" *)
 let regular_file =
   Core.Command.Arg_type.create (fun filename ->
       match Sys_unix.is_file filename with

@@ -1,72 +1,52 @@
 import subprocess
 import os
 import re
+import sys
 from pathlib import Path
-# cmd : dune exec frequify -- -f [freq] -o [out] [dir]
+# cmd : dune exec frequify -- -f [freq] -o [out] -config [meta-config] [file]
 
-in_dir_str = "./underapproximation_type/data/validation/"
-out_dir_str = "../Cobb_PBT/bin/"
+in_dir = Path(__file__).resolve().parents[2] / "integration_tests"
+working_dir = Path(__file__).resolve().parent.parent / "underapproximation_type"
 
 folder_names = {
-    "completetree":"complete_tree",
-    "depth_bst":"bst",
-    "depthtree":"depth_tree",
-    "duplicatelist":"duplicate_list",
-    "even_list":"even_list",
-    "rbtree":"red_black_tree",
-    "sizedlist":"sized_list",
-    "sortedlist":"sorted_list",
-    "uniquelist":"unique_list",
+    "complete_tree": "complete_tree",
+    "depth_bst": "bst",
+    "depth_tree": "depth_tree",
+    "duplicate_list": "duplicate_list",
+    "even_list": "even_list",
+    "rbtree": "red_black_tree",
+    "sizedlist": "sized_list",
+    "sortedlist": "sorted_list",
+    "uniquelist": "unique_list",
 }
 
 t_pattern = r"true"
 f_pattern = r"false"
 
-in_dir = Path(in_dir_str)
-assert in_dir.is_dir()
+if len(sys.argv) != 2:
+    sys.exit(f"usage: {sys.argv[0]} <output-dir>")
+out_dir = Path(sys.argv[1]).resolve()
 
-# prog*.ml
-for d in (os.listdir(in_dir)):
-    gen_d = f"{in_dir}/{d}"
-    match = re.search(r"(?:_excess)|(?:_imprecise)|(?:_[123]){1}|(?:_size)|(?:proofs)$", d)
+for d in sorted(folder_names):
+    gen_d = in_dir / d
+    for f in sorted(os.listdir(gen_d)):
+        match = re.search(r"_(prog[0-9]+)\.ml\.syn$", f)
+        if not match:
+            continue
+        in_file = gen_d / f
+        out_file = out_dir / folder_names[d] / f"{match.group(1)}_syn.ml"
+        out_file.parent.mkdir(parents=True, exist_ok=True)
 
-    if (os.path.isdir(gen_d) and not match):
-        is_stlc = re.search(r"stlc", d)
-        if not (is_stlc):
-            for f in os.listdir(gen_d):
-                match = re.search(r"^prog[0-9]+\.ml.syn$", f)
-                if match: 
-                    in_file = f"{gen_d}/{f}"
-                    base, ext, nothing = f.partition(".ml")
-                    if d in folder_names:
-                        out_file = f"{out_dir_str}{folder_names[d]}/{base}_syn{ext}"
-                    else:
-                        out_file = f"{out_dir_str}{d}/{base}_syn{ext}"
+        freq = "unif_gen" if d == "rbtree" else "freq_gen"
+        cmd = ["dune", "exec", "frequify", "--", "-f", freq, "-o", str(out_file),
+               "-config", str(gen_d / "meta-config.json"), str(in_file)]
 
-                    try:
-                        with open(in_file, "r") as fin:
-                            lines = fin.readlines()
-
-                        with open(in_file, "w") as fout:
-                            for line in lines:
-                                new_line = re.sub(t_pattern, "True", line) 
-                                new_line = re.sub(f_pattern, "False", new_line) 
-                                fout.write(new_line)
-                    
-                    except FileNotFoundError:
-                        print(f"Error: The file '{file}' was not found.")
-                    
-                    if d == "rbtree":
-                        cmd = f"dune exec frequify -- -f unif_gen -o {out_file} {in_file}".split(" ")
-                    else:
-                        cmd = f"dune exec frequify -- -f freq_gen -o {out_file} {in_file}".split(" ")
-                    subprocess.run(cmd)
-
-                    try:
-                        with open(in_file, "w") as fout:
-                            for line in lines:
-                                fout.write(line)
-                    
-                    except FileNotFoundError:
-                        print(f"Error: The file '{file}' was not found.")
-            
+        # frequify parses the boolean literals capitalized; the .syn file is
+        # rewritten for the call and restored afterwards.
+        original = in_file.read_text()
+        in_file.write_text(re.sub(f_pattern, "False", re.sub(t_pattern, "True", original)))
+        try:
+            print(" ".join(cmd))
+            subprocess.run(cmd, cwd=working_dir, check=True)
+        finally:
+            in_file.write_text(original)

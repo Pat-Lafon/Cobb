@@ -1,7 +1,10 @@
 import os
 import re
 import csv
+from pathlib import Path
 from typing import List, Dict, Tuple
+
+INTEGRATION_TESTS = Path(__file__).resolve().parents[2] / "integration_tests"
 
 
 class BenchmarkDataProcessor:
@@ -10,9 +13,12 @@ class BenchmarkDataProcessor:
     This includes reading CSV files, processing benchmark data, and organizing results.
     """
 
-    def __init__(self, working_dir: str = "underapproximation_type/data/validation"):
+    def __init__(self, working_dir: str = str(INTEGRATION_TESTS)):
         self.working_dir = working_dir
-        self.results_file_regex = r"prog[0-9]+\.ml.result.csv$"
+        self.results_file_regex = r"prog([0-9]+)\.ml\.result\.csv$"
+
+    def prog_number(self, filename: str) -> int:
+        return int(re.search(self.results_file_regex, filename).group(1))
 
     def fix_name(self, name: str) -> str:
         """Convert benchmark directory names to readable format."""
@@ -91,21 +97,14 @@ class BenchmarkDataProcessor:
 
             if os.path.isdir(b_path):
                 print(f"looking in {b_path}")
-                d = os.listdir(b_path)
-                d.sort()
-
-                d = list(
-                    filter(
-                        lambda filename: re.search(
-                            self.results_file_regex, filename, re.MULTILINE
-                        ),
-                        d,
-                    )
+                d = sorted(
+                    (f for f in os.listdir(b_path) if re.search(self.results_file_regex, f)),
+                    key=self.prog_number,
                 )
 
                 for idx, filename in enumerate(d, start=1):
                     stats = {}
-                    n = filename.split(".")[0].removeprefix("prog")
+                    n = str(self.prog_number(filename))
                     name = ""
                     if n == "1":
                         name = f"{name_formatter(benchmark_dir)} {n}"
@@ -136,7 +135,7 @@ class BenchmarkDataProcessor:
             if benchmark_stats:
                 if (
                     "list" in benchmark_dir
-                    or "depthtree" in benchmark_dir
+                    or "depth_tree" in benchmark_dir
                     or "complete_tree" in benchmark_dir
                 ):
                     list_stats += benchmark_stats

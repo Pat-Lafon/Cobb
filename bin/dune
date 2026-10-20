@@ -3,7 +3,7 @@
  (modes
   (native exe))
  (name main)
- (modules main)
+ (modules main cobbConfig)
  (libraries
   core_unix.command_unix
   utils
@@ -15,11 +15,12 @@
   postprocess
   CoverageType.typing
   CoverageType.auxtyping
-  CoverageType.inference
+  CoverageType.typechecker_config
+  abduction
   CoverageType.preprocess
   yojson)
  (preprocess
-  (pps ppx_jane)))
+  (pps ppx_jane ppx_deriving_yojson)))
 
 (library
  (public_name Cobb.context)
@@ -105,11 +106,7 @@
 (library
  (name term_utils)
  (modules term_utils)
- (libraries
-  CoverageType.typing
-  block
-  timeout
-  utils))
+ (libraries CoverageType.typing block timeout utils))
 
 (library
  (name extraction)
@@ -125,15 +122,16 @@
   CoverageType.auxtyping))
 
 (executable
-  (public_name frequify)
-  (name frequify)
-  (modules frequify)
-  (libraries
-    zutils
-    CoverageType.language
-    CoverageType.frontend_opt
-    CoverageType.preprocess
-  ))
+ (public_name frequify)
+ (name frequify)
+ (modules frequify)
+ (libraries
+  zutils
+  yojson
+  CoverageType.language
+  CoverageType.frontend_opt
+  CoverageType.typechecker_config
+  CoverageType.preprocess))
 
 (env
  (dev

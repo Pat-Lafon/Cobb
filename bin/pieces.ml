@@ -27,9 +27,11 @@ let rec typed_term_replace_block_body (t : (_, _ term) typed) replacement_body :
   | CRecord _ | CField _ -> failwith "record not supported"
 
 module Pieces = struct
-  let mk_let_app_const ~(record : bool) (f : identifier)
-      (arg : constant) : identifier * (Nt.t, Nt.t term) typed =
-    let ret : identifier = (Rename.fresh_var ())#:(snd @@ Nt.destruct_arr_tp f.ty) in
+  let mk_let_app_const ~(record : bool) (f : identifier) (arg : constant) :
+      identifier * (Nt.t, Nt.t term) typed =
+    let ret : identifier =
+      (Rename.fresh_var ())#:(snd @@ Nt.destruct_arr_tp f.ty)
+    in
     let app = mk_app (f |> id_to_value) (arg |> constant_to_value) in
     if record then NameTracking.add_ast ret app else ();
     (ret, mk_lete ret app (ret |> id_to_term))
@@ -47,7 +49,9 @@ module Pieces = struct
 
   let mk_let_appops ~(record : bool) (f : (Nt.t, op) typed)
       (args : identifier list) : identifier * (Nt.t, Nt.t term) typed =
-    let ret : identifier = (Rename.fresh_var ())#:(snd @@ Nt.destruct_arr_tp f.ty) in
+    let ret : identifier =
+      (Rename.fresh_var ())#:(snd @@ Nt.destruct_arr_tp f.ty)
+    in
     let app = mk_appop f (List.map id_to_value args) in
     if record then NameTracking.add_ast ret app else ();
     (ret, mk_lete ret app (ret |> id_to_term))
@@ -87,21 +91,23 @@ module Pieces = struct
     (* Component is the recursive call*)
     | Fun f
       when Option.fold ~none:false
-             ~some:(fun (n, _, _) -> String.equal n f.x)
-             (Typing.Common.get_cur_rec_func_name ()) ->
+             ~some:(fun (n, _) -> String.equal n f.x)
+             (get_goal_func ()) ->
         1
         (* Component produces a type of the same type as a recursive call(goal
            type) *)
     | Fun f
       when Option.fold ~none:false
-             ~some:(fun (_, _, ty) -> Nt.equal_nt (Nt.destruct_arr_tp f.ty |> snd) ty)
-             (Typing.Common.get_cur_rec_func_name ()) ->
+             ~some:(fun (_, ty) ->
+               Nt.equal_nt (Nt.destruct_arr_tp f.ty |> snd) ty)
+             (get_goal_func ()) ->
         10
     | Fun _ -> 15
     | Op f
       when Option.fold ~none:false
-             ~some:(fun (_, _, ty) -> Nt.equal_nt (Nt.destruct_arr_tp f.ty |> snd) ty)
-             (Typing.Common.get_cur_rec_func_name ()) ->
+             ~some:(fun (_, ty) ->
+               Nt.equal_nt (Nt.destruct_arr_tp f.ty |> snd) ty)
+             (get_goal_func ()) ->
         10
     | Op _ -> 15
 
@@ -114,9 +120,11 @@ module Pieces = struct
   (** The cost of a 0-arity seed *)
   let seed_cost s_ty =
     Option.fold ~none:5
-      ~some:(fun (_, _, ty) ->
-        if Nt.equal_nt s_ty ty then 10 else if Nt.equal_nt s_ty Nt.bool_ty then 1 else 5)
-      (Typing.Common.get_cur_rec_func_name ())
+      ~some:(fun (_, ty) ->
+        if Nt.equal_nt s_ty ty then 10
+        else if Nt.equal_nt s_ty Nt.bool_ty then 1
+        else 5)
+      (get_goal_func ())
 
   let layout_component (c : component) : string =
     match c with Fun f -> f.x | Op op -> op_name_for_typectx op.x
@@ -225,7 +233,12 @@ module Pieces = struct
         match ty with
         | RtyBase _ -> None
         | RtyArr
-            { argrty = RtyBase { cty = { nty = Nt.Ty_constructor ("unit", []); _ }; _ }; retty = RtyBase _; _ } ->
+            {
+              argrty =
+                RtyBase { cty = { nty = Nt.Ty_constructor ("unit", []); _ }; _ };
+              retty = RtyBase _;
+              _;
+            } ->
             failwith "components_from_args::RtyBaseArr::unreachable"
         | RtyArr _ ->
             let id = x#:nt |> NameTracking.known_var in
@@ -246,8 +259,7 @@ module Pieces = struct
           let nt = erase_rty ty in
           match ty with
           | RtyBase _ ->
-              NameTracking.known_ast x#:nt
-                (mk_appop (DtConstructor x)#:nt []);
+              NameTracking.known_ast x#:nt (mk_appop (DtConstructor x)#:nt []);
               let name, _ = mk_let ~record:false x#:nt in
               NameTracking.known_ast name (x#:nt |> id_to_term);
               (* ?? *)
@@ -262,12 +274,13 @@ module Pieces = struct
               (new_seed :: seeds, components)
           | RtyArr
               {
-                argrty = RtyBase { cty = { nty = Nt.Ty_constructor ("unit", []); phi }; _ };
+                argrty =
+                  RtyBase
+                    { cty = { nty = Nt.Ty_constructor ("unit", []); phi }; _ };
                 retty = RtyBase _ as retty;
                 _;
               } ->
-              assert (
-                phi = Lit { x = AC (B true); ty = Nt.bool_ty });
+              assert (phi = Lit { x = AC (B true); ty = Nt.bool_ty });
               let nt_ty = erase_rty retty in
               let name, _ = mk_let_app_const ~record:true x#:nt U in
               let new_seed : new_seed =

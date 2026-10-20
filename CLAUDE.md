@@ -1,128 +1,55 @@
-# CLAUDE.md
+# Cobb — coverage-type program synthesizer
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Cobb repairs test input generators using coverage types (underapproximation refinement types), building
+on the Poirot type checker.
 
-## Project Overview
-
-Cobb is a program synthesizer that uses coverage types (underapproximation refinement types) to repair test input generators. It builds on the Poirot type checker from the PLDI 2023 paper "Covering All the Bases: Type-based Verification of Test Input Generators."
-
-The synthesizer performs:
-1. **Abduction** - Infers missing coverage (what inputs the generator fails to produce)
-2. **Localization** - Identifies program locations that need repair
-3. **Synthesis** - Generates repair code using type-guided enumeration
-
-## Build Commands
-
-General dune/opam workflow lives in the `ocaml-dune-project` skill. Project-specific:
-
-```bash
-make build                # = dune build
-make test                 # = dune runtest bin --always-show-command-line
-```
-
-The `--always-show-command-line` flag on `dune runtest bin` is required here — `make test` invokes it.
+New behavior earns an end-to-end benchmark under `../integration_tests/` (see its `README.md §Adding a
+benchmark`), not a `ppx_inline_test` / `ppx_expect` assertion on an internal helper. `make axioms` and
+`make proof` shell out to `underapproximation_type/` rather than building here.
 
 ## Running Cobb
 
-```bash
-# Run synthesis on a benchmark
-cd underapproximation_type && dune exec Cobb -- synthesis data/validation/sizedlist/prog1.ml
+`meta-config.json`'s `prim_path` entries resolve against the CWD and are authored relative to
+`underapproximation_type/` — running from `Cobb/` gives a misleading `data_type_decls.ml: No such file
+or directory`. A run that dies with `A running dune instance has locked the build directory` (exit 101)
+is a background editor holding `_build/.lock` through `dune ocaml-merlin` or `vsrocqtop`, not a
+synthesis crash; use the prebuilt binary or quiesce the LSP. `scripts/runner.py` makes that `chdir`
+for every script, so they take `../integration_tests/` paths directly.
 
-# Run a batch of benchmarks via Python script
-python scripts/synth.py underapproximation_type/data/validation/sizedlist/
-
-# Run imprecise benchmarks (testing with missing components)
-python scripts/synth_imprecise.py underapproximation_type/data/validation/sizedlist_imprecise/
-
-# Type-check a specific example
-dune exec -- bin/main.exe type-check meta-config.json data/issue/singleton_unique.ml
-
-# Generate Coq axioms
-dune exec -- bin/main.exe coq-axioms meta-config.json
-```
+`docs/debugging-synthesis.md` is the playbook for a synthesis that won't converge: the log tags to set,
+and the two output figures that are routinely misread.
 
 ## Project Architecture
 
-### Top-Level Structure
+`test/` is an empty `dune` stub — the real suite is `../integration_tests/`. The whole Z3 interface
+lives in the `zutils/` submodule.
 
-- **bin/** - Main synthesizer executable and core synthesis modules
-- **underapproximation_type/** - The Poirot type system library (submodule)
-- **language_utils/** - Language parsing and AST utilities (submodule)
-- **scripts/** - Python scripts for running benchmarks and processing results
+### Abduction depends on the typechecker, never the reverse
 
-### Synthesis Pipeline (bin/)
-
-1. **main.ml** - Entry point with CLI commands: `synthesis`, `abduction`, `config`, `localize`
-2. **preprocess.ml** - Prepares source code and extracts function structure
-3. **localization.ml** - Identifies repair locations using type information
-4. **pieces.ml** - Extracts seeds and components for synthesis from typing context
-5. **blocks.ml** - Core enumeration logic coordinating synthesis
-6. **postprocess.ml** - Reconstructs final program from synthesized repairs
-
-### Enumeration System (bin/enumeration/)
-
-Type-guided bottom-up enumerative synthesis:
-- **block.ml** - Represents synthesis terms with their types
-- **blockmap.ml** - Maps types to synthesized terms
-- **blockset.ml** - Ordered sets of blocks using partial order
-- **synthesiscollection.ml** - Priority-based synthesis state management
-- **relation.ml** - Subtyping relations between blocks
-
-### Type System Library (underapproximation_type/)
-
-- **backend/** - Z3 SMT solver interface (`check.ml`, `smtquery.ml`, `z3aux.ml`)
-- **typing/** - Type checking (`termcheck.ml`) and synthesis (`termsyn.ml`)
-- **subtyping/** - Refinement type subtyping via SMT
-- **syntax/** - AST definitions for terms and refinement types
-- **frontend_opt/** - Type context and optimizations
-- **preprocessing/** - Code normalization and preparation
-- **coq_proof/** - Coq formalization of the type system
-
-### Language Utilities (language_utils/)
-
-- **metalang/** - Meta-language for type annotations
-- **normal5ty/** - Normal typing utilities
-- **ocaml5_parser/** - OCaml 5 parser adaptation
-- **zzdatatype/** - Common data structures
+The arrow runs one way: `abduction → CoverageType`. Abduction is built *on* `term_type_infer` /
+`value_type_infer` rather than being a leaf the checker calls down into, which is the easy wrong model.
+`grep -rn abduction underapproximation_type/typing/` must come back empty.
 
 ## Configuration
 
-The `meta-config.json` file controls:
-- **prim_path** - Paths to predefined types, templates, and axioms
-- **debug_tags** - Control debug output ("preprocess", "ntyping", "typing", "queries", "result")
-- **logfile/resfile/abdfile** - Output file extensions
+`meta-config.json` is a string-keyed map of four typed sections, each owned by the library that reads
+it: `zutils` (`zutils/config/zUtilsConfig.ml`), `typechecker`
+(`underapproximation_type/typechecker_config/`), `abduction` (`abduction/abductionConfig.ml`), and
+`cobb` (`bin/cobbConfig.ml`). The parse is strict — unknown fields within a section fail it — so read
+those modules for the field rosters; what each `prim_path` file must hold is in
+`underapproximation_type/CLAUDE.md`.
 
-Benchmark-specific configs are in each benchmark directory (e.g., `underapproximation_type/data/validation/sizedlist/meta-config.json`).
+`log_tags` appears in two sections, each enabling only the trace channels its owning library emits:
+`zutils.log_tags` for `zutils/config/zUtilsLog.ml` and `typechecker.log_tags` for
+`underapproximation_type/typechecker_config/typecheckerLog.ml`. Those two modules name every legal tag;
+a tag put in the wrong section is silently ignored, since the lists are unvalidated strings. `queries`
+is the one channel both libraries write — zutils dumps the SMT query, the checker announces the
+subtyping query that produced it — so it lives on the zutils list and one switch covers the pair.
 
-## Adding New Functions
+Two shapes the loud parse error won't teach. `smt_encoding` is a ppx-encoded variant, so it is written
+`["Axiom"]` or `["Both"]`, brackets and all; it defaults to `Axiom`, solving on the quantified
+method-predicate axioms alone, while `["Both"]` additionally races the `define-fun-rec` body and
+requires the program to define `let rec` measures.
 
-When you encounter an error like `(len: none) =? none`, add the type signature to the files referenced in `meta-config.json`:
-- `normal_typing` - Standard typing
-- `coverage_typing` - Coverage type annotations
-
-## Git Submodules
-
-Update submodules:
-```bash
-git submodule sync
-git submodule update --remote
-```
-
-## Coq Proofs
-
-Build Coq proofs for the type system soundness:
-```bash
-make proof
-# or
-cd underapproximation_type/data/validation/proofs && make
-```
-
-## Dependencies
-
-Key OCaml dependencies:
-- **z3** (4.15.1) - SMT solver
-- **core/core_unix** - Jane Street standard library
-- **pomap** - Partially ordered maps
-- **ocamlformat** (0.26.1) - Code formatting
-
-Requires OCaml 5.1.0+. Use `opam switch create ./ --deps-only` for local setup.
+`zutils.pred_extension_rules` defaults to `[]` and its absence is silent. Each rule must list its full
+transitive closure; see `pred_extension` in `zutils/prop/axiom.ml`.

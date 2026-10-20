@@ -1,5 +1,4 @@
 open Zutils
-open Typing
 open Utils
 open Pieces
 open Tracking
@@ -23,23 +22,23 @@ module TypeInference = struct
         if rty_is_false new_rty.ty then NoCoverage else Res new_rty
     | None -> FailedTyping
 
-  let infer_type (uctx : uctx) (term : (Nt.t, Nt.t term) typed) =
-    match Termcheck.term_type_infer_with_rec_check uctx term with
+  let infer_type (rctx : rctx) (term : (Nt.t, Nt.t term) typed) =
+    match Typing.term_type_infer (get_bctx ()) rctx term with
     | Some new_rty ->
         if rty_is_false new_rty.ty then NoCoverage else Res new_rty
     | None -> FailedTyping
 
-  let check_filter_type (optional_filter_type : _ option) new_uctx
+  let check_filter_type (optional_filter_type : _ option) new_rctx
       (new_ut : (Nt.t rty, Nt.t rty term) typed) : bool =
     Option.fold ~none:false
       ~some:(fun filter_type ->
         match
-          Timeout.sub_rty_bool_or_timeout new_uctx (new_ut.ty, filter_type)
+          Timeout.sub_rty_bool_or_timeout new_rctx (new_ut.ty, filter_type)
         with
         | Result true -> false
         | _ -> (
             match
-              Timeout.sub_rty_bool_or_timeout new_uctx (filter_type, new_ut.ty)
+              Timeout.sub_rty_bool_or_timeout new_rctx (filter_type, new_ut.ty)
             with
             | Result true -> false
             | _ -> true))
@@ -83,7 +82,8 @@ end = struct
   let get_id ({ id; _ } : t) : identifier = id
 
   (* In the case of an existentialiszed block, the only thing in context is itself*)
-  let get_local_ctx ({ id; ty } : t) : LocalCtx.t = Typectx.ctx_from_list [ id.x#:ty ]
+  let get_local_ctx ({ id; ty } : t) : LocalCtx.t =
+    Typectx.ctx_from_list [ id.x#:ty ]
 
   (* let new_X (id : identifier) (ty : Nt.t rty) : t = { id; ty } *)
 
@@ -91,27 +91,23 @@ end = struct
     (* Create a target block that we are missing *)
     {
       id =
-        (Rename.unique_var "missing")#:(erase_rty target_ty)
+        (Rename.unique "missing")#:(erase_rty target_ty)
         |> NameTracking.known_var;
       ty = target_ty;
     }
 
-  (* let id = Rename.name () #: ty in
-     NameTracking.known_ast id (id_to_term id);
-     { id; ty } *)
-
   let is_sub_rty (t : t) (t' : t) : bool =
     let ty = t.id.x#:t.ty in
     let ty' = t'.id.x#:t'.ty in
-    Relations.is_sub_id_rty (Context.get_global_uctx ()) ty ty'
+    Relations.is_sub_id_rty (Context.get_rctx ()) ty ty'
 
   let typing_relation ({ id; ty } : t) ({ id = id'; ty = ty' } : t) :
       Relations.relation =
-    let uctx = Context.get_global_uctx () in
-    Relations.typed_relation uctx id.x#:ty id'.x#:ty'
+    let rctx = Context.get_rctx () in
+    Relations.typed_relation rctx id.x#:ty id'.x#:ty'
 
   let path_promotion (lc : LocalCtx.t) ({ id; ty } : t) : t =
-    let fresh_id = (Rename.unique_var id.x)#:id.ty in
+    let fresh_id = (Rename.unique id.x)#:id.ty in
     NameTracking.add_ast fresh_id (NameTracking.get_ast id |> Option.get);
     let fresh_rty = LocalCtx.exists_rtys_to_rty lc ty in
 
@@ -172,7 +168,7 @@ end = struct
 
     let res =
       Relations.is_sub_rty
-        (LocalCtx.uctx_add_local_ctx combined_ctx)
+        (LocalCtx.extend_rctx combined_ctx)
         block.ty updated_ty
     in
 
@@ -203,7 +199,7 @@ end = struct
          Printf.printf "updated_ty: %s\n" (layout_rty updated_ty); *)
       let res =
         Relations.typing_relation
-          (LocalCtx.uctx_add_local_ctx combined_ctx)
+          (LocalCtx.extend_rctx combined_ctx)
           target_block.ty updated_ty
       in
 
@@ -317,9 +313,9 @@ module PreBlock = struct
     assert (block_id.ty = ret_type);
     assert (term.ty = block_id.ty);
 
-    let new_uctx : uctx = LocalCtx.uctx_add_local_ctx joined_ctx in
+    let new_rctx : rctx = LocalCtx.extend_rctx joined_ctx in
 
-    match TypeInference.infer_type new_uctx term with
+    match TypeInference.infer_type new_rctx term with
     | NoCoverage ->
         print_endline "No coverage";
         NameTracking.remove_ast block_id ~recursive:true;
@@ -338,7 +334,7 @@ module PreBlock = struct
         if
           (* Check if new term is coverage equivalent to one of it's
              arguments *)
-          Relations.check_coverage_with_args new_uctx block_id new_ut.ty
+          Relations.check_coverage_with_args new_rctx block_id new_ut.ty
             arg_names
         then (
           (* Ignore term if so *)
@@ -358,10 +354,8 @@ end
 (* Take a term/block and see if it works inside of a path *)
 (* Should probably only be used to promote a block to a path *)
 let try_path path_ctx optional_filter_type ret_type
-    ((block_id : identifier),
-     (term : (Nt.t, Nt.t term) typed),
-     local_ctx,
-     cost) : Block.t option =
+    ((block_id : identifier), (term : (Nt.t, Nt.t term) typed), local_ctx, cost)
+    : Block.t option =
   assert (term.ty = block_id.ty);
 
   let new_path_ctx =
@@ -374,14 +368,14 @@ let try_path path_ctx optional_filter_type ret_type
   print_endline "New Path Context";
   LocalCtx.layout new_path_ctx |> print_endline;
 
-  let new_path_uctx = LocalCtx.uctx_add_local_ctx new_path_ctx in
+  let new_path_rctx = LocalCtx.extend_rctx new_path_ctx in
 
-  match TypeInference.infer_type new_path_uctx term with
+  match TypeInference.infer_type new_path_rctx term with
   | Res new_ut ->
       assert (ret_type = erase_rty new_ut.ty);
 
       if
-        TypeInference.check_filter_type optional_filter_type new_path_uctx
+        TypeInference.check_filter_type optional_filter_type new_path_rctx
           new_ut
       then (
         print_endline "Didn't make path because of filter";
@@ -420,7 +414,7 @@ let apply (pre_block : PreBlock.t) (filter_type : Nt.t rty option)
   assert (block_id.ty = ret_type);
   assert (term.ty = block_id.ty);
 
-  let new_uctx : uctx = LocalCtx.uctx_add_local_ctx joined_ctx in
+  let new_rctx : rctx = LocalCtx.extend_rctx joined_ctx in
 
   (* This abstracts out the path trying logic in a somewhat not-nice
      way *)
@@ -451,7 +445,7 @@ let apply (pre_block : PreBlock.t) (filter_type : Nt.t rty option)
        Block.to_typed_term (block_id, ut.ty, joined_ctx)
        |> layout_typed_term |> print_endline)
      new_ut; *)
-  match TypeInference.infer_type new_uctx term with
+  match TypeInference.infer_type new_rctx term with
   | NoCoverage ->
       print_endline "No coverage";
       NameTracking.remove_ast block_id ~recursive:true;
@@ -467,7 +461,7 @@ let apply (pre_block : PreBlock.t) (filter_type : Nt.t rty option)
   | Res new_ut ->
       (* (match component with
          | Op { x = DtConstructor "SAFETY_Rbtnode"; _ } ->
-             if Subtyping.Subrty.is_nonempty_rty new_uctx new_ut.ty then
+             if Subtyping.Subrty.is_nonempty_rty new_rctx new_ut.ty then
                print_endline "Nonempty"
              else print_endline "Empty"
          | _ -> ()); *)
@@ -478,14 +472,14 @@ let apply (pre_block : PreBlock.t) (filter_type : Nt.t rty option)
       else if
         (* Check if new term is coverage equivalent to one of it's
            arguments *)
-        Relations.check_coverage_with_args new_uctx block_id new_ut.ty arg_names
+        Relations.check_coverage_with_args new_rctx block_id new_ut.ty arg_names
       then (
         (* Ignore term if so *)
         print_endline "same as arg";
         NameTracking.remove_ast block_id ~recursive:true;
         List.iter (LocalCtx.cleanup ~recursive:false) newly_created_ids;
         (None, []))
-      else if TypeInference.check_filter_type filter_type new_uctx new_ut then (
+      else if TypeInference.check_filter_type filter_type new_rctx new_ut then (
         (* Ignore term if so *)
         print_endline "Filtered out by type";
         NameTracking.remove_ast block_id ~recursive:true;

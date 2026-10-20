@@ -81,16 +81,18 @@ def invoc_cmd(
 
 
 def run_for_dir_from_cli(workdir, f):
-    dir_str = sys.argv[1]
+    """Run `f` on the directory named by argv[1], from inside `workdir` under
+    Cobb/. Each `meta-config.json`'s `prim_path` entries resolve against that
+    CWD, so the directory may sit anywhere (`../integration_tests/` included)."""
+    if len(sys.argv) != 2:
+        sys.exit(f"usage: {sys.argv[0]} <benchmark-dir>")
 
-    directory = Path(dir_str)
-    assert directory.is_dir()
+    directory = Path(sys.argv[1]).resolve()
+    if not directory.is_dir():
+        sys.exit(f"not a directory: {directory}")
 
-    working_dir = Path(workdir)
-    assert working_dir.is_dir()
+    working_dir = Path(__file__).resolve().parent.parent / workdir
+    assert working_dir.is_dir(), working_dir
 
-    assert directory.is_relative_to(working_dir)
     os.chdir(working_dir)
-    directory = os.path.relpath(directory, working_dir)
-
-    f(directory)
+    f(os.path.relpath(directory, working_dir))

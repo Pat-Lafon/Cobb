@@ -45,10 +45,7 @@ module BlockMapF (B : Block_intf) = struct
         else (ty', terms) :: add_list rest term_list ty
 
   let init (inital_seeds : B.t list) : t =
-    let aux (b_map : t) term =
-      (* layout_block term |> print_endline; *)
-      add b_map term
-    in
+    let aux (b_map : t) term = add b_map term in
     List.fold_left aux [] inital_seeds
 
   let get_opt (map : t) (ty : Nt.t) : BlockSet.t option = List.assoc_opt ty map
@@ -80,7 +77,7 @@ end
 module BlockMap = struct
   include BlockMapF (Block)
 
-  (** Gets the corresponding set or return  *)
+  (** Gets the corresponding set or return *)
   let get (map : t) (ty : Nt.t) : BlockSet.t =
     get_opt map ty |> Option.value ~default:BlockSet.empty
 

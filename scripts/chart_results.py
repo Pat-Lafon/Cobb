@@ -32,14 +32,18 @@ def create_consolidated_chart(all_stats_data, chart_title, output_file):
             if name.startswith("stlc"):
                 current_benchmark = None
         elif name == "sketch" and current_benchmark:
-            # Use sketch case for regular benchmarks only
-            total_time = float(stat["Total Time(s)"])
             # Clean up benchmark name by removing the " 1" suffix
             clean_name = (
                 current_benchmark.replace(" 1", "")
                 if current_benchmark.endswith(" 1")
                 else current_benchmark
             )
+            # Use sketch case for regular benchmarks only
+            if not stat["Total Time(s)"].strip():
+                raise ValueError(
+                    f"{clean_name} sketch has no Total Time: its synthesis run did not finish"
+                )
+            total_time = float(stat["Total Time(s)"])
             benchmark_data.append({"name": clean_name, "total_time": total_time})
 
     if not benchmark_data:
@@ -116,11 +120,8 @@ def create_consolidated_chart(all_stats_data, chart_title, output_file):
 
 
 def main():
-    # Hard coded data directory path
-    data_dir = "underapproximation_type/data/validation"
-
     # Process the data
-    processor = BenchmarkDataProcessor(data_dir)
+    processor = BenchmarkDataProcessor()
     main_stats, tree_stats, stlc_stats = processor.get_all_stats()
 
     # Combine only main and tree benchmarks (exclude STLC)

@@ -2,7 +2,6 @@ open Zutils
 open Timeout
 open Language
 open Utils
-open Context
 
 type t = Nt.t
 
@@ -16,19 +15,19 @@ module Relations : sig
   val diff_base_type : t rty -> t rty -> bool
 
   (* TODO: comment this line out so everyone needs to use cache*)
-  val is_sub_rty : uctx -> t rty -> t rty -> bool
+  val is_sub_rty : rctx -> t rty -> t rty -> bool
 
   val is_sub_id_rty :
-    uctx -> (t rty, string) typed -> (t rty, string) typed -> bool
+    rctx -> (t rty, string) typed -> (t rty, string) typed -> bool
 
   (* todo: comment this line out so everyone needs to use cache *)
-  val typing_relation : uctx -> t rty -> t rty -> relation
+  val typing_relation : rctx -> t rty -> t rty -> relation
 
   val typed_relation :
-    uctx -> (t rty, string) typed -> (t rty, string) typed -> relation
+    rctx -> (t rty, string) typed -> (t rty, string) typed -> relation
 
   val check_coverage_with_args :
-    uctx -> identifier -> t rty -> identifier list -> bool
+    rctx -> identifier -> t rty -> identifier list -> bool
 
   val check_cache : string -> string -> bool option
   val assert_string_not_in_cache : string -> unit
@@ -78,13 +77,13 @@ end = struct
 
   let clear_cache () = RelationCache.reset_cache ()
 
-  let is_sub_rty uctx l r =
+  let is_sub_rty rctx l r =
     if diff_base_type l r then false
     else
-      let res = Timeout.sub_rty_bool_or_timeout uctx (l, r) in
+      let res = Timeout.sub_rty_bool_or_timeout rctx (l, r) in
       match res with Result true -> true | _ -> false
 
-  let is_sub_id_rty uctx (id : (t rty, string) typed) target_id =
+  let is_sub_id_rty rctx (id : (t rty, string) typed) target_id =
     if id.x = target_id.x then true
     else if diff_base_type id.ty target_id.ty then false
     else
@@ -93,7 +92,7 @@ end = struct
       | None ->
           let res =
             let x =
-              Timeout.sub_rty_bool_or_timeout uctx (id.ty, target_id.ty)
+              Timeout.sub_rty_bool_or_timeout rctx (id.ty, target_id.ty)
             in
             Timeout.timeout_eq (x, Timeout.Result true)
           in
@@ -134,20 +133,18 @@ end = struct
       | false, true -> ImpliedByTarget
       | false, false -> None
 
-  let check_coverage_with_args uctx (block_id : identifier) new_ut arg_names :
+  let check_coverage_with_args rctx (block_id : identifier) new_ut arg_names :
       bool =
     List.exists
       (fun ({ x; _ } : identifier) ->
         let arg_t =
-          Typing.lookup_id uctx.rctx (Context.get_bctx ()) x |> Option.get
+          Typing.lookup_ctxs
+            [ rctx.rty_ctx; (Context.get_bctx ()).builtin_ctx ]
+            x
+          |> Option.get
         in
 
-        if not (is_sub_id_rty uctx x#:arg_t block_id.x#:new_ut) then false
-        else is_sub_id_rty uctx block_id.x#:new_ut x#:arg_t
-        (*  let relation_result =
-          typed_relation uctx x #: arg_t block_id.x #: new_ut
-        in
-        (* TODO: Make this lazy/short-circuiting*)
-        Equiv = relation_result *))
+        if not (is_sub_id_rty rctx x#:arg_t block_id.x#:new_ut) then false
+        else is_sub_id_rty rctx block_id.x#:new_ut x#:arg_t)
       arg_names
 end
