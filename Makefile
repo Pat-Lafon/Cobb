@@ -1,10 +1,7 @@
-.PHONY: all build test sync proof axioms config subck results
+.PHONY: all build test sync proof config subck results
 
 build:
 	opam exec -- dune build
-
-axioms:
-	cd underapproximation_type && dune exec -- bin/main.exe export-axioms-coq -config meta-config.json -output axioms.v
 
 clean:
 	dune clean
