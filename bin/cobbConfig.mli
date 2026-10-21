@@ -1,7 +1,6 @@
 type t = {
   synth_bound : int;
   synth_rlimit : int option;
-  synth_timeout : int option;
   type_rlimit : int option;
   comp_path : string;
   imprecise : bool;

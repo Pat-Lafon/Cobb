@@ -1,5 +1,4 @@
 open Zutils
-open Timeout
 open Language
 open Utils
 
@@ -7,11 +6,10 @@ type t = Nt.t
 
 (** The goal of this module is to provide utilites for the subtyping relation*)
 module Relations : sig
-  type relation = Equiv | ImpliesTarget | ImpliedByTarget | None | Timeout
+  type relation = Equiv | ImpliesTarget | ImpliedByTarget | None
 
   val layout : relation -> string
   val invert_relation : relation -> relation
-  val is_equiv_or_timeout : relation -> bool
   val diff_base_type : t rty -> t rty -> bool
 
   (* TODO: comment this line out so everyone needs to use cache*)
@@ -33,7 +31,7 @@ module Relations : sig
   val assert_string_not_in_cache : string -> unit
   val clear_cache : unit -> unit
 end = struct
-  type relation = Equiv | ImpliesTarget | ImpliedByTarget | None | Timeout
+  type relation = Equiv | ImpliesTarget | ImpliedByTarget | None
   [@@deriving sexp]
 
   let layout relation = Core.Sexp.to_string_hum (sexp_of_relation relation)
@@ -43,7 +41,6 @@ end = struct
     | ImpliesTarget -> ImpliedByTarget
     | ImpliedByTarget -> ImpliesTarget
     | None -> None
-    | Timeout -> Timeout
 
   module RelationCache = struct
     type t = (string * string, bool) Hashtbl.t
@@ -61,9 +58,6 @@ end = struct
       | None -> Hashtbl.find_opt cache (r, l) |> Option.map invert_relation *)
   end
 
-  let is_equiv_or_timeout (r : relation) : bool =
-    match r with Equiv | Timeout -> true | _ -> false
-
   let diff_base_type (l : t rty) (r : t rty) : bool =
     not (erase_rty l = erase_rty r)
 
@@ -78,10 +72,7 @@ end = struct
   let clear_cache () = RelationCache.reset_cache ()
 
   let is_sub_rty rctx l r =
-    if diff_base_type l r then false
-    else
-      let res = Timeout.sub_rty_bool_or_timeout rctx (l, r) in
-      match res with Result true -> true | _ -> false
+    if diff_base_type l r then false else Auxtyping.sub_rty rctx (l, r)
 
   let is_sub_id_rty rctx (id : (t rty, string) typed) target_id =
     if id.x = target_id.x then true
@@ -90,12 +81,7 @@ end = struct
       match check_cache id.x target_id.x with
       | Some r -> r
       | None ->
-          let res =
-            let x =
-              Timeout.sub_rty_bool_or_timeout rctx (id.ty, target_id.ty)
-            in
-            Timeout.timeout_eq (x, Timeout.Result true)
-          in
+          let res = Auxtyping.sub_rty rctx (id.ty, target_id.ty) in
           RelationCache.add id.x target_id.x res;
           res
 
@@ -103,24 +89,13 @@ end = struct
   let typing_relation ctx target_ty ty =
     if diff_base_type target_ty ty then None
     else
-      let implies_target =
-        Timeout.sub_rty_bool_or_timeout ctx (ty, target_ty)
-      in
-
-      (* (* Short circuit on timeout *)
-         if implies_target = Timeout then Timeout
-         else *)
-      (* Else continue *)
-      let implied_by_target =
-        Timeout.sub_rty_bool_or_timeout ctx (target_ty, ty)
-      in
-
+      let implies_target = Auxtyping.sub_rty ctx (ty, target_ty) in
+      let implied_by_target = Auxtyping.sub_rty ctx (target_ty, ty) in
       match (implies_target, implied_by_target) with
-      (*       | Timeout, _ | _, Timeout -> Timeout *)
-      | Result true, Result true -> Equiv
-      | Result true, _ -> ImpliesTarget
-      | _, Result true -> ImpliedByTarget
-      | _ -> None
+      | true, true -> Equiv
+      | true, false -> ImpliesTarget
+      | false, true -> ImpliedByTarget
+      | false, false -> None
 
   let typed_relation ctx target_id id : relation =
     if diff_base_type target_id.ty id.ty then None

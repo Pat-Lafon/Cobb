@@ -37,7 +37,6 @@ end = struct
       | Relations.ImpliesTarget -> Lower
       | Relations.ImpliedByTarget -> Greater
       | Relations.None -> Unknown
-      | Relations.Timeout -> Unknown
 
     let compare (a : el) (b : el) = B.typing_relation a b |> relations_to_ord
   end

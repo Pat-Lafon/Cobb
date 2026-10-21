@@ -23,7 +23,8 @@ directory, and `meta-config.json`'s paths are authored relative to it.
 `cd underapproximation_type/ && dune exec Cobb -- synthesis ../../integration_tests/sizedlist/sizedlist_gen_synth_prog1.ml`
 
 `python3 scripts/synth.py ../integration_tests/sizedlist` synthesizes every `progN.ml` under a
-directory (`abduce.py` likewise abduces). `../totem_runner/` drives the whole pipeline.
+directory. `make abduce` runs the abduction phase once per program over every benchmark, so a change
+under `abduction/` is checked in about a minute. `../totem_runner/` drives the whole pipeline.
 
 ## Collecting results
 

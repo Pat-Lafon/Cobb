@@ -314,7 +314,6 @@ module Localization = struct
           possible_props
       in
 
-      (* TODO: Not worried about timeout here I think? *)
       let subtyping_res =
         sub_rty rctx
           (inferred_body.ty, add_props_to_base target_ty local_free_subset)
@@ -350,7 +349,6 @@ module Localization = struct
             let modified_target_ty =
               add_props_to_base target_ty (List.concat [ acc; rest_props ])
             in
-            (* TODO: Not worried about timeout here I think? *)
             let subtyping_res =
               sub_rty rctx (inferred_body.ty, modified_target_ty)
             in

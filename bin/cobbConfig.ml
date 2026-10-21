@@ -1,7 +1,6 @@
 type t = {
   synth_bound : int;
   synth_rlimit : int option; [@default None]
-  synth_timeout : int option; [@default None]
   type_rlimit : int option; [@default None]
   comp_path : string; [@default "components.txt"]
   imprecise : bool; [@default false]

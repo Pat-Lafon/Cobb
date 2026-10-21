@@ -1,6 +1,6 @@
 (library
  (name relation)
- (libraries CoverageType.typing timeout context)
+ (libraries CoverageType.typing context)
  (modules relation)
  (preprocess
   (pps ppx_sexp_conv)))

@@ -33,7 +33,6 @@
  (libraries
   CoverageType.typing
   context
-  timeout
   tracking
   pieces
   pomap
@@ -54,11 +53,6 @@
  (modules pieces))
 
 (library
- (name timeout)
- (libraries CoverageType.typing context utils)
- (modules timeout))
-
-(library
  (public_name Cobb.tracking)
  (name tracking)
  (libraries CoverageType.typing CoverageType.language zutils utils)
@@ -73,7 +67,6 @@
   block
   blocks
   tracking
-  timeout
   context
   utils)
  (modules localization)
@@ -106,7 +99,7 @@
 (library
  (name term_utils)
  (modules term_utils)
- (libraries CoverageType.typing block timeout utils))
+ (libraries CoverageType.typing block utils))
 
 (library
  (name extraction)

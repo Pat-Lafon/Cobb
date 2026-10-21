@@ -42,7 +42,6 @@ let collect_ext = ".collect"
 type config = {
   bound : int;
   syn_rlimit : int option;
-  syn_timeout : int option;
   type_rlimit : int option;
   component_list : string list;
   imprecise : bool;
@@ -120,14 +119,12 @@ let load_config meta_config_file : config =
   {
     bound = c.synth_bound;
     syn_rlimit = c.synth_rlimit;
-    syn_timeout = c.synth_timeout;
     type_rlimit = c.type_rlimit;
     component_list = Core.In_channel.read_lines comp_path;
     imprecise = c.imprecise;
   }
 
 let set_z3_rlimit = Prover.set_z3_rlimit
-let set_z3_timeout = Prover.set_z3_timeout
 
 let check_config _use_missing _ meta_config_file =
   let _config = load_config meta_config_file in
@@ -221,7 +218,6 @@ let localize_benchmark use_missing_coverage_file source_file meta_config_file =
   in
 
   set_z3_rlimit config.syn_rlimit;
-  set_z3_timeout config.syn_timeout;
 
   let rctx = init_typing_context () in
 
@@ -267,7 +263,6 @@ let synthesis_benchmark use_missing_coverage_file source_file meta_config_file =
   check_or_write_abduction_file (source_file ^ abd_ext) missing_coverage;
 
   set_z3_rlimit config.syn_rlimit;
-  set_z3_timeout config.syn_timeout;
 
   let synth_start_time = Unix.gettimeofday () in
 
@@ -383,7 +378,6 @@ let synthesis_benchmark use_missing_coverage_file source_file meta_config_file =
   in
 
   set_z3_rlimit config.type_rlimit;
-  set_z3_timeout None;
 
   let result =
     Typing.term_type_check (Context.get_bctx ()) rctx (new_body, retty)

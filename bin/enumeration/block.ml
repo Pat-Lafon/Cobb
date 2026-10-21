@@ -5,7 +5,6 @@ open Tracking
 open Language
 open Context
 open Relation
-open Timeout
 
 let num_considered_terms = ref 0
 
@@ -32,16 +31,8 @@ module TypeInference = struct
       (new_ut : (Nt.t rty, Nt.t rty term) typed) : bool =
     Option.fold ~none:false
       ~some:(fun filter_type ->
-        match
-          Timeout.sub_rty_bool_or_timeout new_rctx (new_ut.ty, filter_type)
-        with
-        | Result true -> false
-        | _ -> (
-            match
-              Timeout.sub_rty_bool_or_timeout new_rctx (filter_type, new_ut.ty)
-            with
-            | Result true -> false
-            | _ -> true))
+        (not (Auxtyping.sub_rty new_rctx (new_ut.ty, filter_type)))
+        && not (Auxtyping.sub_rty new_rctx (filter_type, new_ut.ty)))
       optional_filter_type
 end
 
